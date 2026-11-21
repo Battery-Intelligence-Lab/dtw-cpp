@@ -9,7 +9,9 @@
 #include "../support/scratch_directory.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cmath>
 #include <filesystem>
@@ -299,6 +301,17 @@ TEST_CASE("CasADi-style settings -> load_data -> do_clustering -> write_data wor
   for (std::size_t i = 0; i < 6; ++i) {
     REQUIRE_THAT(D_ds[i * 6 + i], Catch::Matchers::WithinAbs(0.0, 1e-12));
   }
+
+  // 4. A Dataset is read with the options it was made with: settings that give one another value are refused,
+  //    naming it; the same value (above) or the default runs.
+  using Catch::Matchers::ContainsSubstring;
+  using Catch::Matchers::MessageMatches;
+  REQUIRE_THROWS_MATCHES(dtwc::do_clustering(ds, cfg, { { "output", "" }, { "skip-rows", "2" } }), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("skip_rows 1 and the settings give skip_rows 2")));
+  REQUIRE_THROWS_MATCHES(dtwc::cdist(dtwc::load(make_equal_series(3, 4, 0.0)), ds, cfg), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("skip_cols 0 and the settings give skip_cols 1")));
+  REQUIRE(dtwc::do_clustering(ds, cfg, { { "output", "" }, { "checkpoint", "" }, { "skip-rows", "0" } }).labels()
+          == res.labels());
 
   // Unknown key in make_settings / settings::make fails loudly with InvalidInput
   REQUIRE_THROWS_AS(dtwc::make_settings({ { "not-a-setting", "1" } }), dtwc::InvalidInput);

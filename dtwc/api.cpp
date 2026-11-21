@@ -33,6 +33,31 @@ namespace {
     if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
   }
 
+  /// Refuse a reader option of `cfg` (skip_cols, skip_rows, delimiter, dtype) that is not at its default and differs
+  /// from the one `dataset` was made with: the Dataset is read with its own, so the Config's would be dropped without
+  /// a word. A Dataset holds no column: a path's read takes the Config's, as run() does, and series in memory cannot
+  /// honour one.
+  void require_options_made_with(const Dataset &dataset, const Config &cfg, const char *where)
+  {
+    const Config defaults;
+    const auto quoted = [](char c) { return c == '\0' ? std::string("''") : std::string{ '\'', c, '\'' }; };
+    const auto dtype = [](core::Precision p) { return std::string(name_of(core::precision_names, p)); };
+    for (const auto &[key, given, standard, made] :
+         { std::tuple{ "skip_cols", std::to_string(cfg.skip_cols), std::to_string(defaults.skip_cols),
+                       std::to_string(dataset.skip_cols()) },
+           std::tuple{ "skip_rows", std::to_string(cfg.skip_rows), std::to_string(defaults.skip_rows),
+                       std::to_string(dataset.skip_rows()) },
+           std::tuple{ "delimiter", quoted(cfg.delimiter), quoted(defaults.delimiter), quoted(dataset.delimiter()) },
+           std::tuple{ "dtype", dtype(cfg.dtype), dtype(defaults.dtype), dtype(dataset.dtype()) } }) {
+      if (given != standard && given != made)
+        throw InvalidInput(std::string(where) + ": the Dataset was made with " + key + " " + made
+                           + " and the settings give " + key + " " + given
+                           + "; a Dataset keeps the options it was made with, so pass " + key
+                           + " to load_data, or leave it out of the settings.");
+    }
+    if (!dataset.is_path()) require_reader_options(std::nullopt, 0, 0, '\0', cfg.column);
+  }
+
   /// A streamed run's Result (`streamed_names` its series' names) refuses `what`: FastCLARA read its series a record
   /// batch at a time within --ram-limit, and its Problem holds none, so it has no distances.
   void refuse_if_streamed(const std::vector<std::string> &streamed_names, const char *what)
@@ -246,24 +271,21 @@ Result do_clustering(const Dataset &dataset, const Config &cfg)
 
 Result do_clustering(Dataset &&dataset, const Config &cfg)
 {
+  require_options_made_with(dataset, cfg, "do_clustering");
   Config config = cfg;
   if (config.name.empty()) config.name = dataset.name();
-  if (!dataset.is_path()) {
-    if (dataset.skip_cols() == 0 && config.skip_cols > 0) dataset.skip_cols_ = config.skip_cols;
-    if (dataset.skip_rows() == 0 && config.skip_rows > 0) dataset.skip_rows_ = config.skip_rows;
-    if (dataset.dtype() != core::Precision::Float64) config.dtype = dataset.dtype();
+  config.dtype = dataset.dtype();
+  if (!dataset.is_path()) { // materialize_local drops the Dataset's skips; run() refuses reader options here
     config.input.clear();
     config.skip_cols = 0;
     config.skip_rows = 0;
     config.delimiter = '\0';
-    config.column.clear();
     return run(config, std::move(dataset).materialize_local());
   }
   config.input = path_to_utf8(dataset.path());
-  if (dataset.skip_cols() != 0) config.skip_cols = dataset.skip_cols();
-  if (dataset.skip_rows() != 0) config.skip_rows = dataset.skip_rows();
-  if (dataset.delimiter() != '\0') config.delimiter = dataset.delimiter();
-  if (dataset.dtype() != core::Precision::Float64) config.dtype = dataset.dtype();
+  config.skip_cols = dataset.skip_cols();
+  config.skip_rows = dataset.skip_rows();
+  config.delimiter = dataset.delimiter();
   return run(config);
 }
 
@@ -287,26 +309,19 @@ void write_data(const Result &result, const std::filesystem::path &directory)
 std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg)
 {
   auto read_ds = [&cfg](const Dataset &ds) -> Data {
-    const index_t skip_cols = ds.skip_cols() != 0 ? ds.skip_cols() : cfg.skip_cols;
-    const index_t skip_rows = ds.skip_rows() != 0 ? ds.skip_rows() : cfg.skip_rows;
-    const char delimiter = ds.delimiter() != '\0' ? ds.delimiter() : cfg.delimiter;
-    const core::Precision dtype =
-      (ds.dtype() != core::Precision::Float64) ? ds.dtype() : cfg.dtype;
+    require_options_made_with(ds, cfg, "cdist");
     if (!ds.is_path()) {
-      Dataset copy(ds);
-      copy.skip_cols_ = skip_cols;
-      copy.skip_rows_ = skip_rows;
-      Data out = std::move(copy).materialize_local();
-      return dtype == core::Precision::Float32
+      Data out = Dataset(ds).materialize_local();
+      return ds.dtype() == core::Precision::Float32
                ? detail::owned_copy(out, core::Precision::Float32)
                : out;
     }
 #ifdef DTWC_HAS_ARROW
     if (io::arrow_format(ds.path())) {
-      return io::read_arrow(ds.path(), cfg.column, skip_cols, skip_rows, dtype);
+      return io::read_arrow(ds.path(), cfg.column, ds.skip_cols(), ds.skip_rows(), ds.dtype());
     }
 #endif
-    return read_data(ds.path(), skip_cols, skip_rows, delimiter, cfg.column, dtype);
+    return read_data(ds.path(), ds.skip_cols(), ds.skip_rows(), ds.delimiter(), cfg.column, ds.dtype());
   };
   const Data x_data = read_ds(X);
   const Data y_data = read_ds(Y);
