@@ -122,7 +122,7 @@ parse_results() {
     RESULT_ITERATIONS=$(grep -oP 'Iterations:\s*\K\d+' "$logfile" 2>/dev/null || echo "0")
     RESULT_SILHOUETTE=$(grep -oP 'mean=\K-?[\d.]+(?:[eE][+-]?\d+)?' "$logfile" 2>/dev/null || echo "null")
     # GPU-specific: extract GPU distance matrix time
-    RESULT_GPU_DTW_MS=$(grep -oP 'GPU distance matrix:.*?in \K[\d.]+(?:[eE][+-]?\d+)?' "$logfile" 2>/dev/null || echo "null")
+    RESULT_GPU_DTW_MS=$(grep -oP 'CUDA DTW: \d+ pairs \[FP\d+\] in \K[\d.]+(?:[eE][+-]?\d+)?' "$logfile" 2>/dev/null || echo "null")
 }
 
 # ── Write timing JSON ────────────────────────────────────────────────────
