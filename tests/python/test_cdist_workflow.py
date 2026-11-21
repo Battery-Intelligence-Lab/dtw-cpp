@@ -348,7 +348,7 @@ class TestHpcWorkflowExtensions:
             f"export CAP={shlex.quote(_bash_path(cap))}; "
             f"exec bash {shlex.quote(_bash_path(wrapper))} submit-job run"
         )
-        res = subprocess.run(["bash", "-c", cmd], cwd=project, capture_output=True, text=True)
+        res = subprocess.run(["bash", "-c", cmd], cwd=project, capture_output=True, text=True, encoding="utf-8")
         assert res.returncode == 0, res.stdout + res.stderr
         sbatch_args = cap.read_text(encoding="utf-8").splitlines()
         assert "--account=engs-ox" in sbatch_args
