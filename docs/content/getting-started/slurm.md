@@ -211,8 +211,6 @@ submitting, and the requests of the table above never land on them; a job script
 `#SBATCH --gres=gpu:1` alone may be given one. The MI210 is not a CUDA device, and the GH200 node is AArch64 (the
 `grace` profile builds without CUDA).
 
-Co-investment GPU nodes are limited to the **short** partition (12-hour maximum).
-
 ### Storage
 
 | Area | Path | Quota | Persistent |

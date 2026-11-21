@@ -54,8 +54,6 @@ print(f"Soft-DTW distance: {d_soft}")
 
 Both plain Python lists and NumPy arrays are accepted. Lists are automatically converted to `float64` arrays.
 
-The distance of two series is `dtwcpp.distance.dtw`, for every variant.
-
 ### Distance matrix
 
 Compute the full pairwise DTW distance matrix for a collection of series:
@@ -134,8 +132,8 @@ missing-data strategies and independent mode honour the metric; WDTW, ADTW,
 Soft-DTW, MSM and TWE compute an L1 cost and refuse another metric. Non-error
 missing handling requires Standard DTW, and independent multivariate mode
 requires Standard DTW with `missing_strategy="error"`. Local CUDA and
-Metal execution support Standard, dependent, Error mode with either metric.
-`fit()` and `predict()` use the same validated recurrence and parameters.
+Metal execution support univariate Standard DTW with `missing_strategy="error"`
+and either metric. `fit()` and `predict()` use the same validated recurrence and parameters.
 
 ### Methods
 
@@ -300,9 +298,7 @@ clf = dtwcpp.DTWClustering(n_clusters=3, band=10, device="cuda")
 labels = clf.fit_predict(X)
 ```
 
-`cuda` is a spelling of `gpu`: it runs on this build's GPU (CUDA, else Metal),
-and with no GPU the request raises `dtwcpp.DeviceError`. Select `device="cpu"`
-explicitly if CPU execution is wanted.
+`cuda` / `cuda:N` are aliases of `gpu` / `gpu:N` (selecting CUDA where built, else Metal on macOS); if no GPU is available, `dtwcpp.DeviceError` is raised with no CPU fallback. GPU execution supports univariate Standard DTW with `missing_strategy="error"` (L1 or squared Euclidean); other variants and missing-data recurrences require CPU computation.
 
 `device="cpu+gpu"` (a CUDA build) uses the CPU's threads and the GPU together: it fills the
 distance matrix of `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical` and of `clara` on a
@@ -311,7 +307,8 @@ sample of every series on both, and splits FastCLARA's assignment pass between t
 raise `dtwcpp.DeviceError`, in C++'s words, on a build without CUDA; `onebatch`, `tadpole` and
 a run that streams its series raise it too. `gpu_share` splits the work (`-1`, the default,
 measures the share; a value in [0, 1] forces it so a run repeats; the run report,
-`Result.report`, prints the share a run used):
+`Result.report`, prints the share a run used; anything else, or a forced share on another
+device, raises `dtwcpp.InvalidInput`; [Devices](../../guides/devices/) gives the rule):
 
 ```python
 res = dtwcpp.cluster(series, 3, method="pam", device="cpu+gpu", gpu_share=0.5, verbose=True)
@@ -319,19 +316,10 @@ prob = dtwcpp.Problem("mine", device="cpu+gpu")
 prob.set_gpu_share(0.5)            # beside prob.set_gpu_precision(...)
 ```
 
-Anything but -1 or [0, 1] raises `dtwcpp.InvalidInput`, and so does a forced share on
-another device. [Devices](../../guides/devices/) gives the rule.
-
-**Note:** GPU clustering supports Standard, dependent DTW with
-`missing_strategy="error"`; both L1 and squared-Euclidean metrics are available.
-Other variants and missing-data recurrences require CPU computation.
-
 A `Problem` takes the device once and does not follow the process-wide
-`dtwcpp.device()`. It reads the name with the same C++ grammar as
-`dtwcpp.device()` and the per-call `device=` arguments above — `cpu`, `gpu`,
-`gpu:N`, with `cuda` / `cuda:N` as aliases of `gpu` / `gpu:N`, so on a Metal
-build `device="cuda"` selects Metal. `hpc` is a `cluster()` option, not a
-`Problem` device (`DeviceError`):
+`dtwcpp.device()`; it reads the name with the same C++ grammar as `dtwcpp.device()`
+and the per-call `device=` arguments above. `hpc` is a `cluster()` / `DTWClustering`
+option, not a `Problem` device (`DeviceError`):
 
 ```python
 prob = dtwcpp.Problem("my_clustering", device="gpu")   # CUDA, else Metal
@@ -340,9 +328,7 @@ prob.fill_distance_matrix()        # on the GPU
 prob.set_device("cpu")             # back to the CPU
 ```
 
-On a GPU, a request its kernels do not implement — for example
-`prob.set_variant(dtwcpp.DTWVariant.WDTW)` — raises `dtwcpp.DeviceError` naming
-the setting when distances are computed; it never runs on the CPU instead.
+Unsupported settings on a GPU `Problem` (e.g. `prob.set_variant(dtwcpp.DTWVariant.WDTW)`) raise `dtwcpp.DeviceError` naming the setting when distances are computed; they never run on the CPU instead.
 
 ## I/O utilities
 

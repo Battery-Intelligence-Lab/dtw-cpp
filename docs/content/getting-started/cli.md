@@ -133,9 +133,10 @@ set: a thread's scratch for the DTW kernels, sized for the longest series it
 expects (the longest series read, a mapped Arrow IPC file's longest, else twice
 the mean length), and the method's tables, times the threads, and a tenth more.
 What the reserve leaves is the data cap, for the series, the method's own terms
-(TADPole's flag a pair and its cache of the pairs, the hierarchical clustering's
-dense copy of N x N doubles, OneBatchPAM's batch table: in RAM however the
-matrix is stored) and the distance matrix:
+(TADPole's flag a pair, its cache of the pairs and, where it prunes, the series'
+envelopes; the hierarchical clustering's packed working copy of the matrix,
+N(N+1)/2 doubles; OneBatchPAM's batch table: in RAM however the matrix is stored)
+and the distance matrix:
 
 - the series go into RAM on every thread where they fit in the data cap beside
   the distance matrix's N(N+1)/2 values (8 bytes each, 4 under

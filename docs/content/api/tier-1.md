@@ -57,15 +57,16 @@ res.save('results');
 | set | `dtwc::device("gpu")` | `dtwcpp.device("gpu")` | `dtwc.device('gpu')` |
 | read | `dtwc::device()` | `dtwcpp.device()` | `dtwc.device()` |
 
-The names are `cpu` (the default), `gpu`, `gpu:N`, `cuda` and `cuda:N`, in any
-case; `cuda` is another spelling of `gpu`, which means CUDA where it is built and
-Metal on macOS. Setting a device returns its canonical name, so `cuda:0` comes
-back as `gpu`. An unknown name, or `gpu` on a build without a GPU backend,
-raises `DeviceError` (Python also checks that the machine has a GPU); no request
-falls back to the CPU. Python also takes `hpc`
-and `hpc:gpu`, which send the whole run to a SLURM cluster
-([SLURM](../../getting-started/slurm/)); C++ and MATLAB refuse them with
-`DeviceError`.
+The names are `cpu` (the default), `gpu`, `gpu:N`, `cuda`, `cuda:N`, `cpu+gpu`,
+and `cpu+gpu:N`, in any case; `cuda` is another spelling of `gpu`, which means
+CUDA where it is built and Metal on macOS, and `cpu+gpu` splits matrix fills and
+FastCLARA assignment between the CPU and a CUDA GPU. Setting a device returns its
+canonical name, so `cuda:0` comes back as `gpu`. An unknown name, `gpu` on a
+build without a GPU backend, or `cpu+gpu` without CUDA raises `DeviceError`
+(Python also checks that the machine has a GPU for `gpu`); no request falls back
+to the CPU. Python also takes `hpc` and `hpc:gpu`, which send the whole run to a
+SLURM cluster ([SLURM](../../getting-started/slurm/)); C++ and MATLAB refuse them
+with `DeviceError`.
 
 The process device is what `cluster()` uses when it is not given one. A Tier-2
 `Problem` keeps its own device and ignores it ([Devices](../../guides/devices/)).

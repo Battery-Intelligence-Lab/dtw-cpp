@@ -57,8 +57,9 @@ Where the series live depends on the input:
   for the threads; 0 plans with 90 % of the memory available), non-full FastCLARA (`--method clara`, or `auto` where
   PAM's matrix does not fit) streams it, one record batch at a time; a mapped file is not streamed.
 - A Parquet file is read whole into RAM, or, in a native build with Arrow (`dtwc_cl`, C++ `dtwc::run`),
-  streamed through non-full FastCLARA a batch of row groups at a time where it does not fit the data cap
-  (below). Python and MATLAB read it before the run, with `pyarrow` and `parquetread`, and pass the series in
+  streamed through non-full FastCLARA a batch of whole row groups at a time, decoded about 1 MiB of values at a
+  time, where it does not fit the data cap ([Supported data](../../getting-started/supported-data/#metadata-first-ram-limited-streaming)
+  gives the rules). Python and MATLAB read it before the run, with `pyarrow` and `parquetread`, and pass the series in
   memory: whatever `ram_limit` says, it is read whole, and memory the system refuses fails the run there
   (Python `MemoryError`; MATLAB `dtwc:internal` when the MEX's copy of the series is refused:
   [Tier 1](../../api/tier-1/)). Convert a file too large for that to Arrow IPC
@@ -76,15 +77,3 @@ at half the bytes, each distance rounded to a float.
 For data larger than an all-pairs matrix, choose a method that holds no parent matrix,
 OneBatchPAM or non-full CLARA (TADPole keeps the pairs it computes in a packed matrix),
 rather than changing only the input container.
-
-The native CLI plans `--ram-limit` (0: 90 % of the memory available) for Parquet before
-payload materialisation. If the conservative selected-column estimate exceeds the data cap,
-only non-full FastCLARA over a single file of one series per row (a list column,
-or several Float32/Float64 columns) can stream row groups; under an explicit
-`--ram-limit`, a one-column file, directories, and other methods stop with an `InvalidInput`
-before loading the payload. The automatic cap never fails a run: elsewhere the series load as they
-would without a limit.
-A batch holds whole row groups, decoded about 1 MiB of values at a time, and the
-data cap covers what the stream holds rather than all process memory. The streaming route emits labels and medoids
-without constructing dense distance or silhouette CSVs; storage requested with `--dtype f32` remains Float32 throughout the
-sample, medoid, and assignment payloads.
