@@ -121,12 +121,13 @@ def _load_hdf5(path: Path):
     from .io import load_dataset_hdf5
 
     result = load_dataset_hdf5(path)
-    data = result["series"]  # (N, L) array
-    if data.dtype.kind not in "biuf":
-        raise ValueError(f"HDF5 'series' must hold real numbers, got dtype {data.dtype}.")
-    data = data.astype(np.float64, copy=False)  # the writer reads the values' bytes as native float64
+    data = result["series"]  # (N, L) array, or N 1-D arrays when stored ragged (h5py.vlen_dtype)
     names = result["names"] or [f"series_{i}" for i in range(data.shape[0])]
-    series_list = [data[i] for i in range(data.shape[0])]
+    series_list = []
+    for row in map(np.asarray, data):
+        if row.dtype.kind not in "biuf":
+            raise ValueError(f"HDF5 'series' must hold real numbers, got dtype {row.dtype}.")
+        series_list.append(row.astype(np.float64, copy=False))  # the writer reads the bytes as native float64
     return series_list, names
 
 

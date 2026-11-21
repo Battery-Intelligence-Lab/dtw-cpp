@@ -333,16 +333,18 @@ class TestHDF5:
 
     @pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
     def test_convert_writes_float32_and_int64_series_as_their_values(self, tmp_path):
-        """dtwc-convert reads an HDF5 'series' of another dtype as float64: the Arrow IPC file holds its values."""
+        """dtwc-convert reads an HDF5 'series' of another dtype, 2-D or ragged (h5py.vlen_dtype), as float64:
+        the Arrow IPC file holds its values."""
         import h5py
         from dtwcpp import convert
-        for dtype in (np.float32, np.int64):
-            values = np.array([[-11, 23, 36], [4, 5, 6]], dtype=dtype)
-            src, out = tmp_path / f"{dtype.__name__}.h5", tmp_path / f"{dtype.__name__}.arrow"
+        rows, ragged = [[-11, 23, 36], [4, 5, 6]], np.array([np.array([-11, 23, 36]), np.array([4, 5])], dtype=object)
+        for i, (values, dtype) in enumerate([(rows, np.float32), (rows, np.int64),
+                                             (ragged, h5py.vlen_dtype(np.float64)), (ragged, h5py.vlen_dtype(np.int64))]):
+            src, out = tmp_path / f"{i}.h5", tmp_path / f"{i}.arrow"
             with h5py.File(src, "w") as f:
-                f.create_dataset("series", data=values)
+                f.create_dataset("series", data=values, dtype=dtype)
             assert convert.main([str(src), "-o", str(out)]) == 0
-            assert dtwcpp.load(out).as_data().p_vec == values.astype(np.float64).tolist()
+            assert dtwcpp.load(out).as_data().p_vec == [[float(v) for v in row] for row in values]
 
 
 # ---------------------------------------------------------------------------
