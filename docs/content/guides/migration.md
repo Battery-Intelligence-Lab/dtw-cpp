@@ -66,7 +66,7 @@ with a warning. What needs attention is the behaviour listed further down.
 | `dtwc::randGenerator`, in `settings.hpp` | the same engine, in `base/random_engine.hpp`, which `dtwc.hpp` includes: one engine per program (v1.0.0 had a `static` copy in each translation unit) |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |
 | `dtwBanded`, `dtwFull`, `dtwFull_L` | the same names; the scalar type defaults to `double` (v1.0.0's `dtwBanded` defaulted to `float`), with new trailing defaulted parameters and span overloads |
-| `run(task, n, numMaxParallelWorkers = 32)` | the same; the limit is now applied (v1.0.0 used every OpenMP thread) |
+| `run(task, n, numMaxParallelWorkers = 32)` | the same name; the default is now `0`, every OpenMP thread, and a positive limit is applied (v1.0.0 used every OpenMP thread) |
 
 Counts of series and clusters, labels, medoids and indices are `index_t`
 (`std::int64_t`) where v1.0.0 used `int`: `size()`, `n_clusters()`,

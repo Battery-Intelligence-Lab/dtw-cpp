@@ -117,8 +117,8 @@ verbose-solver = false
 # --- Compute device ---
 # "cpu" (default), "gpu", or "gpu:N" for a specific GPU ("cuda", "cuda:N" are
 # the same): CUDA on NVIDIA, Metal on macOS. The GPU fills the distance matrix
-# of pam, kmedoids, mip, lrcore, hierarchical, and clara when its sample covers
-# every series; onebatch, tadpole and a smaller clara sample are refused. It
+# of pam, kmedoids, mip, lrcore and hierarchical, and clara's sample matrices
+# (CUDA also assigns the series); onebatch and tadpole are refused. It
 # takes variant = "standard", missing-strategy = "error" and dtype = "float64".
 # "cpu+gpu" (or "cpu+gpu:N"; CUDA only) fills that matrix on the CPU's threads and
 # the GPU together and splits FastCLARA's assignment pass between them; onebatch,

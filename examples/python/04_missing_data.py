@@ -1,6 +1,6 @@
 ﻿"""
 @file 04_missing_data.py
-@brief DTWC++ Missing Data â€” DTW with NaN-aware distance.
+@brief DTWC++ Missing Data — DTW with NaN-aware distance.
 @details
 Demonstrates: dtwcpp.distance.dtw with a missing-data strategy, against
 standard DTW.

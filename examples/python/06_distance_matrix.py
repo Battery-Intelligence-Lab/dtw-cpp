@@ -1,12 +1,12 @@
 ﻿"""
 @file 06_distance_matrix.py
-@brief DTWC++ Distance Matrix â€” Fast pairwise DTW computation in C++.
+@brief DTWC++ Distance Matrix — Fast pairwise DTW computation in C++.
 @details
 Demonstrates: compute_distance_matrix() with OpenMP parallelism,
 metric options, and the Problem.distance_matrix() method.
 
 A single C++ call computes the full NxN symmetric distance matrix
-using OpenMP â€” much faster than a Python loop over dtwcpp.distance.dtw().
+using OpenMP — much faster than a Python loop over dtwcpp.distance.dtw().
 @author Volkan Kumtepeli
 """
 
@@ -28,7 +28,7 @@ print(f"Symmetric:    {np.allclose(dm, dm.T)}")
 print(f"Diagonal zero: {np.allclose(np.diag(dm), 0)}")
 print()
 
-# --- 2. Banded DTW â€” faster for long series ---
+# --- 2. Banded DTW — faster for long series ---
 dm_banded = dtwcpp.compute_distance_matrix(data, band=10)
 print(f"Banded (band=10) max: {dm_banded.max():.4f}")
 print(f"Speedup note: banded DTW is O(n*band) vs O(n^2) for full DTW")

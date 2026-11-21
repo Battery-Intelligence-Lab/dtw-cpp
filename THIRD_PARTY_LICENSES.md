@@ -213,10 +213,10 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## Apache Arrow testing data — Apache-2.0 (sdist and source only)
+## Apache Arrow testing data — Apache-2.0 (source tree only)
 
 Two test files of the Apache Arrow project's `arrow-testing` repository, at commit
-`9ff285c88565f0f6abc855918c6a342e70e4909c`, are in the source tree and the sdist, unmodified, at
+`9ff285c88565f0f6abc855918c6a342e70e4909c`, are in the source tree (not the sdist, which leaves out `tests/`), unmodified, at
 `tests/data/reader/arrow-testing/` (they are compiled into nothing): `data/arrow-ipc-stream/integration/` its
 `1.0.0-bigendian/generated_primitive.arrow_file` (SHA-256
 `80a8b0877d098632f98eb7d186662dbc6613c27851f40f1899ad9a8d4db8ba49`) and `1.0.0-littleendian/generated_primitive.arrow_file`
@@ -407,8 +407,8 @@ as part of DTWC++, and without suggesting Microsoft's endorsement.
 
 ## llfio and its header-only dependencies — Apache-2.0 OR BSL-1.0, Apache-2.0, BSL-1.0
 
-Compiled into the CLI archives and the Python wheels (`DTWC_ENABLE_LLFIO=ON`; the MATLAB MEX is
-built without it), and optional in a source build. llfio,
+Compiled into the CLI archives, the Python wheels and the MATLAB MEX (`DTWC_ENABLE_LLFIO=ON`),
+and optional in a source build. llfio,
 quickcpplib, outcome and ntkernel-error-category are offered under your choice of two licences, and
 DTWC++ elects the **Boost Software License 1.0**; span-lite and byte-lite are BSL-1.0 only;
 wg14_signals is Apache-2.0 only, so its terms (the Apache License 2.0 text shipped for nanoarrow)

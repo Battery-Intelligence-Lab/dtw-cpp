@@ -76,11 +76,11 @@ with tempfile.TemporaryDirectory() as tmp:
           f"sizes: {np.bincount(result64.labels)}")
 
     # --- 5. Float32 vs float64 comparison ---
-    # Cast to float32; expect similar cost with 2x memory saving.
+    # Round to float32; expect a similar cost.
     series_f32 = [s.astype(np.float32) for s in series_f64]
 
     prob32 = dtwcpp.Problem("parquet_f32")
-    # Pass float32 lists directly — dtwcpp accepts float32 arrays via set_data.
+    # set_data stores lists as float64, so only the rounding differs here; a Data object keeps float32.
     prob32.set_data([list(s) for s in series_f32], series_names)
     prob32.band = 10
 

@@ -1,6 +1,6 @@
 ﻿"""
 @file 02_dtw_variants.py
-@brief DTWC++ DTW Variants â€” Compare all 5 DTW distance measures.
+@brief DTWC++ DTW Variants — Compare 5 of the 7 DTW distance measures.
 @details Demonstrates: Standard DTW, DDTW, WDTW, ADTW, Soft-DTW.
 @author Volkan Kumtepeli
 """
@@ -26,29 +26,29 @@ print(f"Standard DTW:     {d_std:.4f}")
 d_banded = dtwcpp.distance.dtw(x, y, band=20)
 print(f"Banded DTW (b=20): {d_banded:.4f}")
 
-# DDTW â€” Derivative DTW (shape-based, ignores amplitude)
+# DDTW — Derivative DTW (shape-based, ignores amplitude)
 d_ddtw = dtwcpp.distance.dtw(x, y, variant="ddtw")
 print(f"DDTW (derivative): {d_ddtw:.4f}")
 
-# WDTW â€” Weighted DTW (penalizes off-diagonal alignment)
+# WDTW — Weighted DTW (penalizes off-diagonal alignment)
 d_wdtw_lo = dtwcpp.distance.dtw(x, y, variant="wdtw", wdtw_g=0.01)
 d_wdtw_hi = dtwcpp.distance.dtw(x, y, variant="wdtw", wdtw_g=0.5)
 print(f"WDTW (g=0.01):    {d_wdtw_lo:.4f}  (lenient)")
 print(f"WDTW (g=0.50):    {d_wdtw_hi:.4f}  (strict)")
 
-# ADTW â€” Amerced DTW (penalizes non-diagonal steps)
+# ADTW — Amerced DTW (penalizes non-diagonal steps)
 d_adtw_lo = dtwcpp.distance.dtw(x, y, variant="adtw", adtw_penalty=0.1)
 d_adtw_hi = dtwcpp.distance.dtw(x, y, variant="adtw", adtw_penalty=5.0)
 print(f"ADTW (p=0.1):     {d_adtw_lo:.4f}  (lenient)")
 print(f"ADTW (p=5.0):     {d_adtw_hi:.4f}  (strict)")
 
-# Soft-DTW â€” Differentiable (for gradient-based optimization)
+# Soft-DTW — Differentiable (for gradient-based optimization)
 d_soft_lo = dtwcpp.distance.dtw(x, y, variant="softdtw", sdtw_gamma=0.01)
 d_soft_hi = dtwcpp.distance.dtw(x, y, variant="softdtw", sdtw_gamma=10.0)
 print(f"Soft-DTW (g=0.01): {d_soft_lo:.4f}  (~ hard DTW)")
 print(f"Soft-DTW (g=10):  {d_soft_hi:.4f}  (smooth)")
 
-# Soft-DTW gradient â€” unique to Soft-DTW, enables optimization
+# Soft-DTW gradient — unique to Soft-DTW, enables optimization
 grad = dtwcpp.soft_dtw_gradient(x, y, gamma=1.0)
 print(f"\nSoft-DTW gradient norm: {np.linalg.norm(grad):.4f}")
 print(f"Gradient shape: {len(grad)} (same as input series)")
