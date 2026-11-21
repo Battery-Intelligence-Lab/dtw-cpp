@@ -578,8 +578,8 @@ void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, c
     declared_bytes(view->children[i], codec, body, where, out, scratch);
 }
 
-/// What the walk learns of a record batch it cannot view: its rows (its root's length, which each used column's length,
-/// never negative, must equal), the bytes decoding its used columns will allocate and the most the codec holds decoding one of their
+/// What the walk learns of a record batch it cannot view: its rows (its root's length, each used column's length too),
+/// the bytes decoding its used columns will allocate and the most the codec holds decoding one of their
 /// buffers, the values of its 'data' column, and its 'name' column's decoded bytes, its characters' bytes and the
 /// body's bytes its buffers span (0 without one), each from its header's lengths and its buffers' declared sizes, and
 /// whether it holds a validity buffer (without one no name is null).
