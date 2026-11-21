@@ -145,7 +145,8 @@ void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb:
   const auto *data = dm.data();
   for (size_t i = 0; i < n; ++i)
     for (size_t j = i; j < n; ++j)
-      mat.set(i, j, data[i * n + j]);
+      if (!std::isnan(data[i * n + j])) // resize() left every pair to compute; a NaN entry keeps it so
+        mat.set(i, j, data[i * n + j]);
   // A complete matrix is filled; NaN entries are computed on first use.
   if (mat.all_computed("Problem.set_distance_matrix",
                        p.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,

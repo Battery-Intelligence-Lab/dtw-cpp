@@ -1164,7 +1164,8 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   const auto copy = [&](const auto *data) {
     for (size_t i = 0; i < N; ++i)
       for (size_t j = i; j < N; ++j)
-        dm.set(i, j, data[i + j * N]); // column-major
+        if (!std::isnan(data[i + j * N])) // column-major; resize() left every pair to compute, a NaN keeps it so
+          dm.set(i, j, data[i + j * N]);
   };
   if (single)
     copy(mxGetSingles(prhs[2]));
