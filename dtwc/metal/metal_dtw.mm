@@ -96,7 +96,8 @@ static inline void dtw_wavefront_body(
   const int La = lengths[a_idx];
   const int Lb = lengths[b_idx];
   const float INF = 3.402823466e+38f; // FLT_MAX
-  if (La <= 0 || Lb <= 0) {
+  // No warping path: an empty series, or a length gap the band cannot bridge (as the CUDA kernels).
+  if (La <= 0 || Lb <= 0 || (band >= 0 && (La - Lb > band || Lb - La > band))) {
     if (tid == 0) out_matrix[packed_slot(a_idx, b_idx)] = INF;
     return;
   }
@@ -267,7 +268,8 @@ kernel void dtw_banded_row(
   const int La = lengths[a_idx];
   const int Lb = lengths[b_idx];
   const float INF = 3.402823466e+38f;
-  if (La <= 0 || Lb <= 0) {
+  // No warping path: an empty series, or a length gap the band (> 0 on this route) cannot bridge.
+  if (La <= 0 || Lb <= 0 || La - Lb > band || Lb - La > band) {
     out_matrix[packed_slot(a_idx, b_idx)] = INF;
     return;
   }
