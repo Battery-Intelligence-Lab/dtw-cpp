@@ -200,13 +200,10 @@ class TestCasadiWorkflowAndFastIngest:
             assert "device 'cpu+gpu' splits FastCLARA's assignment pass" in str(exc)
         else:
             assert cfg.gpu_share == 0.5
-        cfg = dtwcpp.settings(k=2)
-        try:
+        cfg = dtwcpp.settings(k=2, method="onebatch")  # onebatch refuses cpu+gpu on every build
+        with pytest.raises(dtwcpp.DeviceError):
             cfg.device = "cpu+gpu"
-        except dtwcpp.DeviceError:
-            assert cfg.device is None
-        else:
-            assert dtwcpp.test.gpu()["backend"] == "cuda"  # only a CUDA build selects cpu+gpu
+        assert cfg.device is None
         real_device = dtwcpp.device
         monkeypatch.setattr(dtwcpp, "device", lambda *name: real_device(*name) if name else "cpu+gpu")
         try:
