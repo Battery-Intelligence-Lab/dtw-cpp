@@ -52,25 +52,8 @@ inline void check_arrow_chunk(const arrow::Status &s, const char *ctx)
     throw dtwc::IOError(std::string(ctx) + ": " + s.ToString());
 }
 
-/// Extract one list cell into `out`, converting Float32/Float64 to `T`.
-/// The null check is one `null_count()` read per array, hoisted by the caller.
-template <typename T, typename ListArrayT>
-inline void extract_list_element(const std::shared_ptr<ListArrayT> &list,
-                                 int64_t i,
-                                 std::vector<T> &out)
-{
-  const auto start = list->value_offset(i);
-  const auto end = list->value_offset(i + 1);
-  const auto &values = *list->values();
-  require_list_range(start, end, values.length());
-  const auto sz = static_cast<size_t>(end - start);
-  out.resize(sz);
-  copy_arrow_numeric<T>(values, start, sz, out.data());
-}
-
 /// Append the series of an Arrow table column to `vecs` as `T`: a scalar
-/// column is one series, a list or large-list column one series per cell, for
-/// Float32 and Float64 source values alike.
+/// column is one series, a list or large-list column one series per cell.
 template <typename T>
 inline void extract_series_from_column(
   const std::shared_ptr<arrow::ChunkedArray> &col,
@@ -81,38 +64,39 @@ inline void extract_series_from_column(
     || col_type->id() == arrow::Type::LARGE_LIST;
 
   if (is_list) {
-    auto append_cells = [&](auto list) {
+    auto append_cells = [&](const auto &list) {
       // Two null_count() reads per chunk: the list cells and the values they hold, not the whole child, which a
       // sliced list shares with the rows it dropped (the rows --skip-rows skips among them). Their range is checked
       // before Slice, which trusts it.
-      require_no_nulls(*list, "list column cell");
-      const int64_t len = list->length();
+      require_no_nulls(list, "list column cell");
+      const auto &values = *list.values();
+      const int64_t len = list.length();
       if (len > 0) {
-        const auto first = list->value_offset(0), last = list->value_offset(len);
-        require_list_range(first, last, list->values()->length());
-        require_no_nulls(*list->values()->Slice(first, last - first), "list column value");
+        const auto first = list.value_offset(0), last = list.value_offset(len);
+        require_list_range(first, last, values.length());
+        require_no_nulls(*list.values()->Slice(first, last - first), "list column value");
       }
       for (int64_t i = 0; i < len; ++i) {
-        std::vector<T> series;
-        extract_list_element(list, i, series);
+        const auto start = list.value_offset(i), end = list.value_offset(i + 1);
+        require_list_range(start, end, values.length());
+        std::vector<T> series(static_cast<size_t>(end - start));
+        copy_arrow_numeric<T>(values, start, series.size(), series.data());
         vecs.push_back(std::move(series));
       }
     };
 
-    for (int c = 0; c < col->num_chunks(); ++c) {
-      auto chunk = col->chunk(c);
+    for (const auto &chunk : col->chunks()) {
       if (col_type->id() == arrow::Type::LIST)
-        append_cells(std::static_pointer_cast<arrow::ListArray>(chunk));
+        append_cells(static_cast<const arrow::ListArray &>(*chunk));
       else
-        append_cells(std::static_pointer_cast<arrow::LargeListArray>(chunk));
+        append_cells(static_cast<const arrow::LargeListArray &>(*chunk));
     }
     return;
   }
 
   // Scalar column: the whole column is one series.
   std::vector<T> series;
-  for (int c = 0; c < col->num_chunks(); ++c) {
-    const auto chunk = col->chunk(c);
+  for (const auto &chunk : col->chunks()) {
     require_no_nulls(*chunk, "scalar column value");
     const auto n = static_cast<size_t>(chunk->length());
     const size_t offset = series.size();
@@ -456,9 +440,8 @@ public:
         " bytes; rewrite with smaller row groups or raise the limit");
     }
     if (largest_group == 0) return 1;
-    const size_t capacity = std::min<size_t>(
-      static_cast<size_t>(num_row_groups_), ram_budget / largest_group);
-    return static_cast<int>(std::max<size_t>(1, capacity));
+    return static_cast<int>(
+      std::min<size_t>(static_cast<size_t>(num_row_groups_), ram_budget / largest_group));
   }
 
   /// Read specific rows by global index (sparse access for subsampling) as
