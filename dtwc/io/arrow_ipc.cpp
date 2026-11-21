@@ -578,8 +578,8 @@ void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, c
     declared_bytes(view->children[i], codec, body, where, out, scratch);
 }
 
-/// What the walk learns of a record batch it cannot view: its rows (its root's length, unbounded: its columns bound it
-/// once decoded), the bytes decoding its used columns will allocate and the most the codec holds decoding one of their
+/// What the walk learns of a record batch it cannot view: its rows (its root's length, which each used column's length,
+/// never negative, must equal), the bytes decoding its used columns will allocate and the most the codec holds decoding one of their
 /// buffers, the values of its 'data' column, and its 'name' column's decoded bytes, its characters' bytes and the
 /// body's bytes its buffers span (0 without one), each from its header's lengths and its buffers' declared sizes, and
 /// whether it holds a validity buffer (without one no name is null).
@@ -626,6 +626,7 @@ Proof prove_batch(Decoder &decoder, const Body &body, const Used &used, bool swa
                            "writers align every buffer to 8 bytes: rewrite the file with one)");
     Declared declared;
     declared_bytes(views[c], codec, body, where, declared, scratch);
+    check_rows(views[c], root->length, where); // the batch's rows, which the walk sums and plans on, are its columns'
     proof.declared = sum(proof.declared, declared.bytes);
     proof.scratch = std::max(proof.scratch, declared.scratch);
     if (std::string_view(used[c].name) == "data") {
