@@ -398,11 +398,11 @@ if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_public_defs)
     add_executable(
         f13_poison_parquet_writer
         integration/f13_poison_parquet_writer.cc)
+    # dtwc_io carries the build's Arrow and Parquet: an install's shared libraries, or CPM's static ones.
     target_link_libraries(
         f13_poison_parquet_writer
         PRIVATE
-            Arrow::arrow_shared
-            Parquet::parquet_shared
+            dtwc_io
             project_options)
 
     dtwc_add_script_test(NAME test_fast_clara_parquet_parity
