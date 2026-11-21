@@ -525,3 +525,18 @@ TEST_CASE("Clustering is the same for series scaled by a power of two", "[cluste
     CHECK(small.upper_bound == std::ldexp(unit.upper_bound, exponent));
   }
 }
+
+TEST_CASE("FasterPAM reaches the optimum on the sample's WDTW distances over 87 orders of magnitude",
+          "[clustering][scale]")
+{
+  // The 25 sample series under WDTW have distances from 8e-96 to 8e-9; over all 2,300 medoid sets the optimum for
+  // k = 3 is {0, 11, 13}, at 1e-5 of the cost BUILD leaves. There a swap estimate's rounding exceeds the true gains:
+  // a threshold with an absolute floor stops at BUILD, and a swap kept without the recomputed cost falling cycles.
+  auto prob = make_dummy_problem(25, 3);
+  prob.set_variant(core::DTWVariant::WDTW);
+  const auto result = fast_pam(prob, 3);
+  auto medoids = result.medoid_indices;
+  std::sort(medoids.begin(), medoids.end());
+  CHECK(result.converged);
+  CHECK(medoids == std::vector<index_t>{ 0, 11, 13 });
+}
