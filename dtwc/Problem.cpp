@@ -313,7 +313,11 @@ void apply(const Config &config, Problem &prob)
   if (config.device == Device::CPU_GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(detail::hybrid_as_it_goes_message("run", name_of(method_names, config.method)));
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    throw DeviceError(detail::gpu_as_it_goes_message("run", name_of(method_names, config.method)));
+    throw DeviceError(
+      "run: method '" + std::string(name_of(method_names, config.method))
+      + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
+        "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use, and clara's sample matrices. "
+        "Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
 }
 
 /**
@@ -1478,8 +1482,6 @@ core::ClusteringResult Problem::cluster()
   const Method method = resolve_method(method_, device_, size());
   if (device_ == Device::CPU_GPU && (method == Method::OneBatch || method == Method::TADPole))
     throw DeviceError(detail::hybrid_as_it_goes_message("Problem::cluster", name_of(method_names, method)));
-  if (device_ == Device::GPU && (method == Method::OneBatch || method == Method::TADPole))
-    throw DeviceError(detail::gpu_as_it_goes_message("Problem::cluster", name_of(method_names, method)));
   switch (method) {
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie

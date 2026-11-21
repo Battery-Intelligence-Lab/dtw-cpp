@@ -461,7 +461,7 @@ public:
   /// build's GPU backend (CUDA, else Metal), which the fill resolves, or (cpu+gpu)
   /// the CPU and CUDA GPU `index` together on the distance matrix's fill (whole
   /// tile-rows to either) and FastCLARA's assignment pass, whose samples fill on
-  /// the GPU; OneBatchPAM and TADPole refuse gpu and cpu+gpu, a streamed FastCLARA cpu+gpu. A Problem
+  /// the GPU; OneBatchPAM, TADPole and a streamed FastCLARA refuse cpu+gpu. A Problem
   /// never reads the process-wide default (dtwc::device()); until told
   /// otherwise it computes on the CPU. A change drops the distance matrix.
   /// @throws DeviceError for `gpu` on a build with no GPU backend, for cpu+gpu

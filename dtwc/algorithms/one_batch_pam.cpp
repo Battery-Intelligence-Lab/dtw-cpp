@@ -291,13 +291,10 @@ core::ClusteringResult one_batch_pam(Problem &prob,
                                      const OneBatchPAMOptions &options,
                                      OneBatchPAMStats *stats)
 {
-  // A Problem on gpu or cpu+gpu, or one with a forced share, asks for a device or a split this method has no part in
-  // (it computes its distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU
-  // without a word.
+  // A Problem on cpu+gpu, or one with a forced share, asks for a split this method has no part in (it computes its
+  // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word.
   if (prob.device().first == Device::CPU_GPU)
     throw DeviceError(dtwc::detail::hybrid_as_it_goes_message("one_batch_pam", "onebatch"));
-  if (prob.device().first == Device::GPU)
-    throw DeviceError(dtwc::detail::gpu_as_it_goes_message("one_batch_pam", "onebatch"));
   if (prob.gpu_share() != -1.0)
     throw InvalidInput(dtwc::detail::share_ignored_message(
       "one_batch_pam", "the distance matrix's fill and FastCLARA's pass", prob.device().first));
