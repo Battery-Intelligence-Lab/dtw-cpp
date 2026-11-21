@@ -17,25 +17,26 @@ function s = settings(varargin)
 %> @brief Unified CasADi-style settings constructor.
 %> @author Volkan Kumtepeli
 
+    s = default_settings_struct();
     if ~isempty(varargin) && isstruct(varargin{1}) && isfield(varargin{1}, 'IsDtwcSettings')
         sIn = varargin{1};
         extraArgs = varargin(2:end);
-        [extraArgs{:}] = convertStringsToChars(extraArgs{:});
-        if mod(numel(extraArgs), 2) ~= 0
-            error('dtwc:invalidArgument', 'settings: options must be given as Name-Value pairs.');
-        end
-        s = default_settings_struct();
+    else
+        sIn = [];
+        extraArgs = varargin;
+    end
+    [extraArgs{:}] = convertStringsToChars(extraArgs{:});
+    if mod(numel(extraArgs), 2) ~= 0
+        error('dtwc:invalidArgument', 'settings: options must be given as Name-Value pairs.');
+    end
+    if isstruct(sIn)
         fn = fieldnames(sIn);
         structPairs = {};
         for idx = 1:numel(fn)
             f = fn{idx};
-            if strcmp(f, 'IsDtwcSettings') || strcmp(f, 'ClusterArgs')
-                continue;
-            end
-            if strcmp(f, 'K') && isequal(sIn.K, 0)
-                continue;
-            end
-            if strcmp(f, 'Name') && isempty(sIn.Name)
+            if any(strcmp(f, {'IsDtwcSettings', 'ClusterArgs'})) ...
+                    || (strcmp(f, 'K') && isequal(sIn.K, 0)) ...
+                    || (strcmp(f, 'Name') && isempty(sIn.Name))
                 continue;
             end
             structPairs(end + 1:end + 2) = {f, sIn.(f)}; %#ok<AGROW>
@@ -43,12 +44,7 @@ function s = settings(varargin)
         [structPairs{:}] = convertStringsToChars(structPairs{:});
         args = [sIn.ClusterArgs, structPairs, extraArgs];
     else
-        s = default_settings_struct();
-        args = varargin;
-        [args{:}] = convertStringsToChars(args{:});
-        if mod(numel(args), 2) ~= 0
-            error('dtwc:invalidArgument', 'settings: options must be given as Name-Value pairs.');
-        end
+        args = extraArgs;
     end
 
     clusterMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
@@ -114,31 +110,24 @@ function s = settings(varargin)
         end
     end
 
+    % Mirror clustering options onto top-level struct fields so inspection
+    % (s.Band) and direct struct mutation (s.Band = 10) stay in sync; the apply
+    % below validates them, and s is returned only if they pass.
     rebuilt = cell(1, 2 * numel(order));
     for idx = 1:numel(order)
         pair = clusterMap(order{idx});
         rebuilt{2 * idx - 1} = pair{1};
         rebuilt{2 * idx} = pair{2};
-    end
-    s.ClusterArgs = rebuilt;
-
-    % Validate clustering keys immediately in C++ (using k=1 placeholder if K not yet set)
-    checkK = s.K;
-    if checkK < 1
-        checkK = 1;
-    end
-    prob = dtwc.Problem();
-    cleaner = onCleanup(@() delete(prob));
-    dtwc_mex('apply', prob.get_handle(), checkK, s.ClusterArgs{:});
-
-    % Mirror validated clustering options onto top-level struct fields so
-    % inspection (s.Band) and direct struct mutation (s.Band = 10) stay in sync.
-    for idx = 1:numel(order)
-        pair = clusterMap(order{idx});
         if ~strcmpi(pair{1}, 'Name') && isvarname(pair{1})
             s.(pair{1}) = pair{2};
         end
     end
+    s.ClusterArgs = rebuilt;
+
+    % Validate clustering keys immediately in C++ (using k=1 placeholder if K not yet set)
+    prob = dtwc.Problem();
+    cleaner = onCleanup(@() delete(prob));
+    dtwc_mex('apply', prob.get_handle(), max(s.K, 1), s.ClusterArgs{:});
 end
 
 function s = default_settings_struct()

@@ -41,6 +41,5 @@ function D = compute_distance_matrix(X, varargin)
     prob.set_matrix_dtype(p.Results.MatrixDtype);
     prob.set_band(p.Results.Band);
     prob.set_data(p.Results.X);
-    prob.fill_distance_matrix();
     D = prob.distance_matrix();
 end
