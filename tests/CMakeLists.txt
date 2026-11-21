@@ -1,6 +1,4 @@
-file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp") # Get list of all test source files recursively
-
-include("${CMAKE_SOURCE_DIR}/cmake/DtwcTest.cmake")
+file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp")
 
 # The 1.x [[deprecated]] shims, kept until 3.0,
 # must still compile, and must warn (test_problem_api_2_0 proves they forward).
@@ -246,11 +244,7 @@ if(TARGET dtwc_cl)
         MARKER "${_f14_public_regex}" LABELS integration f14 SERIAL TIMEOUT 120)
 endif()
 
-# The hand-rolled --yaml-config loader was removed (TOML via --config is the one
-# CLI config mechanism). Pin the real binary rejecting the flag: a stale build or
-# a re-added option would make this rejection disappear. The script asserts a
-# non-zero exit AND that the flag is named back, instead of a
-# PASS_REGULAR_EXPRESSION (which ignores the exit code and pinned CLI11 wording).
+# Pin the real binary rejecting removed --yaml-config with non-zero exit and naming the flag.
 if(TARGET dtwc_cl)
     dtwc_add_script_test(NAME test_cli_rejects_yaml_config
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_rejects_unknown_option.cmake"
@@ -264,8 +258,7 @@ endif()
 # so the guard is exercised outside its own #ifdef. The expected check count is
 # pinned per flavour so a silently short-circuited script cannot pass.
 if(TARGET dtwc_cl)
-    get_target_property(_dtwc_cl_defs dtwc_cl COMPILE_DEFINITIONS)
-    if("DTWC_HAS_YAML" IN_LIST _dtwc_cl_defs)
+    if("DTWC_HAS_YAML" IN_LIST _dtwc_public_defs)
         set(_dtwc_cl_yaml 1)
         set(_dtwc_cl_yaml_checks 23)
     else()
@@ -323,8 +316,7 @@ if(TARGET dtwc_cl)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 120)
 endif()
 
-# A path with a non-ANSI character on the real binary: on Windows argv used to
-# arrive in the ANSI code page, so delta.csv (Greek) was read as d.csv.
+# Non-ANSI path on the real binary (UTF-8 argv and output path on Windows).
 if(TARGET dtwc_cl)
     dtwc_add_script_test(NAME test_cli_utf8_paths
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_utf8_paths.cmake"
@@ -467,9 +459,8 @@ endif()
 # case passed, none failed and none was Incomplete (MATLAB's "filtered by
 # assumption", green in its own summary).
 
-# find_program(matlab) is PATH-only, so a normal install (MATLAB not on PATH)
-# made this test vanish with no diagnostic. find_package caches the same
-# variables bindings/matlab uses, and MAIN_PROGRAM yields the executable itself.
+# find_package(Matlab ... MAIN_PROGRAM) locates MATLAB outside PATH and caches
+# the same variables bindings/matlab uses when added after tests/.
 if(DTWC_BUILD_MATLAB)
     find_package(Matlab COMPONENTS MX_LIBRARY MAIN_PROGRAM)
     # This guard is what makes the $<TARGET_FILE_DIR:dtwc_mex> genex below legal:
