@@ -1100,8 +1100,9 @@ NB_MODULE(_dtwcpp_core, m)
          "Result.medoids).")
     .def("series", [](const dtwc::Problem &p, std::int64_t i) {
       require_index("series", "i", i, p.size());
-      auto s = p.series(static_cast<size_t>(i));
-      return std::vector<double>(s.begin(), s.end()); }, "i"_a,
+      const auto copy = [](auto s) { return std::vector<double>(s.begin(), s.end()); };
+      const auto at = static_cast<size_t>(i);
+      return p.data().is_f32() ? copy(p.data().series_f32(at)) : copy(p.series(at)); }, "i"_a,
          "Copy of series i as a list of doubles.\n\n"
          "Raises InvalidInput if i is outside [0, N).")
     .def("series_name", [](const dtwc::Problem &p, std::int64_t i) {
