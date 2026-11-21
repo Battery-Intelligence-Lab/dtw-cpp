@@ -119,8 +119,9 @@ series, named by its file.
 
 `dtwc.load` reads nothing, and a `Dataset` of a path keeps no series: `dtwc.cluster`
 hands a text file, a folder or an Arrow IPC file to C++, which reads it at every
-call. Parquet is the exception: `parquetread` reads it at the first `dtwc.cluster`
-call, and `Dataset.as_series()` keeps the series. To read any file once for several
+call. Parquet is the exception, and so is a `Dataset` of `Ndim` above 1:
+`Dataset.as_series()` reads it at the first `dtwc.cluster` call (`parquetread` for
+Parquet) and keeps the series, which are clustered in the Dataset's `Ndim`. To read any file once for several
 runs, take its series and cluster those (`'Dtype'` again for `'float32'`):
 
 ```matlab
