@@ -1,12 +1,12 @@
 # D2 — envelopes and LB_Keogh admissibility
 
 **Verdict:** scalar envelope construction and fixed-window LB_Keogh are
-**CONFIRMED** for the L1 cost, the bound TADPole uses. The proof also confirms
-the `min(n,m)` prefix construction for feasible unequal-length paths under the
-current fixed window. The public envelope representation is
-**DISCREPANCY**: an `Envelope` does not record the window it was built for.
-TADPole's empty domain is **DISCREPANCY** too: on an empty series its bounds
-are zero, where exact DTW returns the no-path sentinel.
+**CONFIRMED** for the L1 cost, the bound TADPole uses, including the `min(n,m)`
+prefix construction for feasible unequal-length paths (`Problem` and `tadpole`
+reject empty series with `InvalidInput` before envelope construction). The
+public `Envelope` representation is **DISCREPANCY**: an `Envelope` does not
+record the window it was built for, and low-level `lb_keogh` on an empty span
+returns zero where `run_dtw` returns the no-path sentinel.
 
 ## Primary-source scope
 
@@ -325,9 +325,9 @@ The permanent test distinguishes a disabled TADPole LB, the unsafe radius-zero
 envelope, and the intended global envelope with two orthogonal fixtures. Their
 registered `pruned_by_lb` fingerprint is `(0,1)`: no false prune for a
 zero-DTW warped pair, and one real bound decision for a separated-range pair.
-
-This confirmation does not cover empty series: there the diagonal upper bound
-is zero, which disagrees with the exact no-path sentinel.
+(`Problem` and `tadpole` via `dtw_function()` reject empty series before
+reaching envelope construction; low-level `lb_keogh` on an empty span returns
+zero.)
 
 ## The negative band
 
@@ -374,9 +374,6 @@ The non-degenerate direction ledger is:
 |---|---:|---:|---:|
 | L1 (`U`) | 8 | 2 | 8 |
 
-The preregistered bands and the first verbatim run were recorded on 2026-07-30
-in the maintainers' run records.
-
 ## Code-conformance table
 
 | Claim | Live code | Verdict |
@@ -386,9 +383,9 @@ in the maintainers' run records.
 | L1 projection sum, equations (6)–(11) | pointer `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
 | Symmetric maximum, equation (13) | `lb_keogh_symmetric` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
 | Prefix truncation, equation (14) | `Envelope` `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | Math **CONFIRMED** for feasible fixed windows |
-| TADPole global-envelope conversion | `bounds_valid` and `tadpole` in `dtwc/algorithms/tadpole.cpp` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; not for empty series (zero bounds against the no-path sentinel), and the radius narrowing is unchecked |
+| TADPole global-envelope conversion | `bounds_valid` and `tadpole` in `dtwc/algorithms/tadpole.cpp` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths (`Problem` and `tadpole` reject empty series; the `size_t`-to-`int` radius narrowing is unchecked) |
 | Exhaustive independent oracle | `tests/unit/core/test_lb_keogh_derivation.cpp` | **CONFIRMED**, non-skippable |
-| Public envelope shape/window contract | `Envelope`, `envelope_covers` and the `lb_keogh` overloads in `dtwc/core/lower_bound_impl.hpp` | **DISCREPANCY**: unchecked read/truncation, and no record of the window an envelope was built for |
+| Public envelope shape/window contract | `Envelope`, `envelope_covers` and the `lb_keogh` overloads in `dtwc/core/lower_bound_impl.hpp` | **DISCREPANCY**: unchecked read/truncation, zero on empty spans, and no record of the window an envelope was built for |
 
 ## Scope verdicts
 
@@ -397,8 +394,9 @@ in the maintainers' run records.
   unequal fixed-window prefix theorem.
 - **CONFIRMED:** the nonempty TADPole full-DTW call site executes with the
   registered safety/reachability fingerprint.
-- **DISCREPANCY:** the envelope's unrecorded window and TADPole's empty-series
-  bounds, named in the table. Neither is hidden by the green scalar oracle.
+- **DISCREPANCY:** `Envelope`'s unrecorded window and low-level `lb_keogh`'s
+  zero return on empty spans (`Problem`/`tadpole` reject empty series), named
+  in the table. Neither is hidden by the green scalar oracle.
 - **OPEN:** floating-point threshold safety, multivariate series, and all
   non-Standard objectives.
 

@@ -7,8 +7,8 @@ present.
 
 | ID | Topic | File | Verdict |
 |---|---|---|---|
-| D1 | DTW recurrence and Sakoe–Chiba adjustment window | [01-dtw-recurrence-sakoe-chiba.md](01-dtw-recurrence-sakoe-chiba.md) | CPU **CONFIRMED**; real-CUDA **CONFIRMED**; Metal source **CONFIRMED**, and real-device execution **CONFIRMED** on Apple M5 Pro (2026-09-23: the Metal half of the `[F12]` tests) |
-| D2 | Envelopes and LB_Keogh admissibility | [02-envelopes-lb-keogh.md](02-envelopes-lb-keogh.md) | Scalar L1 envelopes and LB_Keogh, with the feasible unequal-length prefix, **CONFIRMED**; envelope provenance (an `Envelope` does not record its window) and TADPole's empty domain (zero bounds where DTW has no path) **DISCREPANCY** |
+| D1 | DTW recurrence and Sakoe–Chiba adjustment window | [01-dtw-recurrence-sakoe-chiba.md](01-dtw-recurrence-sakoe-chiba.md) | CPU **CONFIRMED**; real-CUDA **CONFIRMED**; Metal source **CONFIRMED**, and real-device execution **CONFIRMED** on Apple M5 Pro (the Metal half of the `[F12]` tests) |
+| D2 | Envelopes and LB_Keogh admissibility | [02-envelopes-lb-keogh.md](02-envelopes-lb-keogh.md) | Scalar L1 envelopes and LB_Keogh, with the feasible unequal-length prefix and non-empty `tadpole` call site, **CONFIRMED** (`Problem` and `tadpole` reject empty series); unchecked `Envelope` window provenance and empty-span `lb_keogh` returning zero **DISCREPANCY** |
 
 Verdict meanings:
 

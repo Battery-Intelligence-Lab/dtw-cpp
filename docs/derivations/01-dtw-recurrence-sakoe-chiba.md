@@ -2,7 +2,7 @@
 
 **Verdict:** CPU and real-CUDA **CONFIRMED**; Metal source conformance
 **CONFIRMED**, and real-Metal execution **CONFIRMED** on an Apple M5 Pro
-(2026-09-23: the Metal half of the `[F12]` tests, run on the device).
+(the Metal half of the `[F12]` tests, run on the device).
 
 This note derives the scalar DTW objective implemented by DTWC++ and then
 checks it against the live code. Sakoe and Chiba are the primary source for
@@ -320,8 +320,8 @@ rounding does not enter their verdict.
 ## Code-conformance table
 
 Each row names the live symbol and its file. The GPU rows' executable
-evidence lives in the named F12 tests and record rather than being inferred
-from source.
+evidence lives in the named `[F12]` tests rather than being inferred from
+source.
 
 | Claim | Live implementation | Evidence and verdict |
 |---|---|---|
@@ -330,28 +330,23 @@ from source.
 | Linear-space state is the same recurrence | `dtw_kernel_linear` in `dtwc/core/dtw_kernel.hpp` | The saved diagonal, old slot, and updated prior slot are exactly the three predecessors; `dtw_kernel_banded` rolls the same three over a column of the longer series. **CONFIRMED**. |
 | Scalar local-cost definitions and dispatch | `SpanL1Cost` and `SpanSquaredL2Cost` in `dtwc/core/dtw_cost.hpp`; `dtwBanded` in `dtwc/warping.hpp` | L1 is $\lvert a-b\rvert$; SquaredL2 is $(a-b)^2$; scalar L2 correctly reduces to L1. **CONFIRMED**. |
 | Short/long orientation preserves the symmetric objective | `orient` and `run_dtw` in `dtwc/core/dtw_kernel.hpp` | The shorter input becomes the first cost index; both supported scalar costs are symmetric. **CONFIRMED**. |
-| Fixed allowed range $\lvert i-j\rvert\le w$ | `dtw_band_bounds` in `dtwc/core/dtw_kernel.hpp`, used by `dtw_kernel_banded` and `dtw_kernel_lanes` | Bounds are `[max(0,i-w), min(m,i+w+1))`, computed without signed overflow or `int` narrowing. **CONFIRMED**. |
+| Fixed allowed range $\lvert i-j\rvert\le w$ | `dtw_band_bounds` in `dtwc/core/dtw_kernel.hpp`, used by `dtw_kernel_banded`, and `dtw_lanes_band_bounds`, used by `dtw_kernel_lanes_packed` | Bounds are `[max(0,i-w), min(m,i+w+1))`, computed without signed overflow or `int` narrowing. **CONFIRMED**. |
 | Endpoint feasibility (2) | `dtw_kernel_banded` in `dtwc/core/dtw_kernel.hpp`, which `dtwBanded` and the other per-pair wrappers reach through `run_dtw` | The shared kernel returns the finite no-path sentinel below the endpoint gap. **CONFIRMED**. |
 | Negative band and full-coverage fallbacks | `dtw_kernel_banded` in `dtwc/core/dtw_kernel.hpp` | Negative dispatches to full DTW; width at least `max_length-1` covers the complete rectangle. **CONFIRMED**. |
 | Dependent and independent MV wrappers preserve feasibility | `dtwBanded_mv` and `dtw_independent_mv` in `dtwc/warping.hpp` | Dependent MV runs the same banded kernel, so the same bound; independent MV returns one finite sentinel before channel summation. **CONFIRMED**. |
 | Missing-data AROW wrapper does not bypass the fixed window | `dtwAROW_banded` in `dtwc/warping_missing_arow.hpp` | It runs the shared banded kernel through `run_dtw`, whose endpoint feasibility precedes the singleton/full fallback. **CONFIRMED**. |
-| Independent DP oracle and hand-computed ledger | `tests/support/dtw_oracle.hpp`, `tests/unit/core/test_dtw.cpp` | A plain full-matrix DP written from this derivation reproduces by hand the registered unequal-length ledger of the 2026-07-23 run (L1 and squared L2; bands 1, 2, 3 and none; no path below the length difference), and the public routes (`dtwFull`, `dtwFull_L`, `dtwBanded`, the Problem's bound function and its fill) agree with it on every shape, band and precision of the table. The exhaustive path counts of the 2026-07-23 record (696, 1143 and 1289) are not re-run: the hand-computed ledger replaces them. **CONFIRMED**: `test_dtw` passes. |
+| Independent DP oracle and hand-computed ledger | `tests/support/dtw_oracle.hpp`, `tests/unit/core/test_dtw.cpp` | A plain full-matrix DP written from this derivation reproduces the hand-computed unequal-length ledger (L1 and squared L2; bands 1, 2, 3 and none; no path below the length difference), and the public routes (`dtwFull`, `dtwFull_L`, `dtwBanded`, the Problem's bound function and its fill) agree with it on every shape, band and precision of the table. **CONFIRMED**: `test_dtw` passes. |
 | Neither accumulated form is a metric | `tests/unit/core/test_dtw.cpp` (hand-computed values) | The identity and triangle counterexamples above are run through the oracle and through the library. **CONFIRMED**: `test_dtw` passes. |
-| CUDA uses the same fixed geometry | `fixed_band_contains` in `dtwc/cuda/cuda_dtw.cu`, used by `dtw_wavefront_kernel`, `dtw_warp_kernel` and `dtw_regtile_kernel` | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The `[F12]` cases of `tests/unit/test_cuda_correctness.cpp` reproduce the independent path ledger on a CUDA device. **CONFIRMED** on the local RTX (2026-07-24). |
-| Metal fixed geometry and public sentinel | `dtw_wavefront_body` and `dtw_banded_row` in `dtwc/metal/metal_dtw.mm`; `normalize_public_distance` in `dtwc/core/public_distance.hpp` | The wavefront clip widens to `long` before `k ± band`; the banded-row kernel, chosen only for `0 < band <= 512`, clips each row to $\lvert i-j\rvert\le w$; exact device `FLT_MAX` is translated to public `DBL_MAX`. The `[F12]` case of `tests/unit/test_metal_correctness.cpp` covers the wavefront, banded-row and device-memory wavefront routes. Source **CONFIRMED**; real-device parity **CONFIRMED** on an Apple M5 Pro (2026-09-23). |
+| CUDA uses the same fixed geometry | `fixed_band_contains` in `dtwc/cuda/cuda_dtw.cu`, used by `dtw_wavefront_kernel`, `dtw_warp_kernel` and `dtw_regtile_kernel` | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The `[F12]` cases of `tests/unit/test_cuda_correctness.cpp` reproduce the independent path ledger on a CUDA device. **CONFIRMED** on the local RTX. |
+| Metal fixed geometry and public sentinel | `dtw_wavefront_body` and `dtw_banded_row` in `dtwc/metal/metal_dtw.mm`; `normalize_public_distance` in `dtwc/core/public_distance.hpp` | The wavefront clip widens to `long` before `k ± band`; the banded-row kernel, chosen only for `0 < band <= 512`, clips each row to $\lvert i-j\rvert\le w$; exact device `FLT_MAX` is translated to public `DBL_MAX`. The `[F12]` case of `tests/unit/test_metal_correctness.cpp` covers the wavefront, banded-row and device-memory wavefront routes. Source **CONFIRMED**; real-device parity **CONFIRMED** on an Apple M5 Pro. |
 
 ## Decisive artifact
-
-The CPU preregistered ledger, inherited red, exhaustive path counts, focused
-outputs, complete 114-target gate, assumptions, and rollback were recorded on
-2026-07-23, and the later GPU repair, independent oracle, real-RTX outputs, and
-Metal environment probe on 2026-07-24, in the maintainers' run records.
 
 **D1 final verdict:** the standard CPU recurrence, boundary conditions, scalar
 cost semantics, fixed Sakoe–Chiba window, feasibility rule, and monotonicity
 claim are **CONFIRMED**. CUDA geometry and exact public no-path translation are
 also **CONFIRMED** on the local RTX. Metal source implements the same contract,
-and its real-device executable gate passed on an Apple M5 Pro on 2026-09-23.
+and its real-device executable gate passed on an Apple M5 Pro.
 Its `[F12]` case compares every Metal pairwise value, including the
 no-path sentinel, with the independent oracle and the CPU kernel on the same
 inputs.
