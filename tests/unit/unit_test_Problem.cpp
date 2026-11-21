@@ -95,3 +95,19 @@ TEST_CASE("write_silhouettes propagates a corrupt labelling",
 
   REQUIRE_THROWS_AS(prob.set_clusters({ 0, 3 }), dtwc::InvalidInput); // the setter checks what the field does not
 }
+
+TEST_CASE("apply takes a valid Config's distance whatever valid distance the Problem held", "[Problem][apply]")
+{
+  // Standard DTW with ZeroCost, then ADTW with MissingStrategy::Error: each valid, though ADTW cannot take ZeroCost.
+  Problem prob{ "apply" };
+  prob.set_missing_strategy(core::MissingStrategy::ZeroCost);
+  Config config;
+  config.k = 2;
+  config.variant.variant = core::DTWVariant::ADTW;
+  apply(config, prob);
+  CHECK(prob.variant_params().variant == core::DTWVariant::ADTW);
+  CHECK(prob.missing_strategy() == core::MissingStrategy::Error);
+
+  config.missing = core::MissingStrategy::ZeroCost; // ADTW with ZeroCost is no distance
+  CHECK_THROWS_AS(apply(config, prob), dtwc::InvalidInput);
+}
