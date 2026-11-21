@@ -467,6 +467,11 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   if (config.report && config.metric == core::MetricType::L2) // the report names the metric, and L2 has no name
     throw InvalidInput("run: the run report names the metric, and MetricType::L2 has none; use MetricType::L1, the "
                        "same on univariate series, or set report = false.");
+#ifdef DTWC_HAS_CUDA
+  if (!config.checkpoint.empty() && uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto)
+    throw InvalidInput("--checkpoint on a CUDA GPU needs an explicit --gpu-precision fp32 or fp64: CUDA's auto depends "
+                       "on the GPU, so it is not a stable cache identity.");
+#endif
 
   auto problem = std::make_shared<Problem>(run_name(config));
   Problem &prob = *problem;
@@ -569,7 +574,12 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   std::optional<TeamCap> team;
   // Why a distance matrix that does not fit beside the series stays in RAM (nullptr: it is mapped). It maps only with
   // an output directory, into the --checkpoint directory when one is given.
-#ifdef DTWC_HAS_MMAP
+#if defined(DTWC_HAS_MMAP) && defined(DTWC_HAS_CUDA) // CUDA's auto is not a stable cache identity: it maps nothing
+  const char *const unmapped = config.output.empty() ? "which a run without an output directory keeps in RAM"
+                               : uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto
+                                 ? "which a CUDA run with --gpu-precision auto cannot map (select fp32 or fp64)"
+                                 : nullptr;
+#elif defined(DTWC_HAS_MMAP)
   const char *const unmapped = config.output.empty() ? "which a run without an output directory keeps in RAM" : nullptr;
 #else
   const char *const unmapped = "which a build without llfio cannot map (DTWC_ENABLE_LLFIO=OFF)";
