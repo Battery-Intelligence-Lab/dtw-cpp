@@ -284,6 +284,51 @@ TEST_CASE("seeded FastPAM completes the medoid set when all weights are zero",
 }
 
 // ===========================================================================
+TEST_CASE("FastPAM converged: no swap lowers the cost by more than 1e-9 of it on distances of two scales",
+          "[fast_pam][convergence]")
+{
+  // Distances 1 and e = 1e-12. Points 2, 3 and 4 are 1 apart; 0 and 1 are e apart, near 2 and 3 (0 at 2e, 1 at e) and
+  // 1 from 4. For k = 2, {1, 4} costs 3e and {0, 4} 5e. A BUILD of 4 and one of 2, 3 costs about 1 (the other is 1
+  // from both); the first swap takes 0 in for it and the cost falls to 5e, where swapping 0 for 1 still lowers it by
+  // 2e, 40 % of it.
+  const double e = 1e-12;
+  const std::vector<std::vector<double>> D{ { 0, e, 2 * e, 2 * e, 1 }, { e, 0, e, e, 1 }, { 2 * e, e, 0, 1, 1 },
+                                            { 2 * e, e, 1, 0, 1 }, { 1, 1, 1, 1, 0 } };
+  Problem prob("two_scales");
+  prob.set_data(Data(std::vector<std::vector<data_t>>{ { 0 }, { 1 }, { 2 }, { 3 }, { 4 } },
+                     std::vector<std::string>{ "a", "b", "c", "d", "e" }));
+  auto &matrix = prob.writable_distance_matrix();
+  matrix.resize(D.size());
+  for (std::size_t i = 0; i < D.size(); ++i)
+    for (std::size_t j = i; j < D.size(); ++j) matrix.set(i, j, D[i][j]);
+  prob.fill_distance_matrix(); // commits the writes
+  const auto cost = [&](const std::vector<index_t> &medoids) { // the objective, recomputed directly
+    double sum = 0.0;
+    for (const auto &row : D) {
+      double nearest = row[static_cast<std::size_t>(medoids[0])];
+      for (const index_t m : medoids) nearest = std::min(nearest, row[static_cast<std::size_t>(m)]);
+      sum += nearest;
+    }
+    return sum;
+  };
+
+  for (std::uint64_t seed = 0; seed < 16; ++seed) { // BUILD follows the seed; several of these start near 1
+    CAPTURE(seed);
+    const auto result = fast_pam(prob, 2, 100, seed);
+    REQUIRE(result.converged);
+    const double returned = cost(result.medoid_indices);
+    for (std::size_t slot = 0; slot < result.medoid_indices.size(); ++slot)
+      for (index_t candidate = 0; candidate < static_cast<index_t>(D.size()); ++candidate) {
+        if (std::count(result.medoid_indices.begin(), result.medoid_indices.end(), candidate) != 0) continue;
+        auto swapped = result.medoid_indices;
+        swapped[slot] = candidate;
+        CAPTURE(result.medoid_indices, swapped, returned);
+        CHECK(returned - cost(swapped) <= 1e-9 * returned);
+      }
+  }
+}
+
+// ===========================================================================
 // Test 6: k=1 produces a single cluster with all points.
 // ===========================================================================
 TEST_CASE("FastPAM k=1 assigns all points to one cluster", "[fast_pam][k1]")
