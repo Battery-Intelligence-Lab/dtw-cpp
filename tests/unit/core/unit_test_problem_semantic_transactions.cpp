@@ -128,7 +128,7 @@ bool mapped_cache_matches(const dtwc::Problem &problem, double sentinel)
   if (!storage.is_mapped())
     return false;
   const auto &matrix = storage;
-  return matrix.size() == 2 && matrix.all_computed("mapped_cache_matches", false)
+  return matrix.size() == 2 && matrix.all_computed("mapped_cache_matches")
       && matrix.get(0, 0) == 0.0
       && matrix.get(0, 1) == sentinel
       && matrix.get(1, 1) == 0.0;

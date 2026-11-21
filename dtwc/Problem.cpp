@@ -801,7 +801,7 @@ void Problem::use_mmap_distance_matrix(
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
                                           distance_checkpoint_identity(metric), matrix_dtype_);
   // A warm start holds every pair.
-  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix", false);
+  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix");
   if (distance_.metric != metric) { // new semantics, as in set_metric
     distance_.metric = metric;
     clusters_ind.clear();
@@ -1447,7 +1447,7 @@ void Problem::fill_distance_matrix()
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
   // negative distance, which no variant gives, and a matrix they made complete needs no pair.
   if (written_ && !filled_ && data_.size() > 0 && distMat.size() == data_.size()) {
-    filled_ = distMat.all_computed("Problem::fill_distance_matrix", false,
+    filled_ = distMat.all_computed("Problem::fill_distance_matrix",
                                    "Leave a pair still to compute NaN, as resize() leaves every pair.");
     written_ = false;
   }

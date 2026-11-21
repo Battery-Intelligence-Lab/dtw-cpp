@@ -148,8 +148,7 @@ void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb:
       if (!std::isnan(data[i * n + j])) // resize() left every pair to compute; a NaN entry keeps it so
         mat.set(i, j, data[i * n + j]);
   // A complete matrix is filled; NaN entries are computed on first use.
-  if (mat.all_computed("Problem.set_distance_matrix", false,
-                       "Mark a pair still to compute with NaN: D[D < 0] = np.nan."))
+  if (mat.all_computed("Problem.set_distance_matrix", "Mark a pair still to compute with NaN: D[D < 0] = np.nan."))
     p.fill_distance_matrix();
 }
 

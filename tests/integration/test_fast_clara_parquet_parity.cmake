@@ -66,7 +66,19 @@ set_property(GLOBAL PROPERTY f8_route_checks)
 set_property(GLOBAL PROPERTY f8_pairs)
 set_property(GLOBAL PROPERTY f8_configs)
 
-function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs)
+# A total cost agrees with its expected value to 12 significant digits: the costs here lie in [1, 10), so the two
+# may differ by at most 5e-12, half a unit in the 12th digit. Compilers round the last bits differently (FMA
+# contraction, reassociation); that moves no clustering. CMake has no floating point, so the text (plain decimal) is
+# read as a whole count of 1e-13: its digit, then its first 13 decimals.
+function(f8_cost_units text out_var)
+    if(NOT text MATCHES "^([1-9])(\\.([0-9]*))?$")
+        message(FATAL_ERROR "F8 total cost '${text}' is not a plain decimal in [1, 10)")
+    endif()
+    string(SUBSTRING "${CMAKE_MATCH_3}0000000000000" 0 13 decimals)
+    set("${out_var}" "${CMAKE_MATCH_1}${decimals}" PARENT_SCOPE)
+endfunction()
+
+function(run_f8_cli config_id mode output_dir dtype variant gamma expected_cost)
     file(MAKE_DIRECTORY "${output_dir}")
     set(args
         --input "${fixture_path}"
@@ -164,26 +176,28 @@ function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs
             "F8 ${config_id}/${mode} missing 'Total cost:'\n${stdout}")
     endif()
     set(cost "${CMAKE_MATCH_1}")
-    list(FIND accepted_costs "${cost}" accepted_index)
-    if(accepted_index EQUAL -1)
+    f8_cost_units("${cost}" cost_units)
+    f8_cost_units("${expected_cost}" expected_units)
+    math(EXPR difference "${cost_units} - ${expected_units}")
+    if(difference GREATER 50 OR difference LESS -50)
         message(FATAL_ERROR
-            "F8 ${config_id}/${mode} total cost=${cost}, accepted=${accepted_costs}")
+            "F8 ${config_id}/${mode} total cost=${cost}, expected ${expected_cost} to 12 significant digits")
     endif()
 
     set_property(GLOBAL APPEND PROPERTY f8_runs "${config_id}/${mode}")
     set("${config_id}_${mode}_cost" "${cost}" PARENT_SCOPE)
 endfunction()
 
-function(check_f8_config config_id dtype variant gamma accepted_costs)
+function(check_f8_config config_id dtype variant gamma expected_cost)
     set(resident_dir "${work_root}/${config_id}-resident")
     set(stream_dir "${work_root}/${config_id}-stream")
 
     run_f8_cli(
         "${config_id}" resident "${resident_dir}"
-        "${dtype}" "${variant}" "${gamma}" "${accepted_costs}")
+        "${dtype}" "${variant}" "${gamma}" "${expected_cost}")
     run_f8_cli(
         "${config_id}" stream "${stream_dir}"
-        "${dtype}" "${variant}" "${gamma}" "${accepted_costs}")
+        "${dtype}" "${variant}" "${gamma}" "${expected_cost}")
 
     set(expected_files
         parity_labels.csv
@@ -262,11 +276,8 @@ function(check_f8_config config_id dtype variant gamma accepted_costs)
     set("${config_id}_cost" "${${config_id}_resident_cost}" PARENT_SCOPE)
 endfunction()
 
-# Accepted total costs are the shortest round-trip text of these IEEE-754
-# values (big-endian hex):
-# 4011999999999998, 40119999EC000000, and for the Soft-DTW divergence
-# 40126B8423FB07EA (Windows clang 2026-11-21).
-# Labels/medoids stay exact. Resident and stream stay byte-identical.
+# Each total cost to 12 significant digits (f8_cost_units); labels/medoids stay exact, and resident and stream
+# byte-identical.
 check_f8_config(f64_standard float64 standard none "4.399999999999999")
 check_f8_config(f32_standard float32 standard none "4.400001227855682")
 check_f8_config(f64_softdtw float64 softdtw 0.7 "4.604996263691627")

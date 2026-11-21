@@ -225,7 +225,7 @@ void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComput
         "these series, or omit it to compute the distances.");
   const std::string variant(name_of(core::variant_names, distance_.variant.variant));
   const bool complete = loaded.all_computed(
-    "Problem::read_distance_matrix", false,
+    "Problem::read_distance_matrix",
     "A v1.0.0 distance-matrix file marks a pair it never computed with -1: read it with --not-computed negative (C++ "
     "NotComputed::Negative, Python not_computed=\"negative\", MATLAB 'NotComputed','negative'); otherwise this is not "
     "a " + variant + " distance matrix.");
