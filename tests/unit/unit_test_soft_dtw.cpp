@@ -15,6 +15,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 #include <limits>
@@ -247,6 +248,35 @@ TEST_CASE("soft_dtw_gradient: different length series", "[soft_dtw][gradient]")
     double fd = (soft_dtw(x_plus, y, gamma) - soft_dtw(x_minus, y, gamma)) / (2.0 * eps);
     REQUIRE_THAT(grad[i], WithinAbs(fd, 1e-4));
   }
+}
+
+TEST_CASE("soft_dtw_gradient: a sample far above the other series leaves the rest exact", "[soft_dtw][gradient]")
+{
+  // x's last sample lies 1e13 above y: every path pays that cost once, at the last cell, whose neighbour in that row
+  // weighs exp(-1e13 / gamma) = 0. The gradient for the other samples is then that of the soft-min of the two cells
+  // entering the last one from the row before, whose finite difference needs x without that sample (the full value's
+  // 1e13 would drown it). Rebuilding a soft-min as a cumulative cost minus the 1e13 local cost loses it.
+  const double gamma = 0.1;
+  std::vector<double> x(51), y(51);
+  for (std::size_t i = 0; i < x.size(); ++i) {
+    x[i] = 0.1 * std::sin(1.7 * double(i));
+    y[i] = 0.1 * std::cos(1.3 * double(i));
+  }
+  x.back() = 1e13;
+  const auto grad = soft_dtw_gradient(x, y, gamma);
+  const std::vector<double> head(x.begin(), x.end() - 1), y_head(y.begin(), y.end() - 1);
+  const auto entering = [&](const std::vector<double> &h) {
+    const double a = soft_dtw(h, y, gamma), b = soft_dtw(h, y_head, gamma), m = std::min(a, b);
+    return m - gamma * std::log(std::exp((m - a) / gamma) + std::exp((m - b) / gamma));
+  };
+  const double eps = 1e-6;
+  for (std::size_t i = 0; i < head.size(); ++i) {
+    auto plus = head, minus = head;
+    plus[i] += eps;
+    minus[i] -= eps;
+    REQUIRE_THAT(grad[i], WithinAbs((entering(plus) - entering(minus)) / (2.0 * eps), 1e-6));
+  }
+  REQUIRE(grad.back() == 1.0); // sign(x - y) at the last cell; no other cell of that row carries weight
 }
 
 TEST_CASE("soft_dtw_gradient: zero gradient at minimum for identical series", "[soft_dtw][gradient]")

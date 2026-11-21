@@ -87,6 +87,10 @@ std::string hybrid_refused_message(std::string_view where, std::string_view why,
 /// tadpole), so has no fill and no pass to split; `gpu` refuses it too.
 std::string hybrid_as_it_goes_message(std::string_view where, std::string_view method);
 
+/// @brief The DeviceError text where device `gpu` meets a method that computes its distances on the CPU as it goes
+/// (`method`: onebatch, tadpole), so the GPU would sit idle: `where` refuses it.
+std::string gpu_as_it_goes_message(std::string_view where, std::string_view method);
+
 /// @brief The InvalidInput text where a forced gpu_share meets a device other than cpu+gpu, which would ignore it:
 /// `where` refuses it, `splits` names the work cpu+gpu splits.
 std::string share_ignored_message(std::string_view where, std::string_view splits, Device device);

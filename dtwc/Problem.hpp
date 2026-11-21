@@ -195,6 +195,7 @@ private:
   Method method_{ Method::Kmedoids };
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
   int last_iterations_{ 0 };
+  bool last_converged_{ false }; ///< Lloyd's kept repetition stopped on unchanged medoids, not on max_iter
   double tadpole_dc_{ -1.0 };
   index_t sample_size_{ -1 }; ///< CLARA's subsample size; -1: its automatic size
   int n_samples_{ 5 };        ///< CLARA's subsamples
@@ -460,7 +461,7 @@ public:
   /// build's GPU backend (CUDA, else Metal), which the fill resolves, or (cpu+gpu)
   /// the CPU and CUDA GPU `index` together on the distance matrix's fill (whole
   /// tile-rows to either) and FastCLARA's assignment pass, whose samples fill on
-  /// the GPU; OneBatchPAM, TADPole and a streamed FastCLARA refuse cpu+gpu. A Problem
+  /// the GPU; OneBatchPAM and TADPole refuse gpu and cpu+gpu, a streamed FastCLARA cpu+gpu. A Problem
   /// never reads the process-wide default (dtwc::device()); until told
   /// otherwise it computes on the CPU. A change drops the distance matrix.
   /// @throws DeviceError for `gpu` on a build with no GPU backend, for cpu+gpu

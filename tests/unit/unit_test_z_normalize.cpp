@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <cmath>
+#include <limits>
 #include <numeric>
 
 using Catch::Matchers::WithinAbs;
@@ -202,4 +203,16 @@ TEST_CASE("z_normalize of negative and positive values", "[z_normalize]")
   const std::vector<double> expected{ -10 / s, -5 / s, 0.0, 5 / s, 10 / s };
   for (std::size_t i = 0; i < v.size(); ++i)
     REQUIRE_THAT(v[i], WithinAbs(expected[i], 1e-12));
+}
+
+// ---------------------------------------------------------------------------
+// 12. A series holding NaN or inf is refused, not set to zeros
+// ---------------------------------------------------------------------------
+TEST_CASE("z_normalize refuses a series holding NaN or inf", "[z_normalize]")
+{
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  for (std::vector<data_t> v : { std::vector<data_t>{ 1.0, nan, 3.0 }, std::vector<data_t>{ 1.0, inf, 3.0 },
+                                 std::vector<data_t>{ nan } })
+    CHECK_THROWS_AS(dtwc::core::z_normalize(v.data(), v.size()), dtwc::InvalidInput);
 }

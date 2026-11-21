@@ -92,4 +92,6 @@ TEST_CASE("write_silhouettes propagates a corrupt labelling",
   }
   prob.clusters_ind = { 0, 0, 0 };
   REQUIRE_THROWS_AS(scores::silhouette(prob), dtwc::UndefinedScore);
+
+  REQUIRE_THROWS_AS(prob.set_clusters({ 0, 3 }), dtwc::InvalidInput); // the setter checks what the field does not
 }

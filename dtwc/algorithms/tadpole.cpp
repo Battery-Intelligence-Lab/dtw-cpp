@@ -66,7 +66,10 @@ namespace algorithms {
     /// reads Data::series() (float64 storage) while the exact side computes on the
     /// stored Float32 series — the two sides of the bound would come from different
     /// data. Float32 therefore takes the exact path everywhere, a slowdown
-    /// TADPoleStats::pruning_enabled reports.
+    /// TADPoleStats::pruning_enabled reports. So does a Float32 matrix: its distances
+    /// are rounded to float, the bounds are not. A filled matrix takes it too: the
+    /// matrix may hold other distances than the series' DTW (one read from a file or
+    /// set by the caller), and its every pair is a lookup, so pruning saves nothing.
     bool bounds_valid(const Problem &prob)
     {
       // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
@@ -75,6 +78,8 @@ namespace algorithms {
              && prob.metric() == core::MetricType::L1
              && prob.data().ndim == 1
              && !prob.data().is_f32()
+             && prob.matrix_dtype() != core::Precision::Float32
+             && !prob.is_distance_matrix_filled()
              && prob.missing_strategy() == core::MissingStrategy::Error;
     }
 
@@ -189,10 +194,13 @@ namespace algorithms {
 
   core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, bool prune, TADPoleStats *stats)
   {
-    // A Problem on cpu+gpu, or one with a forced share, asks for a split this method has no part in (it computes its
-    // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word.
+    // A Problem on gpu or cpu+gpu, or one with a forced share, asks for a device or a split this method has no part in
+    // (it computes its distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the
+    // CPU without a word.
     if (prob.device().first == Device::CPU_GPU)
       throw DeviceError(dtwc::detail::hybrid_as_it_goes_message("tadpole", "tadpole"));
+    if (prob.device().first == Device::GPU)
+      throw DeviceError(dtwc::detail::gpu_as_it_goes_message("tadpole", "tadpole"));
     if (prob.gpu_share() != -1.0)
       throw InvalidInput(dtwc::detail::share_ignored_message(
         "tadpole", "the distance matrix's fill and FastCLARA's pass", prob.device().first));
@@ -324,7 +332,6 @@ namespace algorithms {
     std::vector<double> delta(N, kInf);
     std::vector<index_t> parent(N, -1);
 
-    const bool f32_matrix = (prob.matrix_dtype() == core::Precision::Float32);
 // The slots are Stage 1's, every one empty again: a failure there was rethrown above.
 #pragma omp parallel for schedule(dynamic, 8) num_threads(n_threads)
     for (index_t i = 0; i < N; ++i) {
@@ -360,10 +367,7 @@ namespace algorithms {
             const auto sq = prob.series(static_cast<std::size_t>(q));
             const bool wins_tie = (best_parent >= 0 && q < best_parent);
             if (si.size() == sq.size()) {
-              const double tie_bound = (f32_matrix && std::isfinite(best))
-                                         ? static_cast<double>(std::nextafter(static_cast<float>(best), std::numeric_limits<float>::infinity()))
-                                         : best;
-              const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], tie_bound)
+              const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], best)
                                            : core::lb_keogh_at_least(si, envs[i], sq, envs[q], best);
               if (pruned) continue;
             }

@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "../base/error.hpp"
+
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -33,11 +35,17 @@ namespace dtwc::core {
 
 /// Z-normalize a series in place: subtract mean, divide by standard deviation.
 /// If the standard deviation is below 1e-10, all values are set to zero.
+/// @throws InvalidInput when the standard deviation is not finite: the series
+///         holds NaN or ±inf, or values too large for its spread to be computed.
 template <typename T>
 void z_normalize(T *series, size_t n)
 {
   if (n == 0) return;
-  if (n == 1) { series[0] = static_cast<T>(0); return; }
+  if (n == 1) {
+    if (!std::isfinite(series[0])) throw InvalidInput("z_normalize: the series holds NaN or an infinite value.");
+    series[0] = static_cast<T>(0);
+    return;
+  }
 
   // Pass 1: sum(x) → mean
   T sum = 0;
@@ -65,6 +73,9 @@ void z_normalize(T *series, size_t n)
     sq_sum += dev * dev;
   }
   const T stddev = std::sqrt(sq_sum / static_cast<T>(n));
+  if (!std::isfinite(stddev))
+    throw InvalidInput("z_normalize: the standard deviation is not finite; the series holds NaN or an infinite "
+                       "value, or values too large for their spread to be computed.");
 
   // Pass 3: normalize in place.
   if (stddev > static_cast<T>(1e-10)) {

@@ -313,11 +313,7 @@ void apply(const Config &config, Problem &prob)
   if (config.device == Device::CPU_GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(detail::hybrid_as_it_goes_message("run", name_of(method_names, config.method)));
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    throw DeviceError(
-      "run: method '" + std::string(name_of(method_names, config.method))
-      + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
-        "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use, and clara's sample matrices. "
-        "Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
+    throw DeviceError(detail::gpu_as_it_goes_message("run", name_of(method_names, config.method)));
 }
 
 /**
@@ -399,12 +395,16 @@ int Problem::n_repetitions() const
  * @brief Sets the initial centroids for clustering.
  *
  * @param candidate_centroids A vector containing the indices of candidate centroids.
- * @throws InvalidInput if the size of candidate_centroids is not equal to Nc.
+ * @throws InvalidInput if the size of candidate_centroids is not equal to Nc, or an index is outside [0, N).
  */
 void Problem::set_clusters(const std::vector<index_t> &candidate_centroids)
 {
   if (candidate_centroids.size() != static_cast<size_t>(Nc))
     throw InvalidInput("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
+  for (const index_t medoid : candidate_centroids)
+    if (medoid < 0 || medoid >= size())
+      throw InvalidInput("Problem::set_clusters: medoid " + std::to_string(medoid) + " is outside [0, N), N = "
+                         + std::to_string(size()) + ".");
 
   centroids_ind = candidate_centroids;
 }
@@ -775,6 +775,9 @@ void Problem::validate_checkpoint_settings() const
     throw InvalidInput(
       "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
       "checkpoint.directory.");
+  if (distMat.is_mapped() && !distMat.is_mapped_to(checkpoint_path(*this, checkpoint.directory)))
+    throw InvalidInput("Problem::fill_distance_matrix: the matrix is mapped to another file than checkpoint.directory's, "
+                       "where a fill's saves keep no row; map that checkpoint file itself, or disable checkpointing.");
   // The autosave records the precision its distances were computed in, which
   // CUDA's Auto leaves open: the identity refuses it here, before any pair.
   if (uses_gpu(device_) && resolve_gpu_precision(gpu_precision_) == GpuPrecision::Auto)
@@ -1043,9 +1046,9 @@ void Problem::fillDistanceMatrix_BruteForce()
                                  : decltype(core::resolve_dtw_packed_block_fn<float>(distance_)){};
   const size_t written = distMat.rows_written();
 #ifdef DTWC_HAS_CUDA
-  const bool fresh = !gpu && !written_ && (!sized || (distMat.is_mapped() && written == 0));
+  const bool fresh = !gpu && (!sized || (distMat.is_mapped() && written == 0));
 #else
-  const bool fresh = !written_ && (!sized || (distMat.is_mapped() && written == 0));
+  const bool fresh = (!sized || (distMat.is_mapped() && written == 0));
 #endif
   const bool use_slab_panels = fresh && ragged && lanes && ram_limit_ == 0 && !data_.is_mapped();
   constexpr size_t kMaxSlabPanelBytes = size_t{ 64 } << 20;
@@ -1475,6 +1478,8 @@ core::ClusteringResult Problem::cluster()
   const Method method = resolve_method(method_, device_, size());
   if (device_ == Device::CPU_GPU && (method == Method::OneBatch || method == Method::TADPole))
     throw DeviceError(detail::hybrid_as_it_goes_message("Problem::cluster", name_of(method_names, method)));
+  if (device_ == Device::GPU && (method == Method::OneBatch || method == Method::TADPole))
+    throw DeviceError(detail::gpu_as_it_goes_message("Problem::cluster", name_of(method_names, method)));
   switch (method) {
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie
@@ -1509,7 +1514,7 @@ core::ClusteringResult Problem::cluster()
   result.total_cost = find_total_cost();
   // Lloyd counts its iterations; the exact methods and TADPole run to the end.
   result.iterations = method == Method::Kmedoids ? last_iterations_ : 0;
-  result.converged = method != Method::Kmedoids || last_iterations_ < maxIter;
+  result.converged = method != Method::Kmedoids || last_converged_;
   return result;
 }
 
@@ -1681,6 +1686,7 @@ void Problem::cluster_by_kmedoids_lloyd()
       best_cost = total_cost;
       best_rep = i_rand;
       best_iterations = iters;
+      last_converged_ = status == 0;
       best_medoids = centroids_ind;
       best_labels = clusters_ind;
     }

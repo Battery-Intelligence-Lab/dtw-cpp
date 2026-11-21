@@ -439,6 +439,33 @@ TEST_CASE("TADPole: Float32 data disables LB/UB pruning (A1)", "[tadpole][float3
   REQUIRE(sd.dtw_calls < sd.total_pairs);
 }
 
+TEST_CASE("TADPole: pruned and unpruned runs agree on a supplied distance matrix", "[tadpole][matrix]")
+{
+  // A matrix written through writable_distance_matrix(), as --dist-matrix and set_distance_matrix supply one, need not
+  // be the DTW of the stored series (here it is a tenth of it), so bounds computed from the series say nothing about
+  // it: the pruned run must take its neighbours from the matrix, as the unpruned run does.
+  const auto supplied = [] {
+    const std::vector<std::vector<data_t>> values{ { 0.0 }, { 1.0 }, { 10.0 }, { 10.5 }, { 20.0 } };
+    const std::vector<std::string> names{ "A", "B", "C", "D", "E" };
+    Problem own("own"), prob("supplied");
+    own.set_data(Data(std::vector<std::vector<data_t>>(values), std::vector<std::string>(names)));
+    own.fill_distance_matrix();
+    prob.set_data(Data(std::vector<std::vector<data_t>>(values), std::vector<std::string>(names)));
+    auto &matrix = prob.writable_distance_matrix();
+    matrix.resize(values.size());
+    for (std::size_t i = 0; i < values.size(); ++i)
+      for (std::size_t j = i; j < values.size(); ++j) matrix.set(i, j, own.distance_matrix().get(i, j) / 10.0);
+    prob.fill_distance_matrix(); // commits the writes
+    return prob;
+  };
+  Problem pa = supplied(), pb = supplied();
+  REQUIRE(pa.is_distance_matrix_filled());
+  const auto pruned = algorithms::tadpole(pa, 2, 1.0, /*prune=*/true);
+  const auto brute = algorithms::tadpole(pb, 2, 1.0, /*prune=*/false);
+  CHECK(pruned.labels == brute.labels);
+  CHECK(pruned.medoid_indices == brute.medoid_indices);
+}
+
 TEST_CASE("TADPole: a failure in either parallel stage reaches the caller as it was thrown", "[tadpole][failure]")
 {
   // An exception may not leave an OpenMP region (the process would end), so each stage keeps a thread's failure and

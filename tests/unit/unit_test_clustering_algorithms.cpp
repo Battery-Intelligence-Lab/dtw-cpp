@@ -367,6 +367,9 @@ TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
   CHECK(capped.labels() == nearest_labels);
   CHECK_THAT(capped.find_total_cost(), WithinAbs(nearest_cost, 1e-12));
   CHECK(capped.labels() == converged.labels());
+
+  auto last = make_capped_lloyd_problem(output.path, "last", 2); // converges on the last iteration it may run
+  CHECK(last.cluster().converged);
 }
 
 // ---------------------------------------------------------------------------

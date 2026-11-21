@@ -253,6 +253,9 @@ Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
     }
   }
   const double cost = at(nx - 1, ny - 1);
+  // An overflowed cost has +inf cells on its edges, where the walk below would step past row or column 0. Every
+  // caller refuses a non-finite cost before it reads the path.
+  if (!std::isfinite(cost)) return { cost, {} };
 
   std::size_t i = nx - 1;
   std::size_t j = ny - 1;
@@ -478,40 +481,30 @@ SoftDtwValueGradient soft_dtw_squared_value_gradient(
     }
   }
 
+  // The adjoint, in reverse order: a finished cell is pushed to its predecessors with the softmin's Jacobian, the
+  // softmax of their stored values (weights in [0, 1] summing to 1; no local cost is subtracted from a cumulative
+  // one); a first-row or first-column cell has one predecessor, weight 1.
   double *const adjoint = adjoint_buf.data();
   auto gradient_cell = [adjoint, ny](std::size_t i, std::size_t j) -> double& {
     return adjoint[i * ny + j];
   };
+  std::fill_n(adjoint, cells, 0.0);
   gradient_cell(nx - 1, ny - 1) = 1.0;
-  for (std::size_t reverse_i = nx; reverse_i-- > 0;) {
-    for (std::size_t reverse_j = ny; reverse_j-- > 0;) {
-      if (reverse_i == nx - 1 && reverse_j == ny - 1) continue;
-      double value = 0.0;
-      if (reverse_i + 1 < nx) {
-        if (reverse_j == 0) value += gradient_cell(reverse_i + 1, reverse_j);
-        else {
-          const double diff = x[reverse_i + 1] - y[reverse_j];
-          const double soft = cell(reverse_i + 1, reverse_j) - diff * diff;
-          value += gradient_cell(reverse_i + 1, reverse_j)
-                   * std::exp((soft - cell(reverse_i, reverse_j)) / gamma);
-        }
-      }
-      if (reverse_j + 1 < ny) {
-        if (reverse_i == 0) value += gradient_cell(reverse_i, reverse_j + 1);
-        else {
-          const double diff = x[reverse_i] - y[reverse_j + 1];
-          const double soft = cell(reverse_i, reverse_j + 1) - diff * diff;
-          value += gradient_cell(reverse_i, reverse_j + 1)
-                   * std::exp((soft - cell(reverse_i, reverse_j)) / gamma);
-        }
-      }
-      if (reverse_i + 1 < nx && reverse_j + 1 < ny) {
-        const double diff = x[reverse_i + 1] - y[reverse_j + 1];
-        const double soft = cell(reverse_i + 1, reverse_j + 1) - diff * diff;
-        value += gradient_cell(reverse_i + 1, reverse_j + 1)
-                 * std::exp((soft - cell(reverse_i, reverse_j)) / gamma);
-      }
-      gradient_cell(reverse_i, reverse_j) = value;
+  for (std::size_t i = nx; i-- > 0;) {
+    for (std::size_t j = ny; j-- > 0;) {
+      const double adjoint_ij = gradient_cell(i, j);
+      if (i == 0 && j == 0) continue;
+      if (i == 0) { gradient_cell(0, j - 1) += adjoint_ij; continue; }
+      if (j == 0) { gradient_cell(i - 1, 0) += adjoint_ij; continue; }
+      const double up = cell(i - 1, j), left = cell(i, j - 1), diag = cell(i - 1, j - 1);
+      const double minimum = std::min(up, std::min(left, diag)); // its weight is exp(-0) == 1
+      const double w_up = up == minimum ? 1.0 : std::exp((minimum - up) / gamma);
+      const double w_left = left == minimum ? 1.0 : std::exp((minimum - left) / gamma);
+      const double w_diag = diag == minimum ? 1.0 : std::exp((minimum - diag) / gamma);
+      const double share = adjoint_ij / (w_up + w_left + w_diag);
+      gradient_cell(i - 1, j) += share * w_up;
+      gradient_cell(i, j - 1) += share * w_left;
+      gradient_cell(i - 1, j - 1) += share * w_diag;
     }
   }
 

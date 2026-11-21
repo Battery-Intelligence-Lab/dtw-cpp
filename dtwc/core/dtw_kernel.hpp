@@ -479,9 +479,11 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 /// only for NaN and for the sign of zero, and finite query/panel values meet neither:
 /// input validation refuses NaN and ±inf before any lane runs, a cost on finite
 /// values is |a - b| or d * d (never -0, never NaN), and a cost that overflows is
-/// +inf, which both mins order alike. When DDTW derivatives overflow to ±inf on
-/// AArch64, dtw_lanes.cpp dispatches StandardCell so |+inf - (+inf)| = NaN matches
-/// the scalar kernel. Elsewhere this is StandardCell: x86's fmin is three instructions
+/// +inf, which both mins order alike. A DDTW derivative or an interpolated sample
+/// that overflows to ±inf gives a NaN cost (|+inf - (+inf)|): fmin drops a NaN that
+/// std::min keeps on the diagonal, so the AArch64 lanes can return +inf or max()
+/// where the per-pair kernel returns NaN, for a pair with no finite distance.
+/// Elsewhere this is StandardCell: x86's fmin is three instructions
 /// (minpd, cmpunordpd, blendvpd) where its min is one.
 #if defined(_MSC_VER)
 #define DTWC_LANES_RESTRICT __restrict

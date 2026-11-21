@@ -364,6 +364,19 @@ TEST_CASE("A matrix mapped to its checkpoint file is saved in place", "[checkpoi
   REQUIRE(packed_bits(reader) == packed_bits(reference));
 }
 
+TEST_CASE("A matrix mapped to another file than its checkpoint file is refused", "[checkpoint][mmap]")
+{
+  // Each save would copy the mapped matrix, whose rows written stay 0 until the fill ends, so a fill that stopped
+  // would leave no row in either file.
+  const ScratchDirectory scratch("mapped_elsewhere");
+  fs::create_directories(scratch.path / "mapped");
+  auto prob = make_problem("elsewhere", 6);
+  prob.use_mmap_distance_matrix(checkpoint_path(prob, (scratch.path / "mapped").string()));
+  prob.checkpoint = { (scratch.path / "checkpoints").string(), 2, true };
+  CHECK_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
+  CHECK_FALSE(prob.is_distance_matrix_filled());
+}
+
 TEST_CASE("A mapped fill of several slabs equals the fill in RAM, bit for bit", "[checkpoint][mmap][fill]")
 {
   // A 361 KB matrix; a 1 MiB ram_limit leaves slabs of an eighth of what the
