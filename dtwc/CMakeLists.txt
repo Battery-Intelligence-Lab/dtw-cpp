@@ -22,6 +22,8 @@ if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
 endif()
 target_link_libraries(dtwc_cli PUBLIC dtwc_core)
 target_link_libraries(dtwc++ INTERFACE ${_dtwc_libs})
+# The headers are C++20, so whatever links the libraries, a parent project's target too, compiles as C++20 or later.
+target_compile_features(dtwc_core PUBLIC cxx_std_20)
 
 # Required for linking into the Python shared library (.so) on Linux
 set_target_properties(${_dtwc_libs} PROPERTIES POSITION_INDEPENDENT_CODE ON)
