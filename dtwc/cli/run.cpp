@@ -402,7 +402,8 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
 /// Bind persistent distance storage once every distance-affecting setting has reached the Problem, as the memory plan
 /// decided it (`mapped`). Returns the mapped file, or nullopt when the method keeps its own storage or the matrix
 /// stays in RAM. A mapped matrix costs one sequential pass and keeps the run out of swap. A method that reads no parent
-/// matrix (holds_matrix) maps none. TADPole reads the matrix when it is complete (a file or a cache from an earlier
+/// matrix (holds_matrix) maps none and refuses a --dist-matrix, which it would load and never read; non-full FastCLARA
+/// refuses a --checkpoint too. TADPole reads the matrix when it is complete (a file or a cache from an earlier
 /// run) and otherwise computes the pairs it needs.
 std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, Method method,
                                                    bool clara_uses_full_sample, bool mapped, const fs::path &cache_path)
@@ -417,6 +418,10 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
         "state. Omit those options, or request a full sample deliberately.");
     return std::nullopt;
   }
+  if (dist_matrix && !holds_matrix(method, clara_uses_full_sample))
+    throw InvalidInput("--method " + method_name(method)
+                       + " does not consume a parent distance matrix; --dist-matrix would load unused O(N^2) state. "
+                         "Omit --dist-matrix, or use a method that reads it, such as pam.");
   if (!mapped || !holds_matrix(method, clara_uses_full_sample)) return std::nullopt;
   prob.use_mmap_distance_matrix(cache_path); // the plan maps nothing in a build without llfio
   return cache_path;
@@ -863,14 +868,12 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
   // the checkpoint, else in the output directory; a run that writes nothing
-  // keeps its matrix in RAM.
+  // keeps its matrix in RAM. Its refusals of what the method cannot use apply to every run.
   stage.begin("storage");
   std::optional<fs::path> cache;
-  if (!config.output.empty()) {
-    const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
-    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, memory->mapped, path);
-    if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
-  }
+  const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
+  cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, memory->mapped, path);
+  if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
   // A matrix the user supplied but that cannot be loaded is an error: going on
   // without it would silently recompute every distance and exit 0.
   if (!config.dist_matrix.empty()) {
@@ -891,7 +894,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     prob.checkpoint.enabled = true;
   }
   bool resumed = false;
-  if (!config.checkpoint.empty() && !cache) { // a mapped matrix is its own checkpoint
+  // A mapped matrix is its own checkpoint; a method that holds no matrix reads none, and writes none (below).
+  if (!config.checkpoint.empty() && !cache && holds_matrix(method, clara_uses_full_sample)) {
     resumed = load_checkpoint(prob, config.checkpoint); // false: no file, start fresh
     if (config.verbose)
       std::cout << (resumed ? "Resumed from checkpoint: " + config.checkpoint + "\n"
