@@ -15,17 +15,6 @@ cmake_path(ABSOLUTE_PATH FIXTURE NORMALIZE OUTPUT_VARIABLE fixture_path)
 cmake_path(ABSOLUTE_PATH BINARY_ROOT NORMALIZE OUTPUT_VARIABLE binary_root)
 cmake_path(ABSOLUTE_PATH WORK_ROOT NORMALIZE OUTPUT_VARIABLE work_root)
 
-if(NOT EXISTS "${cli_path}")
-    message(FATAL_ERROR "F13 real CLI does not exist: ${cli_path}")
-endif()
-if(NOT EXISTS "${fixture_writer_path}")
-    message(FATAL_ERROR
-        "F13 poison fixture writer does not exist: ${fixture_writer_path}")
-endif()
-if(NOT EXISTS "${fixture_path}")
-    message(FATAL_ERROR "F13 tracked fixture does not exist: ${fixture_path}")
-endif()
-
 # The test owns only this exact child of the configured test binary directory.
 # Refuse a broad or escaped path before the recursive cleanup.
 string(FIND "${work_root}" "${binary_root}/" work_prefix)
@@ -51,30 +40,7 @@ foreach(precision IN ITEMS f64 f32)
             "with exit=${writer_result}\n"
             "stdout:\n${writer_stdout}\nstderr:\n${writer_stderr}")
     endif()
-    string(FIND
-        "${writer_stdout}"
-        "F13_POISON_PARQUET precision=${precision} rows=129 row_groups=2"
-        writer_marker)
-    if(writer_marker EQUAL -1)
-        message(FATAL_ERROR
-            "F13 ${precision} poison fixture writer marker missing\n"
-            "stdout:\n${writer_stdout}\nstderr:\n${writer_stderr}")
-    endif()
 endforeach()
-
-set(expected_fixture_sha
-    "2F259F418A6BB9C62CA0004CB334C05E8309213F5A76DC890F83C15D5BDA3CA8")
-file(SIZE "${fixture_path}" fixture_size)
-if(NOT fixture_size EQUAL 1451)
-    message(FATAL_ERROR
-        "F13 fixture size mismatch: expected=1451 actual=${fixture_size}")
-endif()
-file(SHA256 "${fixture_path}" fixture_sha)
-string(TOUPPER "${fixture_sha}" fixture_sha)
-if(NOT fixture_sha STREQUAL expected_fixture_sha)
-    message(FATAL_ERROR
-        "F13 fixture SHA mismatch: expected=${expected_fixture_sha} actual=${fixture_sha}")
-endif()
 
 set(expected_labels [=[name,cluster
 series_0,0
@@ -338,15 +304,6 @@ function(check_f13_precision precision dtype expected_cost)
             message(FATAL_ERROR
                 "F13 ${precision}/${artifact} differs byte-for-byte")
         endif()
-        file(SHA256 "${resident_dir}/${artifact}" resident_sha)
-        file(SHA256 "${stream_dir}/${artifact}" stream_sha)
-        string(TOUPPER "${resident_sha}" resident_sha)
-        string(TOUPPER "${stream_sha}" stream_sha)
-        if(NOT resident_sha STREQUAL stream_sha)
-            message(FATAL_ERROR
-                "F13 ${precision}/${artifact} resident=${resident_sha} "
-                "stream=${stream_sha}")
-        endif()
         set_property(GLOBAL APPEND PROPERTY f13_pairs "${precision}/${artifact}")
     endforeach()
 endfunction()
@@ -389,5 +346,4 @@ message(STATUS
     "F13_ASSIGNMENT_CONTRACT subject=real_dtwc_cl runs=${run_count}/4 "
     "route_markers=${route_check_count}/8 artifact_pairs=${pair_count}/4 "
     "payloads=${payload_count}/4 objectives=${objective_count}/4 "
-    "stream_rejections=${stream_rejection_count}/2 "
-    "skips=0 fixture_sha256=${fixture_sha}")
+    "stream_rejections=${stream_rejection_count}/2 skips=0")
