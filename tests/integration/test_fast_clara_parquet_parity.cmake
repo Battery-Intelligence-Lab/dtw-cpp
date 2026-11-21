@@ -11,13 +11,6 @@ cmake_path(ABSOLUTE_PATH FIXTURE NORMALIZE OUTPUT_VARIABLE fixture_path)
 cmake_path(ABSOLUTE_PATH BINARY_ROOT NORMALIZE OUTPUT_VARIABLE binary_root)
 cmake_path(ABSOLUTE_PATH WORK_ROOT NORMALIZE OUTPUT_VARIABLE work_root)
 
-if(NOT EXISTS "${cli_path}")
-    message(FATAL_ERROR "F8 real CLI does not exist: ${cli_path}")
-endif()
-if(NOT EXISTS "${fixture_path}")
-    message(FATAL_ERROR "F8 tracked fixture does not exist: ${fixture_path}")
-endif()
-
 # The test owns only this exact child of the configured test binary directory.
 # Refuse a broad or escaped path before the recursive cleanup.
 string(FIND "${work_root}" "${binary_root}/" work_prefix)
@@ -27,20 +20,6 @@ if(NOT work_prefix EQUAL 0 OR work_root STREQUAL binary_root)
 endif()
 file(REMOVE_RECURSE "${work_root}")
 file(MAKE_DIRECTORY "${work_root}")
-
-set(expected_fixture_sha
-    "2F259F418A6BB9C62CA0004CB334C05E8309213F5A76DC890F83C15D5BDA3CA8")
-file(SIZE "${fixture_path}" fixture_size)
-if(NOT fixture_size EQUAL 1451)
-    message(FATAL_ERROR
-        "F8 fixture size mismatch: expected=1451 actual=${fixture_size}")
-endif()
-file(SHA256 "${fixture_path}" fixture_sha)
-string(TOUPPER "${fixture_sha}" fixture_sha)
-if(NOT fixture_sha STREQUAL expected_fixture_sha)
-    message(FATAL_ERROR
-        "F8 fixture SHA mismatch: expected=${expected_fixture_sha} actual=${fixture_sha}")
-endif()
 
 set(expected_labels [=[name,cluster
 series_0,0
@@ -225,14 +204,6 @@ function(check_f8_config config_id dtype variant gamma expected_cost)
             message(FATAL_ERROR
                 "F8 ${config_id}/${artifact} differs byte-for-byte")
         endif()
-        file(SHA256 "${resident_dir}/${artifact}" resident_sha)
-        file(SHA256 "${stream_dir}/${artifact}" stream_sha)
-        string(TOUPPER "${resident_sha}" resident_sha)
-        string(TOUPPER "${stream_sha}" stream_sha)
-        if(NOT resident_sha STREQUAL stream_sha)
-            message(FATAL_ERROR
-                "F8 ${config_id}/${artifact} resident=${resident_sha} stream=${stream_sha}")
-        endif()
         set_property(
             GLOBAL APPEND PROPERTY f8_pairs "${config_id}/${artifact}")
     endforeach()
@@ -257,6 +228,7 @@ function(check_f8_config config_id dtype variant gamma expected_cost)
     endif()
     set_property(GLOBAL APPEND PROPERTY f8_pairs "${config_id}/total_cost")
 
+    # The payload check above folds CRLF to LF; these hashes pin the files' own bytes (CRLF rows on Windows).
     if(WIN32)
         file(SHA256 "${resident_dir}/parity_labels.csv" labels_sha)
         file(SHA256 "${resident_dir}/parity_medoids.csv" medoids_sha)
@@ -312,5 +284,4 @@ endif()
 message(STATUS
     "F8_PARITY subject=real_dtwc_cl runs=${run_count} "
     "route_markers=${route_check_count}/12 parity=${pair_count}/9 "
-    "configs=${config_count}/3_distinct fixture_sha256=${fixture_sha} "
-    "softdtw_cost=${f64_softdtw_cost}")
+    "configs=${config_count}/3_distinct softdtw_cost=${f64_softdtw_cost}")

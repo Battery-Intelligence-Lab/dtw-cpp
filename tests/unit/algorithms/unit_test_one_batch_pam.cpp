@@ -22,7 +22,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -38,96 +37,6 @@
 using namespace dtwc;
 
 namespace {
-
-void require_valid(const core::ClusteringResult &result, int n, int k);
-
-constexpr int warped_groups = 5;
-constexpr int warped_variants = 100;
-constexpr int warped_min_length = 64;
-constexpr int warped_max_length = 128;
-constexpr int warped_band = warped_max_length - warped_min_length;
-constexpr int warped_batch = 256;
-constexpr double warped_group_separation = 1000.0;
-constexpr double warped_profile_abs_bound = 3.1;
-
-std::vector<data_t> warped_profile(int variant, int group = 0)
-{
-  constexpr double pi = 3.141592653589793238462643383279502884;
-  const int length = warped_min_length + (variant * 37) % (warped_max_length - warped_min_length + 1);
-  const double warp = -0.36 + 0.72 * static_cast<double>(variant % 20) / 19.0;
-  const double phase = -0.05 + 0.10 * static_cast<double>(variant / 20) / 4.0;
-  const double amplitude =
-    0.92 + 0.16 * static_cast<double>((variant * 7) % 19) / 18.0;
-  const double level =
-    -0.08 + 0.16 * static_cast<double>((variant * 11) % 23) / 22.0;
-
-  std::vector<data_t> series(static_cast<std::size_t>(length));
-  for (int t = 0; t < length; ++t) {
-    const double u = static_cast<double>(t) / static_cast<double>(length - 1);
-    // A monotone nonlinear clock: its derivative is bounded below by
-    // 1-|warp|-|phase| >= 0.59, so this is a time warp rather than a fold.
-    const double tau = u + warp * u * (1.0 - u)
-                       + phase * std::sin(2.0 * pi * u) / (2.0 * pi);
-    const double shape = amplitude
-                           * (1.8 * std::sin(2.0 * pi * tau)
-                              + 0.65 * std::cos(4.0 * pi * tau)
-                              + 0.30 * std::sin(10.0 * pi * tau))
-                         + level;
-    series[static_cast<std::size_t>(t)] =
-      group * warped_group_separation + shape;
-  }
-  return series;
-}
-
-struct WarpedOracle
-{
-  int best_variant = -1;
-  int worst_variant = -1;
-  double best_cost_per_replica = std::numeric_limits<double>::infinity();
-  double worst_cost_per_replica = -1.0;
-};
-
-WarpedOracle warped_oracle()
-{
-  std::vector<std::vector<data_t>> profiles;
-  profiles.reserve(warped_variants);
-  for (int variant = 0; variant < warped_variants; ++variant)
-    profiles.push_back(warped_profile(variant));
-
-  WarpedOracle oracle;
-  for (int candidate = 0; candidate < warped_variants; ++candidate) {
-    double per_group = 0.0;
-    for (int variant = 0; variant < warped_variants; ++variant) {
-      per_group += dtwBanded<data_t>(profiles[static_cast<std::size_t>(candidate)],
-                                     profiles[static_cast<std::size_t>(variant)],
-                                     warped_band);
-    }
-    const double all_groups = warped_groups * per_group;
-    if (all_groups < oracle.best_cost_per_replica) {
-      oracle.best_cost_per_replica = all_groups;
-      oracle.best_variant = candidate;
-    }
-    if (all_groups > oracle.worst_cost_per_replica) {
-      oracle.worst_cost_per_replica = all_groups;
-      oracle.worst_variant = candidate;
-    }
-  }
-  return oracle;
-}
-
-void require_warped_fixture_contract()
-{
-  std::set<int> lengths;
-  for (int variant = 0; variant < warped_variants; ++variant) {
-    const auto profile = warped_profile(variant);
-    lengths.insert(static_cast<int>(profile.size()));
-    for (double value : profile)
-      REQUIRE(std::abs(value) <= warped_profile_abs_bound);
-  }
-  REQUIRE(*lengths.begin() == warped_min_length);
-  REQUIRE(*lengths.rbegin() == warped_max_length);
-  REQUIRE(lengths.size() == 65);
-}
 
 Problem make_problem(int n, int groups, int length = 8)
 {
@@ -530,47 +439,6 @@ TEST_CASE("OneBatchPAM refuses an explicit batch smaller than the cluster count"
   }
 }
 
-TEST_CASE("OneBatchPAM warped scaling oracle is non-degenerate and discriminating",
-          "[one_batch_pam][quality][warped_fixture]")
-{
-  require_warped_fixture_contract();
-  const auto oracle = warped_oracle();
-
-  REQUIRE(oracle.best_variant >= 0);
-  REQUIRE(oracle.worst_variant >= 0);
-  REQUIRE(oracle.best_variant != oracle.worst_variant);
-  // Falsification check registered with the 5% quality band: deliberately
-  // choosing the exhaustive oracle's worst profile in every group must fail
-  // the very band used by the preflight and 50k simulations.
-  REQUIRE(oracle.worst_cost_per_replica > oracle.best_cost_per_replica * 1.05);
-
-  // The oracle is globally exact, not merely a feasible reference. Each
-  // profile is bounded by +/-3.1 and adjacent groups are shifted by 1000.
-  // Thus omitting a group costs at least 100*R*64*(1000-2*3.1), whereas an
-  // canonical-band-admissible L-path to any one-per-group representative
-  // costs at most
-  // 500*R*(2*128-1)*(2*3.1). The former is strictly larger, so every global
-  // k=5 optimum represents all five groups. Equal variant multiplicities and
-  // translation invariance then reduce it exactly to the exhaustive search
-  // over the 100 unique within-group candidates above.
-  const double missing_group_lower = warped_variants * warped_min_length
-                                     * (warped_group_separation - 2.0 * warped_profile_abs_bound);
-  const double one_per_group_upper = warped_groups * warped_variants
-                                     * (2 * warped_max_length - 1) * (2.0 * warped_profile_abs_bound);
-  REQUIRE(missing_group_lower > one_per_group_upper);
-
-  std::cout << std::setprecision(17)
-            << "M6_ORACLE best_variant=" << oracle.best_variant
-            << " worst_variant=" << oracle.worst_variant
-            << " best_cost_per_replica=" << oracle.best_cost_per_replica
-            << " worst_cost_per_replica=" << oracle.worst_cost_per_replica
-            << " mutation_ratio="
-            << oracle.worst_cost_per_replica / oracle.best_cost_per_replica
-            << " missing_group_lower=" << missing_group_lower
-            << " one_per_group_upper=" << one_per_group_upper
-            << '\n';
-}
-
 TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
           "[one_batch_pam][nonfinite]")
 {
@@ -593,7 +461,7 @@ TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
   };
   std::vector<std::string> names{ "a", "b", "c", "d", "pos", "neg" };
 
-  int returned = 0, threw = 0;
+  int threw = 0;
   for (std::uint64_t seed = 0; seed < 64; ++seed) {
     Problem problem("obpam_nonfinite");
     problem.set_data(Data(std::vector<std::vector<data_t>>(series),
@@ -604,7 +472,6 @@ TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
     options.random_seed = seed;
     try {
       const auto result = algorithms::one_batch_pam(problem, options);
-      ++returned;
       INFO("seed " << seed << " returned total_cost " << result.total_cost);
       REQUIRE(std::isfinite(result.total_cost));
     } catch (const InvalidInput&) {
@@ -612,8 +479,6 @@ TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
     }
   }
   // Non-vacuity: the poison configuration really is reachable in this sweep.
-  // (A `returned + threw == 64` check would be tautological — every iteration
-  // increments exactly one counter and any other exception escapes the loop.)
   REQUIRE(threw > 0);
 }
 

@@ -112,19 +112,51 @@ static double lloyd_cost(int N, int k)
 
 
 // ===========================================================================
-// Test 1: FastPAM converges on synthetic data.
+// The invariants of a FastPAM result, on 15 and 12 grouped series (k = 3) and
+// 10 small ones (k = 2): convergence, valid and distinct medoids, labels in
+// [0, k), each medoid in its own cluster, total_cost the recomputed cost.
 // ===========================================================================
-TEST_CASE("FastPAM converges on synthetic data", "[fast_pam][convergence]")
+TEST_CASE("FastPAM result invariants and cost consistency", "[fast_pam]")
 {
-  constexpr int N = 15;
-  constexpr int k = 3;
+  struct Input
+  {
+    bool synthetic;
+    int N;
+    int k;
+  };
+  for (const Input input : { Input{ true, 15, 3 }, Input{ true, 12, 3 }, Input{ false, 10, 2 } }) {
+    const int N = input.N;
+    const int k = input.k;
+    CAPTURE(input.synthetic, N, k);
 
-  Problem prob = make_synthetic_problem(N);
-  auto result = fast_pam(prob, k);
+    Problem prob = input.synthetic ? make_synthetic_problem(N) : make_small_problem(N);
+    const auto result = fast_pam(prob, k);
 
-  REQUIRE(result.converged);
-  REQUIRE(result.iterations < 100);
-  REQUIRE(result.total_cost > 0.0);
+    REQUIRE(result.converged);
+    REQUIRE(result.iterations < 100);
+    REQUIRE(result.total_cost > 0.0);
+
+    REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
+    for (index_t m : result.medoid_indices) {
+      REQUIRE(m >= 0);
+      REQUIRE(m < N);
+    }
+    const std::set<index_t> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
+    REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
+
+    REQUIRE(result.labels.size() == static_cast<size_t>(N));
+    for (index_t label : result.labels) {
+      REQUIRE(label >= 0);
+      REQUIRE(label < k);
+    }
+    for (int c = 0; c < k; ++c)
+      REQUIRE(result.labels[result.medoid_indices[c]] == c);
+
+    double recomputed_cost = 0.0;
+    for (int p = 0; p < N; ++p)
+      recomputed_cost += prob.dist_by_ind(p, result.medoid_indices[result.labels[p]]);
+    REQUIRE_THAT(result.total_cost, WithinAbs(recomputed_cost, 1e-10));
+  }
 }
 
 // ===========================================================================
@@ -135,8 +167,6 @@ TEST_CASE("FastPAM cost <= Lloyd cost", "[fast_pam][quality]")
   constexpr int N = 15;
   constexpr int k = 3;
 
-  // FastPAM uses the same K-means++ init, and both use the same global RNG.
-  // To make a fair comparison, we reset the RNG seed before each.
   dtwc::randGenerator.seed(42);
   Problem prob_fp = make_synthetic_problem(N);
   double fp_cost = fast_pam(prob_fp, k).total_cost;
@@ -147,30 +177,6 @@ TEST_CASE("FastPAM cost <= Lloyd cost", "[fast_pam][quality]")
   // FastPAM should find an equal or better (lower) cost than Lloyd.
   // Allow a small tolerance for floating-point arithmetic.
   REQUIRE(fp_cost <= ll_cost + 1e-9);
-}
-
-// ===========================================================================
-// Test 3: Medoid indices are valid.
-// ===========================================================================
-TEST_CASE("FastPAM medoid indices are valid", "[fast_pam][medoids]")
-{
-  constexpr int N = 12;
-  constexpr int k = 3;
-
-  Problem prob = make_synthetic_problem(N);
-  auto result = fast_pam(prob, k);
-
-  REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
-
-  // All medoid indices must be in [0, N).
-  for (index_t m : result.medoid_indices) {
-    REQUIRE(m >= 0);
-    REQUIRE(m < N);
-  }
-
-  // All medoid indices must be distinct.
-  std::set<index_t> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
-  REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
 }
 
 TEST_CASE("seeded FastPAM BUILD samples proportional to k-median distance",
@@ -278,43 +284,6 @@ TEST_CASE("seeded FastPAM completes the medoid set when all weights are zero",
 }
 
 // ===========================================================================
-// Test 4: Labels are in [0, k).
-// ===========================================================================
-TEST_CASE("FastPAM labels are in valid range", "[fast_pam][labels]")
-{
-  constexpr int N = 12;
-  constexpr int k = 3;
-
-  Problem prob = make_synthetic_problem(N);
-  auto result = fast_pam(prob, k);
-
-  REQUIRE(result.labels.size() == static_cast<size_t>(N));
-
-  for (index_t label : result.labels) {
-    REQUIRE(label >= 0);
-    REQUIRE(label < k);
-  }
-}
-
-// ===========================================================================
-// Test 5: Convergence flag is set when iterations < max_iter.
-// ===========================================================================
-TEST_CASE("FastPAM convergence flag matches iteration count", "[fast_pam][convergence_flag]")
-{
-  constexpr int N = 10;
-  constexpr int k = 2;
-
-  Problem prob = make_small_problem(N);
-  auto result = fast_pam(prob, k, 200);
-
-  if (result.converged) {
-    REQUIRE(result.iterations < 200);
-  } else {
-    REQUIRE(result.iterations == 200);
-  }
-}
-
-// ===========================================================================
 // Test 6: k=1 produces a single cluster with all points.
 // ===========================================================================
 TEST_CASE("FastPAM k=1 assigns all points to one cluster", "[fast_pam][k1]")
@@ -352,45 +321,6 @@ TEST_CASE("FastPAM k=N makes every point a medoid", "[fast_pam][kN]")
   // Every point should be a medoid.
   std::set<index_t> medoid_set(result.medoid_indices.begin(), result.medoid_indices.end());
   REQUIRE(medoid_set.size() == static_cast<size_t>(N));
-}
-
-// ===========================================================================
-// Test 8: Each medoid is assigned to its own cluster.
-// ===========================================================================
-TEST_CASE("FastPAM medoids are assigned to their own cluster", "[fast_pam][self_assignment]")
-{
-  constexpr int N = 12;
-  constexpr int k = 3;
-
-  Problem prob = make_synthetic_problem(N);
-  auto result = fast_pam(prob, k);
-
-  // For each medoid m at index medoid_indices[c], its label should be c.
-  for (int c = 0; c < k; ++c) {
-    index_t medoid_point = result.medoid_indices[c];
-    REQUIRE(result.labels[medoid_point] == c);
-  }
-}
-
-// ===========================================================================
-// Test 9: Total cost matches sum of nearest-medoid distances.
-// ===========================================================================
-TEST_CASE("FastPAM total_cost matches recomputed cost", "[fast_pam][cost_consistency]")
-{
-  constexpr int N = 10;
-  constexpr int k = 2;
-
-  Problem prob = make_small_problem(N);
-  auto result = fast_pam(prob, k);
-
-  // Recompute total cost from labels and medoid_indices.
-  double recomputed_cost = 0.0;
-  for (int p = 0; p < N; ++p) {
-    index_t medoid = result.medoid_indices[result.labels[p]];
-    recomputed_cost += prob.dist_by_ind(p, medoid);
-  }
-
-  REQUIRE_THAT(result.total_cost, WithinAbs(recomputed_cost, 1e-10));
 }
 
 // ===========================================================================

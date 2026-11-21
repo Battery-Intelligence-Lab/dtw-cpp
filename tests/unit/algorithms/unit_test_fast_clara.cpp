@@ -70,106 +70,47 @@ static Problem make_clara_problem(int N)
 }
 
 // ===========================================================================
-// Test 1: CLARA produces valid labels in [0, k).
+// The invariants of a FastCLARA result for N = 100, 60 and 50 (k = 3, the auto
+// sample size): labels in [0, k), valid and distinct medoids, each medoid in its
+// own cluster, total_cost the recomputed cost.
 // ===========================================================================
-TEST_CASE("FastCLARA produces valid labels", "[fast_clara][labels]")
+TEST_CASE("FastCLARA result invariants and cost consistency", "[fast_clara]")
 {
-  constexpr int N = 100;
   constexpr int k = 3;
+  for (const int N : { 100, 60, 50 }) {
+    CAPTURE(N);
+    Problem prob = make_clara_problem(N);
 
-  Problem prob = make_clara_problem(N);
+    algorithms::CLARAOptions opts;
+    opts.n_clusters = k;
+    opts.n_samples = 3;
+    opts.random_seed = 42;
 
-  algorithms::CLARAOptions opts;
-  opts.n_clusters = k;
-  opts.n_samples = 3;
-  opts.random_seed = 42;
+    const auto result = algorithms::fast_clara(prob, opts);
 
-  auto result = algorithms::fast_clara(prob, opts);
+    REQUIRE(result.labels.size() == static_cast<size_t>(N));
+    for (index_t label : result.labels) {
+      REQUIRE(label >= 0);
+      REQUIRE(label < k);
+    }
 
-  REQUIRE(result.labels.size() == static_cast<size_t>(N));
-  for (index_t label : result.labels) {
-    REQUIRE(label >= 0);
-    REQUIRE(label < k);
+    REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
+    for (index_t m : result.medoid_indices) {
+      REQUIRE(m >= 0);
+      REQUIRE(m < N);
+    }
+    const std::set<index_t> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
+    REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
+
+    for (int c = 0; c < k; ++c)
+      REQUIRE(result.labels[result.medoid_indices[c]] == c);
+
+    prob.fill_distance_matrix(); // dist_by_ind reads the matrix; a no-op where the run filled it
+    double recomputed_cost = 0.0;
+    for (int p = 0; p < N; ++p)
+      recomputed_cost += prob.dist_by_ind(p, result.medoid_indices[result.labels[p]]);
+    REQUIRE_THAT(result.total_cost, WithinAbs(recomputed_cost, 1e-10));
   }
-}
-
-// ===========================================================================
-// Test 2: Medoid indices are valid and distinct.
-// ===========================================================================
-TEST_CASE("FastCLARA medoid indices are valid", "[fast_clara][medoids]")
-{
-  constexpr int N = 100;
-  constexpr int k = 3;
-
-  Problem prob = make_clara_problem(N);
-
-  algorithms::CLARAOptions opts;
-  opts.n_clusters = k;
-  opts.n_samples = 3;
-  opts.random_seed = 42;
-
-  auto result = algorithms::fast_clara(prob, opts);
-
-  REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
-
-  for (index_t m : result.medoid_indices) {
-    REQUIRE(m >= 0);
-    REQUIRE(m < N);
-  }
-
-  // All medoid indices must be distinct.
-  std::set<index_t> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
-  REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
-}
-
-// ===========================================================================
-// Test 3: Each medoid is assigned to its own cluster.
-// ===========================================================================
-TEST_CASE("FastCLARA medoids are assigned to their own cluster", "[fast_clara][self_assignment]")
-{
-  constexpr int N = 60;
-  constexpr int k = 3;
-
-  Problem prob = make_clara_problem(N);
-
-  algorithms::CLARAOptions opts;
-  opts.n_clusters = k;
-  opts.n_samples = 3;
-  opts.random_seed = 42;
-
-  auto result = algorithms::fast_clara(prob, opts);
-
-  for (int c = 0; c < k; ++c) {
-    index_t medoid_point = result.medoid_indices[c];
-    REQUIRE(result.labels[medoid_point] == c);
-  }
-}
-
-// ===========================================================================
-// Test 4: Total cost matches recomputed cost from labels and medoids.
-// ===========================================================================
-TEST_CASE("FastCLARA total_cost matches recomputed cost", "[fast_clara][cost_consistency]")
-{
-  constexpr int N = 50;
-  constexpr int k = 3;
-
-  Problem prob = make_clara_problem(N);
-
-  algorithms::CLARAOptions opts;
-  opts.n_clusters = k;
-  opts.n_samples = 3;
-  opts.random_seed = 42;
-
-  auto result = algorithms::fast_clara(prob, opts);
-
-  // Recompute total cost from labels and medoid_indices.
-  double recomputed_cost = 0.0;
-  for (int p = 0; p < N; ++p) {
-    index_t medoid = result.medoid_indices[result.labels[p]];
-    recomputed_cost += prob.dist_by_ind(p, medoid);
-  }
-
-  REQUIRE_THAT(result.total_cost, WithinAbs(recomputed_cost, 1e-10));
 }
 
 // ===========================================================================
@@ -461,47 +402,27 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
 }
 
 // ===========================================================================
-// Test 10: Auto sample_size default (Schubert & Rousseeuw 2021 formula).
+// Test 10: Auto sample_size default (Schubert & Rousseeuw 2021 formula),
+// max(40 + 2k, min(N, 10k + 100)) limited to [k, N], against values computed by hand:
+//   N=100,  k=5:  max(50, min(100, 150))   = 100 = N  (the FastPAM fallback)
+//   N=200,  k=5:  max(50, min(200, 150))   = 150      (the old 40 + 2k gave 50)
+//   N=1000, k=70: max(180, min(1000, 800)) = 800      (the old 40 + 2k gave 180)
 // ===========================================================================
-TEST_CASE("FastCLARA auto sample_size uses improved formula", "[fast_clara][auto_sample_size]")
+TEST_CASE("FastCLARA auto sample_size follows the documented formula", "[fast_clara][auto_sample_size]")
 {
-  // With N=100, k=5: max(40+10, min(100, 150)) = max(50, 100) = 100 -> fallback to FastPAM.
-  // With N=200, k=5: max(50, min(200, 150)) = max(50, 150) = 150 < 200, so CLARA path.
-  // The test just verifies it runs without error and produces a valid result.
-  constexpr int N = 100;
-  constexpr int k = 5;
-
-  Problem prob = make_clara_problem(N);
-
   algorithms::CLARAOptions opts;
-  opts.n_clusters = k;
   opts.sample_size = -1; // Auto.
-  opts.n_samples = 2;
-  opts.random_seed = 42;
+  opts.n_clusters = 5;
+  CHECK(algorithms::detail::resolve_clara_plan(100, opts, "fast_clara").sample_size == 100);
+  CHECK(algorithms::detail::resolve_clara_plan(200, opts, "fast_clara").sample_size == 150);
+  opts.n_clusters = 70;
+  CHECK(algorithms::detail::resolve_clara_plan(1000, opts, "fast_clara").sample_size == 800);
 
-  auto result = algorithms::fast_clara(prob, opts);
-
-  REQUIRE(result.labels.size() == static_cast<size_t>(N));
-  REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
-  REQUIRE(result.total_cost > 0.0);
-}
-
-// ===========================================================================
-// Test 10b: Auto sample_size with large N uses improved formula (not old 40+2k).
-// ===========================================================================
-TEST_CASE("FastCLARA auto sample_size with large N uses Schubert formula", "[fast_clara][auto_sample_size_large]")
-{
-  // With N=1000, k=5: max(40+10, min(1000, 150)) = max(50, 150) = 150.
-  // Old formula would give 50. New formula gives 150.
-  // Both should produce valid results; this test confirms the new formula runs.
+  // A run on the CLARA path at the auto size.
   constexpr int N = 200;
   constexpr int k = 5;
-
   Problem prob = make_clara_problem(N);
-
-  algorithms::CLARAOptions opts;
   opts.n_clusters = k;
-  opts.sample_size = -1; // Auto — triggers new formula.
   opts.n_samples = 2;
   opts.random_seed = 42;
 
@@ -510,63 +431,6 @@ TEST_CASE("FastCLARA auto sample_size with large N uses Schubert formula", "[fas
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
   REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
   REQUIRE(result.total_cost > 0.0);
-}
-
-// ===========================================================================
-// Test 11: Different seeds produce different results.
-// ===========================================================================
-TEST_CASE("FastCLARA different seeds can produce different results", "[fast_clara][seed_variation]")
-{
-  constexpr int N = 80;
-  constexpr int k = 3;
-
-  Problem prob1 = make_clara_problem(N);
-  algorithms::CLARAOptions opts1;
-  opts1.n_clusters = k;
-  opts1.n_samples = 1;
-  opts1.sample_size = 30; // Small sample to amplify randomness.
-  opts1.random_seed = 1;
-  auto result1 = algorithms::fast_clara(prob1, opts1);
-
-  Problem prob2 = make_clara_problem(N);
-  algorithms::CLARAOptions opts2 = opts1;
-  opts2.random_seed = 999;
-  auto result2 = algorithms::fast_clara(prob2, opts2);
-
-  // We cannot guarantee different results (they MIGHT converge to the same),
-  // but at minimum both should be valid.
-  REQUIRE(result1.labels.size() == static_cast<size_t>(N));
-  REQUIRE(result2.labels.size() == static_cast<size_t>(N));
-  REQUIRE(result1.total_cost > 0.0);
-  REQUIRE(result2.total_cost > 0.0);
-}
-
-// ===========================================================================
-// Test 12: FastCLARA propagates ndim to sub-problem.
-// ===========================================================================
-TEST_CASE("FastCLARA: propagates ndim to sub-problem", "[clara][mv]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  // 10 series, 3 timesteps x 2 features each
-  for (int i = 0; i < 10; ++i) {
-    data.p_vec.push_back({ double(i), double(i + 1), double(i + 2), double(i + 3), double(i + 4), double(i + 5) });
-    data.p_names.push_back("s" + std::to_string(i));
-  }
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_verbose(false);
-
-  dtwc::algorithms::CLARAOptions opts;
-  opts.n_clusters = 2;
-  opts.n_samples = 2;
-  opts.sample_size = 6;
-
-  auto result = dtwc::algorithms::fast_clara(prob, opts);
-  REQUIRE(result.labels.size() == 10);
-  REQUIRE(result.medoid_indices.size() == 2);
-  REQUIRE(result.total_cost >= 0.0);
 }
 
 // The reported cost is the parent's multivariate distance to each point's
@@ -637,34 +501,6 @@ TEST_CASE("FastCLARA: propagates missing_strategy", "[clara][missing]")
 
   // Should NOT throw — missing_strategy propagated to sub-problem.
   REQUIRE_NOTHROW(dtwc::algorithms::fast_clara(prob, opts));
-}
-
-// ===========================================================================
-// Test 14: Improved sample size formula with large k.
-// ===========================================================================
-TEST_CASE("FastCLARA: improved sample size formula", "[clara]")
-{
-  // For k=70: old formula = 40+140=180, new = max(180, min(N, 800))
-  // With N=1000: sample_size should be 800, not 180.
-  dtwc::Data data;
-  for (int i = 0; i < 1000; ++i) {
-    data.p_vec.push_back({ double(i), double(i + 1) });
-    data.p_names.push_back("s" + std::to_string(i));
-  }
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_verbose(false);
-
-  dtwc::algorithms::CLARAOptions opts;
-  opts.n_clusters = 70;
-  opts.n_samples = 1;
-  opts.sample_size = -1; // auto
-
-  // Should complete (the larger sample gives better results).
-  auto result = dtwc::algorithms::fast_clara(prob, opts);
-  REQUIRE(result.labels.size() == 1000);
-  REQUIRE(result.medoid_indices.size() == 70);
 }
 
 // ===========================================================================

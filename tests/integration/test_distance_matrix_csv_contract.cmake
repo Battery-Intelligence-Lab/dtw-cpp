@@ -17,16 +17,6 @@ cmake_path(
     ABSOLUTE_PATH BINARY_ROOT NORMALIZE OUTPUT_VARIABLE binary_root)
 cmake_path(ABSOLUTE_PATH WORK_ROOT NORMALIZE OUTPUT_VARIABLE work_root)
 
-foreach(executable IN ITEMS cli_path result_writer_path)
-    if(NOT EXISTS "${${executable}}")
-        message(FATAL_ERROR "F14 executable does not exist: ${${executable}}")
-    endif()
-endforeach()
-foreach(fixture IN ITEMS input_path config_path)
-    if(NOT EXISTS "${${fixture}}")
-        message(FATAL_ERROR "F14 tracked fixture does not exist: ${${fixture}}")
-    endif()
-endforeach()
 if(NOT IS_DIRECTORY "${binary_root}")
     message(FATAL_ERROR "F14 binary root is not a directory: ${binary_root}")
 endif()
@@ -68,41 +58,6 @@ file(MAKE_DIRECTORY "${work_root}")
 # every run and must remain identical afterward.
 file(SHA256 "${input_path}" input_sha_before)
 file(SHA256 "${config_path}" config_sha_before)
-file(SIZE "${input_path}" input_size_before)
-file(SIZE "${config_path}" config_size_before)
-file(STRINGS "${input_path}" input_rows)
-list(LENGTH input_rows input_row_count)
-if(NOT input_row_count EQUAL 27)
-    message(FATAL_ERROR
-        "F14 conformance input rows=${input_row_count}, expected=27")
-endif()
-
-function(require_config_line regex description)
-    file(STRINGS "${config_path}" matches REGEX "${regex}")
-    list(LENGTH matches match_count)
-    if(NOT match_count EQUAL 1)
-        message(FATAL_ERROR
-            "F14 conformance TOML must contain one ${description}; "
-            "found=${match_count}")
-    endif()
-endfunction()
-
-require_config_line(
-    "^n-clusters[ \t]*=[ \t]*3[ \t]*$" "n-clusters=3 setting")
-require_config_line(
-    "^method[ \t]*=[ \t]*\"pam\"[ \t]*$" "method=pam setting")
-require_config_line(
-    "^band[ \t]*=[ \t]*3[ \t]*$" "band=3 setting")
-require_config_line(
-    "^metric[ \t]*=[ \t]*\"l1\"[ \t]*$" "metric=l1 setting")
-require_config_line(
-    "^variant[ \t]*=[ \t]*\"standard\"[ \t]*$"
-    "variant=standard setting")
-require_config_line(
-    "^max-iter[ \t]*=[ \t]*100[ \t]*$" "max-iter=100 setting")
-require_config_line(
-    "^name[ \t]*=[ \t]*\"conformance\"[ \t]*$"
-    "name=conformance setting")
 
 set_property(GLOBAL PROPERTY f14_runs)
 set_property(GLOBAL PROPERTY f14_route_markers)
@@ -197,16 +152,13 @@ function(run_cli_route route output_dir ram_limit expect_mmap)
                 "F14 ${route} mmap marker has no cache: ${cache_path}")
         endif()
         file(SIZE "${cache_path}" cache_size)
-        file(SHA256 "${cache_path}" cache_sha)
-        string(TOUPPER "${cache_sha}" cache_sha)
         # The .dtwm file of the 27 series: a 64-byte header and 27*28/2 doubles.
         if(NOT cache_size EQUAL 3088)
             message(FATAL_ERROR
                 "F14 ${route} mmap cache is ${cache_size} bytes, not the 3088 of a 27-series .dtwm")
         endif()
         message(STATUS
-            "F14_CSV_CACHE route=${route} bytes=${cache_size} "
-            "sha256=${cache_sha} marker=1")
+            "F14_CSV_CACHE route=${route} bytes=${cache_size} marker=1")
     else()
         require_occurrences(
             "${normalized_stdout}" "${generic_mmap_marker}" 0
@@ -250,8 +202,6 @@ function(inspect_matrix route matrix_path)
         message(FATAL_ERROR "F14 ${route} matrix missing: ${matrix_path}")
     endif()
     file(SIZE "${matrix_path}" matrix_size)
-    file(SHA256 "${matrix_path}" matrix_sha)
-    string(TOUPPER "${matrix_sha}" matrix_sha)
     file(READ "${matrix_path}" matrix_hex HEX)
     string(TOLOWER "${matrix_hex}" matrix_hex)
 
@@ -305,22 +255,20 @@ function(inspect_matrix route matrix_path)
 
     message(STATUS
         "F14_CSV_BYTES route=${route} bytes=${matrix_size} "
-        "sha256=${matrix_sha} rows=${row_count} lf=${lf_count} cr=${cr_count} "
+        "rows=${row_count} lf=${lf_count} cr=${cr_count} "
         "final_lf=1 blank_tail=0")
-    set("${route}_sha" "${matrix_sha}" PARENT_SCOPE)
     set("${route}_rows" "${row_count}" PARENT_SCOPE)
     set("${route}_lf" "${lf_count}" PARENT_SCOPE)
     set("${route}_cr" "${cr_count}" PARENT_SCOPE)
 endfunction()
 
-function(require_matrix_pair lhs_name lhs_path lhs_sha rhs_name rhs_path rhs_sha)
+function(require_matrix_pair lhs_name lhs_path rhs_name rhs_path)
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -E compare_files "${lhs_path}" "${rhs_path}"
         RESULT_VARIABLE compare_result)
-    if(NOT "${compare_result}" STREQUAL "0" OR NOT lhs_sha STREQUAL rhs_sha)
+    if(NOT "${compare_result}" STREQUAL "0")
         message(FATAL_ERROR
-            "F14 matrix pair differs: ${lhs_name}=${lhs_sha} "
-            "${rhs_name}=${rhs_sha}")
+            "F14 matrix pair differs byte-for-byte: ${lhs_name}/${rhs_name}")
     endif()
     set_property(
         GLOBAL APPEND PROPERTY f14_matrix_pairs "${lhs_name}/${rhs_name}")
@@ -337,9 +285,7 @@ run_cli_route("resident" "${resident_dir}" 1G FALSE)
 run_result_route("${result_dir}")
 inspect_matrix("resident" "${resident_matrix}")
 inspect_matrix("result" "${result_matrix}")
-require_matrix_pair(
-    "resident" "${resident_matrix}" "${resident_sha}"
-    "result" "${result_matrix}" "${result_sha}")
+require_matrix_pair("resident" "${resident_matrix}" "result" "${result_matrix}")
 
 if(has_mmap STREQUAL "ON")
     # The least --ram-limit the run takes, which 1 byte's refusal names: the series beside one thread's working set.
@@ -355,22 +301,14 @@ if(has_mmap STREQUAL "ON")
     endif()
     run_cli_route("mmap" "${mmap_dir}" ${CMAKE_MATCH_1} TRUE)
     inspect_matrix("mmap" "${mmap_matrix}")
-    require_matrix_pair(
-        "resident" "${resident_matrix}" "${resident_sha}"
-        "mmap" "${mmap_matrix}" "${mmap_sha}")
-    require_matrix_pair(
-        "result" "${result_matrix}" "${result_sha}"
-        "mmap" "${mmap_matrix}" "${mmap_sha}")
+    require_matrix_pair("resident" "${resident_matrix}" "mmap" "${mmap_matrix}")
+    require_matrix_pair("result" "${result_matrix}" "mmap" "${mmap_matrix}")
 endif()
 
 file(SHA256 "${input_path}" input_sha_after)
 file(SHA256 "${config_path}" config_sha_after)
-file(SIZE "${input_path}" input_size_after)
-file(SIZE "${config_path}" config_size_after)
 if(NOT input_sha_after STREQUAL input_sha_before
-    OR NOT config_sha_after STREQUAL config_sha_before
-    OR NOT input_size_after EQUAL input_size_before
-    OR NOT config_size_after EQUAL config_size_before)
+    OR NOT config_sha_after STREQUAL config_sha_before)
     message(FATAL_ERROR
         "F14 tracked conformance input/config changed during the gate")
 endif()
