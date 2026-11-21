@@ -28,17 +28,8 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 
 #include "../../dtwc/dtwc.hpp"
 #include "../../dtwc/cli/run.hpp" // dtwc::run_name: the name a run gives its files
-#include "../../dtwc/algorithms/fast_pam.hpp"
-#include "../../dtwc/algorithms/fast_clara.hpp"
-#include "../../dtwc/algorithms/hierarchical.hpp"
-#include "../../dtwc/scores.hpp"
-#include "../../dtwc/core/z_normalize.hpp"
-#include "../../dtwc/warping_ddtw.hpp"
-#include "../../dtwc/soft_dtw.hpp"
 #include "../../dtwc/base/env.hpp"       // detail::parse_device: the device-name grammar
 #include "../../dtwc/base/error.hpp"     // dtwc::InvalidInput/SolverError/DeviceError/IOError
-#include "../../dtwc/checkpoint.hpp"     // save/load_checkpoint
-#include "../../dtwc/core/matrix_io.hpp" // refuse_float32_range
 #include "../../dtwc/test_api.hpp"       // dtwc::test::parallelisation()/gpu()
 #include "../../dtwc/base/names.hpp"     // parse_name over the C++ name tables
 
@@ -87,9 +78,7 @@ public:
 
   static void destroy(uint64_t h)
   {
-    auto it = map_.find(h);
-    if (it != map_.end())
-      map_.erase(it);
+    map_.erase(h);
   }
 
   static void drain()
@@ -104,14 +93,8 @@ template <typename T>
 uint64_t HandleManager<T>::counter_ = 0;
 
 // =========================================================================
-//  Input validation guards
-//
-//  In the R2018a+ interleaved-complex API, mxGetDoubles() returns NULL when the
-//  array is not a REAL DOUBLE (int32/single/logical/char, complex, or sparse), and
-//  a NULL data pointer would crash MATLAB in the DTW kernels. So every entry point
-//  validates class / complexity / shape BEFORE any data-pointer access and throws
-//  std::invalid_argument, which mexFunction maps to
-//  mexErrMsgIdAndTxt("dtwc:invalidArgument", ...).
+//  Input validation guards (throw std::invalid_argument -> dtwc:invalidArgument
+//  before mxGetDoubles/mxGetSingles, which return NULL on the wrong class)
 // =========================================================================
 
 /// Require an argument that is present, real and full (non-sparse): what every numeric
@@ -1693,43 +1676,20 @@ static const dtwc::Result &stored_result(const mxArray *handle)
   return *HandleManager<dtwc::Result>::get(get_handle(handle));
 }
 
-/// run(source, names, skip_cols, skip_rows, delimiter, dtype, name, k, Name, Value, ...) -> struct {handle, labels,
-/// medoids, cost, device, name, report}: dtwc::run, the run dtwc_cl makes, without its files (output cleared:
-/// Config::output is "./results"; Result_save writes them). `source` is a path C++ reads (CSV/TSV text, a folder of
-/// it or an Arrow IPC file, which the run's memory plan may stream through FastCLARA) with its reader options, and
-/// `names` {}; or series in memory (Parquet that parquetread read, or arrays), an N x L matrix or a cell of vectors as
-/// Problem_set_data takes them (of class double, or single for dtype 'float32'), named by `names` ({}: 0, 1, ...),
-/// skip_cols and skip_rows 0 and delimiter '' (the run refuses a reader option beside series in memory). k and the
-/// keys are dtwc.cluster's (config_keys); the device is dtwc.device()'s unless Device names one; the run is named
-/// Name, else `name` (the Dataset's), else as dtwc_cl names it (run_name). dtwc::apply checks every key on a Problem
-/// of no series before anything is read, so a bad value reads as apply says it, whatever the input (run's own check
-/// would name dtwc_cl's flags). The Result is stored under a handle before any output is made; the labels and
-/// medoids come back 1-based, the device as device_text writes it, the report '' under NoReport. MIP and LR-core's
-/// Kelley root solve on the HiGHS this MEX links: no external solver.
-static void cmd_run(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+/// The run of cmd_run and cmd_run_workflow: dtwc::run of `config` on the path source_mx names, or on the series in
+/// memory it holds (named by names_mx), its Result stored under a handle, and the struct both return.
+static mxArray *execute_mex_run(dtwc::Config &config, const mxArray *source_mx, const mxArray *names_mx,
+                                const mxArray *ndim_mx, const char *path_names_err)
 {
-  if (nrhs < 9)
-    throw std::invalid_argument("run requires a source, names, skip_cols, skip_rows, delimiter, dtype, a name and k.");
-  dtwc::Config config = read_keys(config_keys, "key", config_defaults(prhs[8]), nrhs, prhs, 9);
-  {
-    dtwc::Problem settings; // holds no series: apply only checks the keys
-    dtwc::apply(config, settings);
-  }
-  if (config.name.empty()) config.name = optional_string(nrhs, prhs, 7, "name");
-  config.dtype = optional_dtype(nrhs, prhs, 6);
-  config.skip_cols = get_exact_int<dtwc::index_t>(prhs[3], "skip_cols");
-  config.skip_rows = get_exact_int<dtwc::index_t>(prhs[4], "skip_rows");
-  config.delimiter = parse_delimiter(optional_string(nrhs, prhs, 5, "delimiter"));
-  config.output.clear();
   std::optional<dtwc::Data> data;
-  if (mxIsChar(prhs[1])) {
-    if (!mxIsEmpty(prhs[2]))
-      throw std::invalid_argument("run: names name series in memory; a path's series are named by its reader, so pass {}.");
-    config.input = get_string(prhs[1]);
+  if (mxIsChar(source_mx)) {
+    if (!mxIsEmpty(names_mx))
+      throw std::invalid_argument(path_names_err);
+    config.input = get_string(source_mx);
   } else if (config.dtype == dtwc::core::Precision::Float32) {
-    data = series_data<float>(prhs[1], prhs[2], nullptr);
+    data = series_data<float>(source_mx, names_mx, ndim_mx);
   } else {
-    data = series_data<double>(prhs[1], prhs[2], nullptr);
+    data = series_data<double>(source_mx, names_mx, ndim_mx);
   }
   const uint64_t handle =
     HandleManager<dtwc::Result>::create(std::make_shared<dtwc::Result>(dtwc::detail::run(config, std::move(data), {})));
@@ -1745,7 +1705,41 @@ static void cmd_run(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   mxSetField(out, 0, "device", mxCreateString(result.device().c_str()));
   mxSetField(out, 0, "name", mxCreateString(name.c_str()));
   mxSetField(out, 0, "report", mxCreateString(result.report().c_str()));
-  plhs[0] = out;
+  return out;
+}
+
+/// run(source, names, skip_cols, skip_rows, delimiter, dtype, name, k, Name, Value, ...) -> struct {handle, labels,
+/// medoids, cost, device, name, report}: dtwc::run, the run dtwc_cl makes, without its files (output cleared:
+/// Config::output is "./results"; Result_save writes them). `source` is a path C++ reads (CSV/TSV text, a folder of
+/// it or an Arrow IPC file, which the run's memory plan may stream through FastCLARA) with its reader options, and
+/// `names` {}; or series in memory (Parquet that parquetread read, or arrays), an N x L matrix or a cell of vectors as
+/// Problem_set_data takes them (of class double, or single for dtype 'float32'), named by `names` ({}: 0, 1, ...),
+/// skip_cols and skip_rows 0 and delimiter '' (the run refuses a reader option beside series in memory). k and the
+/// keys are dtwc.cluster's (config_keys); the device is dtwc.device()'s unless Device names one; the run is named
+/// Name, else `name` (the Dataset's), else as dtwc_cl names it (run_name). dtwc::apply checks every key on a Problem
+/// of no series before anything is read, so a bad value reads as apply says it, whatever the input (run's own check
+/// would name dtwc_cl's flags). The Result is stored under a handle before any output is made; the labels and
+/// medoids come back 1-based, the device as device_text writes it, the report '' under NoReport. MIP and LR-core's
+/// Kelley root solve on the HiGHS this MEX links: no external solver.
+static void cmd_run(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+{
+  (void)nlhs;
+  if (nrhs < 9)
+    throw std::invalid_argument("run requires a source, names, skip_cols, skip_rows, delimiter, dtype, a name and k.");
+  dtwc::Config config = read_keys(config_keys, "key", config_defaults(prhs[8]), nrhs, prhs, 9);
+  {
+    dtwc::Problem settings; // holds no series: apply only checks the keys
+    dtwc::apply(config, settings);
+  }
+  if (config.name.empty()) config.name = optional_string(nrhs, prhs, 7, "name");
+  config.dtype = optional_dtype(nrhs, prhs, 6);
+  config.skip_cols = get_exact_int<dtwc::index_t>(prhs[3], "skip_cols");
+  config.skip_rows = get_exact_int<dtwc::index_t>(prhs[4], "skip_rows");
+  config.delimiter = parse_delimiter(optional_string(nrhs, prhs, 5, "delimiter"));
+  config.output.clear();
+  plhs[0] = execute_mex_run(
+    config, prhs[1], prhs[2], nullptr,
+    "run: names name series in memory; a path's series are named by its reader, so pass {}.");
 }
 
 /// run_workflow(source, names, ndim, skip_cols, skip_rows, delimiter, dtype, name, output, checkpoint, checkpoint_interval, k, Name, Value, ...)
@@ -1767,30 +1761,9 @@ static void cmd_run_workflow(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
   config.output = optional_string(nrhs, prhs, 9, "output");
   config.checkpoint = optional_string(nrhs, prhs, 10, "checkpoint");
   config.checkpoint_interval = get_exact_int(prhs[11], "checkpoint_interval");
-  std::optional<dtwc::Data> data;
-  if (mxIsChar(prhs[1])) {
-    if (!mxIsEmpty(prhs[2]))
-      throw std::invalid_argument("run_workflow: names name series in memory; pass {} for a path.");
-    config.input = get_string(prhs[1]);
-  } else if (config.dtype == dtwc::core::Precision::Float32) {
-    data = series_data<float>(prhs[1], prhs[2], prhs[3]);
-  } else {
-    data = series_data<double>(prhs[1], prhs[2], prhs[3]);
-  }
-  const uint64_t handle =
-    HandleManager<dtwc::Result>::create(std::make_shared<dtwc::Result>(dtwc::detail::run(config, std::move(data), {})));
-  const std::string name = dtwc::run_name(config);
-  const dtwc::Result &result = *HandleManager<dtwc::Result>::get(handle);
-  const char *fields[] = { "handle", "labels", "medoids", "cost", "device", "name", "report" };
-  mxArray *out = mxCreateStructMatrix(1, 1, 7, fields);
-  mxSetField(out, 0, "handle", handle_to_mx(handle));
-  mxSetField(out, 0, "labels", ivec_to_mx_1based(result.labels()));
-  mxSetField(out, 0, "medoids", ivec_to_mx_1based(result.medoids()));
-  mxSetField(out, 0, "cost", mxCreateDoubleScalar(result.cost()));
-  mxSetField(out, 0, "device", mxCreateString(result.device().c_str()));
-  mxSetField(out, 0, "name", mxCreateString(name.c_str()));
-  mxSetField(out, 0, "report", mxCreateString(result.report().c_str()));
-  plhs[0] = out;
+  plhs[0] = execute_mex_run(
+    config, prhs[1], prhs[2], prhs[3],
+    "run_workflow: names name series in memory; pass {} for a path.");
 }
 
 /// Result_score(handle, name) -> scalar: the run's Result::score, the score scores::score names. A streamed run holds
@@ -2086,11 +2059,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
       throw std::invalid_argument("Unknown command: '" + cmd + "'.");
     }
   }
-  // Error taxonomy: map the dtwc leaf types FIRST, then keep the
-  // std fallbacks below them. dtwc::InvalidInput/SolverError/DeviceError/IOError all
-  // derive from dtwc::Error : std::runtime_error, so they MUST be caught before
-  // std::runtime_error. std::invalid_argument (what the require_* guards throw) maps
-  // to dtwc:invalidArgument, as dtwc::InvalidInput does.
+  // Catch dtwc::Error leaf types before std::runtime_error, from which they derive.
   catch (const dtwc::InvalidInput &e) {
     error_id = "dtwc:invalidArgument";
     std::snprintf(error_msg, sizeof error_msg, "%s", e.what());

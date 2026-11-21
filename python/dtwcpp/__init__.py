@@ -50,7 +50,7 @@ from dtwcpp._dtwcpp_core import (
     CLARAOptions,
     build_dendrogram,
     cut_dendrogram,
-    # Scores (canonical 2.0 names)
+    # Scores
     score,
     silhouette,
     davies_bouldin,
@@ -321,7 +321,6 @@ __all__ = [
     "fast_pam", "fast_clara", "CLARAOptions", "one_batch_pam",
     "dtw_barycenter", "barycenter_kmeans",
     "build_dendrogram", "cut_dendrogram",
-    # Scores (canonical 2.0 names)
     "score", "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
     "derivative_transform", "z_normalize",
