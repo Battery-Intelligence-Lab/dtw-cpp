@@ -9,8 +9,7 @@ References used during development. Verify each citation independently before pu
 - Sakoe, H. & Chiba, S. (1978). “Dynamic Programming Algorithm
   Optimization for Spoken Word Recognition.” *IEEE Transactions on Acoustics,
   Speech, and Signal Processing*, 26(1), 43–49.
-  https://doi.org/10.1109/TASSP.1978.1163055; full IEEE scan accessed
-  2026-07-23:
+  https://doi.org/10.1109/TASSP.1978.1163055; full IEEE scan:
   https://jeffe.cs.illinois.edu/teaching/compgeom/2022/refs/Sakoe-Chiba-DTW.pdf
   — **[confirmed]** Verified equations (6)--(8): the separate monotonicity and
   continuity conditions imply the three-predecessor relation in equation (6),
@@ -19,7 +18,7 @@ References used during development. Verify each citation independently before pu
   `j-r <= i <= j+r`. The paper's symmetric practical recurrence uses
   step-dependent weights and normalization, so it is not cited as a verbatim
   source for DTWC++'s unweighted `local + min3` recurrence.
-- Marteau, P.-F. (2009). Time warp edit distances with stiffness adjustment for time series matching. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 31(2), 306-318. Task 5.5 `dtwc::core::twe_distance` matches aeon 1.5.0 exactly (front zero-pad both series; d = |a−b| for univariate; defaults ν=0.001, λ=1.0, window=None).
+- Marteau, P.-F. (2009). Time warp edit distances with stiffness adjustment for time series matching. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 31(2), 306-318. `dtwc::core::twe_distance` matches aeon 1.5.0 exactly (front zero-pad both series; d = |a−b| for univariate; defaults ν=0.001, λ=1.0, window=None).
 - Jain, B. J. (2018). Semi-Metrification of the Dynamic Time Warping Distance. arXiv:1808.09964.
 - Yurtman, A., Soenen, J., Meert, W., & Blockeel, H. (2023). Estimating DTW Distance Between Time Series with Missing Data. *ECML-PKDD 2023*, LNCS 14173.
 
@@ -27,8 +26,7 @@ References used during development. Verify each citation independently before pu
 
 - Keogh, E. & Ratanamahatana, C. A. (2005). Exact Indexing of
   Dynamic Time Warping. *Knowledge and Information Systems*, 7(3), 358–386.
-  https://doi.org/10.1007/s10115-004-0154-9; author-hosted full paper
-  accessed 2026-07-30:
+  https://doi.org/10.1007/s10115-004-0154-9; author-hosted full paper:
   https://www.cs.ucr.edu/~eamonn/KAIS_2004_warping.pdf —
   **[confirmed]** Equations (6)–(7) define the upper/lower envelope, and
   Proposition 1 proves `LB_Keogh(Q,C) <= DTW(Q,C)` for sequences of the same
@@ -42,7 +40,7 @@ References used during development. Verify each citation independently before pu
   *Proceedings of the 17th International Conference on Data Engineering*,
   607–614. https://doi.org/10.1109/ICDE.2001.914875 —
   **[confirmed]** The bibliographic metadata, DOI, and closed-access status
-  were verified through DBLP on 2026-07-30. **[inferred]** Formula-level
+  were verified through DBLP. **[inferred]** Formula-level
   compatibility with DTWC++: the closed/paywalled full text was not accessed,
   so this citation does not prove that either current `lb_kim` overload
   matches the paper's objective or units. Rakthanmanon et al. independently
@@ -52,7 +50,7 @@ References used during development. Verify each citation independently before pu
   Westover, M. B., Zhu, Q., Zakaria, J., & Keogh, E. (2012). Searching and
   Mining Trillions of Time Series Subsequences under Dynamic Time Warping.
   *ACM SIGKDD*, 262–270. https://doi.org/10.1145/2339530.2339576;
-  author-hosted full paper accessed 2026-07-30:
+  author-hosted full paper:
   https://www.cs.ucr.edu/~eamonn/SIGKDD_trillion.pdf —
   **[confirmed]** The UCR Suite uses squared contributions for normalized,
   equal-length subsequence search, reverses the query/candidate roles only
@@ -62,7 +60,7 @@ References used during development. Verify each citation independently before pu
 - Lemire, D. (2006). Streaming Maximum-Minimum Filter Using No More Than
   Three Comparisons per Element. *Nordic Journal of Computing*, 13(4),
   328–339. https://arxiv.org/abs/cs/0610046 —
-  **[confirmed]** Full arXiv record and paper accessed 2026-07-30. Source for
+  **[confirmed]** From the full arXiv record and paper. Source for
   the monotone-deque running extrema algorithm used by envelope construction,
   not for LB_Keogh admissibility.
 - Lemire, D. (2009). Faster retrieval with a two-pass dynamic-time-warping
@@ -76,8 +74,9 @@ References used during development. Verify each citation independently before pu
   Warping. *Proceedings of the 2001 SIAM International Conference on Data
   Mining*, 1–11. https://doi.org/10.1137/1.9781611972719.1
 - Jeong, Y.-S., Jeong, M. K., & Omitaomu, O. A. (2011). Weighted dynamic time warping for time series classification. *Pattern Recognition*, 44(9), 2231-2240.
-- Herrmann, M. & Webb, G. I. (2023). Amercing: An intuitive and effective constraint for dynamic time warping. *Pattern Recognition*, 137, 109333. https://doi.org/10.1016/j.patcog.2023.109333 — ADTW. **[inferred 2026-11-09]** Authors, journal, volume and article number from a web search that returned the ADS record (bibcode 2023PatRe.13709333H) and the arXiv preprint 2111.13314 (an earlier title with "Elegant"); neither page's text was opened and the full text was not read, so the page states the recurrence as `warping_adtw.hpp` implements it. An earlier draft of the page named Shifaz and article 109301, which the search contradicts.
+- Herrmann, M. & Webb, G. I. (2023). Amercing: An intuitive and effective constraint for dynamic time warping. *Pattern Recognition*, 137, 109333. https://doi.org/10.1016/j.patcog.2023.109333 — ADTW. **[inferred]** Authors, journal, volume and article number from a web search that returned the ADS record (bibcode 2023PatRe.13709333H) and the arXiv preprint 2111.13314 (an earlier title with "Elegant"); neither page's text was opened and the full text was not read, so the page states the recurrence as `warping_adtw.hpp` implements it.
 - Cuturi, M. & Blondel, M. (2017). Soft-DTW: a Differentiable Loss Function for Time-Series. In *Proceedings of the 34th International Conference on Machine Learning*, PMLR 70, 894–903. https://proceedings.mlr.press/v70/cuturi17a.html — Defines the differentiable soft-DTW value and gradient used for soft-DTW barycenters.
+- Blondel, M., Mensch, A., & Vert, J.-P. (2021). Differentiable Divergences Between Time Series. *AISTATS 2021*, PMLR 130. — The Soft-DTW divergence that clustering under `softdtw` uses.
 - Itakura, F. (1975). Minimum Prediction Residual Principle Applied to Speech Recognition. *IEEE TASSP*, 23(1), 67-72.
 
 ## Clustering and k-Medoids
@@ -85,9 +84,10 @@ References used during development. Verify each citation independently before pu
 - Kaufman, L. & Rousseeuw, P. J. (1987). Clustering by Means of Medoids. In *Statistical Data Analysis Based on the L1-Norm*, North-Holland, 405-416. — Original PAM paper.
 - Kaufman, L. & Rousseeuw, P. J. (1990). *Finding Groups in Data: An Introduction to Cluster Analysis*. Wiley. — PAM (Ch. 2), CLARA (Ch. 3).
 - Rousseeuw, P. J. (1987). Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. *J. Comput. Appl. Math.*, 20, 53-65.
-- Davies, D. L. & Bouldin, D. W. (1979). A Cluster Separation Measure. *IEEE TPAMI*, PAMI-1(2), 224-227. — DB index; M_ij = 0 limit follows from monotonicity in M plus axiom 3 (scores.cpp, 2026-09-02).
+- Davies, D. L. & Bouldin, D. W. (1979). A Cluster Separation Measure. *IEEE TPAMI*, PAMI-1(2), 224-227. — DB index; M_ij = 0 limit follows from monotonicity in M plus axiom 3 (scores.cpp).
 - Caliński, T. & Harabasz, J. (1974). A dendrite method for cluster analysis. *Communications in Statistics*, 3(1), 1-27. — CH index with realised k in both (k-1) and (N-k).
 - Dunn, J. C. (1974). Well-Separated Clusters and Optimal Fuzzy Partitions. *J. Cybernetics*, 4(1), 95-104. — Dunn index (min inter / max intra).
+- Day, W. H. E. & Edelsbrunner, H. (1984). Efficient algorithms for agglomerative hierarchical clustering methods. *Journal of Classification*, 1(1), 7–24. — The per-row nearest-neighbour cache of the hierarchical clustering (`hierarchical.cpp`).
 - Schubert, E. & Rousseeuw, P. J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *Information Systems*, 101, 101804. https://doi.org/10.1016/j.is.2021.101804; arXiv:2008.05171 (https://arxiv.org/abs/2008.05171). — Canonical FasterPAM/FasterCLARA paper; the 2019 SISAP paper (arXiv:1810.05691) is its conference precursor.
 - Ng, R. T. & Han, J. (2002). CLARANS: A Method for Clustering Objects for Spatial Data Mining. *IEEE TKDE*, 14(5), 1003-1016.
 - Charikar, M., Guha, S., Tardos, E., & Shmoys, D. B. (2002). A constant-factor approximation algorithm for the k-median problem. *Journal of Computer and System Sciences*, 65(1), 129-149.
@@ -103,16 +103,12 @@ References used during development. Verify each citation independently before pu
 - ReVelle, C. S. & Swain, R. W. (1970). “Central Facilities Location.” *Geographical Analysis*, 2(1), 30-42. https://doi.org/10.1111/j.1538-4632.1970.tb00142.x — **[confirmed]** Source of the classical complete discrete p-median assignment/cardinality/linking MILP specialized by DTWC++; later p-median histories credit this as the first integer-linear formulation.
 - Vinod, H. D. (1969). “Integer Programming and the Theory of Grouping.” *Journal of the American Statistical Association*, 64(326), 506-519. https://doi.org/10.1080/01621459.1969.10500990 — **[confirmed]** Early statistics-side integer-programming treatment of partitional clustering. The author-page abstract confirms formulations for partitioning n elements into m mutually exclusive groups and the string-property result for the one-dimensional minimum-within-group-sum-of-squares case. Cite this for optimization-based clustering history, not for DTWC++'s exact diagonal p-median constraint matrix.
 - Marín, A. & Pelegrín, M. (2020). “p-Median Problems.” In *Location Science*, 25-50. https://doi.org/10.1007/978-3-030-32177-2_2 — Historical attribution source used to distinguish the Hakimi p-median origins, Balinski linking inequalities, ReVelle-Swain complete MILP, and Vinod clustering application.
+- Cornuéjols, G., Fisher, M. L., & Nemhauser, G. L. (1977). Location of Bank Accounts to Optimize Float: An Analytic Study of Exact and Approximate Algorithms. *Management Science*, 23(8), 789–810. — The Lagrangian formulation LR-core's root bound relaxes ([LR-core](content/math/lr-core.md)).
+- Erlenkotter, D. (1978). A Dual-Based Procedure for Uncapacitated Facility Location. *Operations Research*, 26(6), 992–1009. — The dual ascent (`DUALOC`) and second-nearest warm start of LR-core's root (`lagrangian_root.cpp`).
 
 ## Cross-Language Binding Design
 
 - Andersson, J. A. E., Gillis, J., Horn, G., Rawlings, J. B., & Diehl, M. (2019). CasADi: a software framework for nonlinear optimization and optimal control. *Mathematical Programming Computation*, 11(1), 1-36. — Design philosophy for cross-language API consistency (same class/method names across C++/Python/MATLAB).
-
-## pybind11 (historical)
-
-- Jakob, W., Rhinelander, J., & Moldovan, D. (2017). pybind11 — Seamless
-  operability between C++11 and Python. https://github.com/pybind/pybind11
-  — Historical binding source; DTWC++ now uses nanobind.
 
 ## MATLAB MEX
 
@@ -125,11 +121,6 @@ References used during development. Verify each citation independently before pu
   — Its destructor guidance states that an error which makes an object leave
   scope causes MATLAB to call the C++ destructor.
 - MathWorks. "Interleaved Complex API" (R2018a+). https://www.mathworks.com/help/matlab/matlab_external/matlab-support-for-interleaved-complex.html
-
-## Armadillo
-
-- Sanderson, C. & Curtin, R. (2016). Armadillo: a template-based C++ library for linear algebra. *Journal of Open Source Software*, 1(2), 26.
-- Column-major storage matches MATLAB (zero-copy possible); differs from NumPy row-major default.
 
 ## CUDA Architecture & Precision
 
@@ -151,7 +142,7 @@ References used during development. Verify each citation independently before pu
   carveout, and dynamic shared-memory opt-in work.
 - NVIDIA. *Hopper Tuning Guide*. https://docs.nvidia.com/cuda/archive/12.1.0/hopper-tuning-guide/index.html - Informed DPX, TMA, distributed shared memory, and Hopper-specific performance ceilings.
 
-## Literature survey 2026-07-06
+## Literature survey
 
 ### k-medoids and scalable clustering
 
@@ -163,7 +154,7 @@ References used during development. Verify each citation independently before pu
 - de Mathelin et al., maintained `onebatch` v0.1.0, commit `298ea91af821d9ecb1d1fe17b6cddafb303708df`, [`onebatchpam.py` lines 253–280](https://github.com/antoinedemathelin/onebatch/blob/298ea91af821d9ecb1d1fe17b6cddafb303708df/onebatch/onebatchpam.py#L253-L280) — Retains guarded finite-maximum normalization and count/mean NNIW but omits sampled-diagonal replacement; this differs from both the paper literal and the original experiment hybrid.
 - Loog, M. (2012). Nearest neighbor-based importance weighting. *2012 IEEE International Workshop on Machine Learning for Signal Processing*, 1–6. https://doi.org/10.1109/MLSP.2012.6349714; author preprint: https://arxiv.org/abs/2102.02291 — NNeW weights each sampled point by the number of targets in its Voronoi cell. Dividing all counts by their mean preserves proportionality while setting mean weight to one.
 - Lenssen, L. & Schubert, E. (2024). Medoid Silhouette clustering with automatic cluster number selection (FasterMSC, DynMSC). *Information Systems*, 120. arXiv:2209.12553.
-- Begum, N., Ulanova, L., Wang, J., & Keogh, E. (2015). Accelerating Dynamic Time Warping Clustering with a Novel Admissible Pruning Strategy (TADPole). *ACM SIGKDD 2015*. Extended: arXiv:1612.00637 — envelope UB/LB pruning of the pairwise matrix, ~order-of-magnitude speedup, results identical to brute force. Density kernel is the hard CUTOFF count ρ(i)=|{j: d(i,j)<dc}| (Table 1; the only kernel a bound-based binary test can prune); cases A–D (Table 5): UB<dc⇒neighbour, LB>dc⇒not, else exact. δ(highest-density)=max of the others' δ (Table 2, differs from Rodriguez–Laio's max_j d). Theorem 1: identical labels to brute-force DP_DTW. Used by Task 5.3 (`Method::TADPole`).
+- Begum, N., Ulanova, L., Wang, J., & Keogh, E. (2015). Accelerating Dynamic Time Warping Clustering with a Novel Admissible Pruning Strategy (TADPole). *ACM SIGKDD 2015*. Extended: arXiv:1612.00637 — envelope UB/LB pruning of the pairwise matrix, ~order-of-magnitude speedup, results identical to brute force. Density kernel is the hard CUTOFF count ρ(i)=|{j: d(i,j)<dc}| (Table 1; the only kernel a bound-based binary test can prune); cases A–D (Table 5): UB<dc⇒neighbour, LB>dc⇒not, else exact. δ(highest-density)=max of the others' δ (Table 2, differs from Rodriguez–Laio's max_j d). Theorem 1: identical labels to brute-force DP_DTW. Used by `Method::TADPole`.
 - Rodriguez, A. & Laio, A. (2014). Clustering by fast search and find of density peaks. *Science*, 344(6191), 1492–1496. doi:10.1126/science.1242072 — density-peaks core underlying TADPole: local density ρ, separation δ = min distance to a higher-density point, centers = high ρ·δ, single-pass assignment to the nearest higher-density neighbour.
 - Paparrizos, J. & Gravano, L. (2015). k-Shape: Efficient and Accurate Clustering of Time Series. *SIGMOD 2015* (journal: *TODS* 2017). https://www.paparrizos.org/papers/PaparrizosSIGMOD15.pdf — FFT-based SBD distance, O(L log L).
 - Holder, C., Middlehurst, M., & Bagnall, A. (2024). A Review and Evaluation of Elastic Distance Functions for Time Series Clustering. *Knowledge and Information Systems*, 66, 765-809. arXiv:2205.15181 — MSM best, TWE second; DTW+k-medoids not significantly better than Euclidean; k-medoids > k-means for all nine elastic distances.
@@ -173,15 +164,15 @@ References used during development. Verify each citation independently before pu
 ### Barycenters / DTW averaging
 
 - Petitjean, F., Ketterlin, A., & Gançarski, P. (2011). A global averaging method for dynamic time warping, with applications to clustering (DBA). *Pattern Recognition*, 44(3), 678-693.
-- Schultz, D. & Jain, B. J. (2018). Nonsmooth analysis and subgradient methods for averaging in dynamic time warping spaces. *Pattern Recognition*, 74, 340–358. https://doi.org/10.1016/j.patcog.2017.08.012; arXiv:1701.06393 (https://arxiv.org/abs/1701.06393) — Analyzes DBA as majorize-minimize and proposes stochastic subgradient (SSG) averaging. The squared-DTW component gradient is `2(Vz−Wx)`; Algorithm 3 absorbs the constant two into η but retains path-valence matrix V. DTWC++ now applies that raw direction and caps the single scalar step at `1/(2 max V_ii)`, the selected fixed-path quadratic's inverse gradient-Lipschitz constant, to remain stable on unequal-length resampling without coordinate preconditioning.
+- Schultz, D. & Jain, B. J. (2018). Nonsmooth analysis and subgradient methods for averaging in dynamic time warping spaces. *Pattern Recognition*, 74, 340–358. https://doi.org/10.1016/j.patcog.2017.08.012; arXiv:1701.06393 (https://arxiv.org/abs/1701.06393) — Analyzes DBA as majorize-minimize and proposes stochastic subgradient (SSG) averaging. The squared-DTW component gradient is `2(Vz−Wx)`; Algorithm 3 absorbs the constant two into η but retains path-valence matrix V. DTWC++ applies that raw direction and caps the single scalar step at `1/(2 max V_ii)`, the selected fixed-path quadratic's inverse gradient-Lipschitz constant, to remain stable on unequal-length resampling without coordinate preconditioning.
 
 ### Lower bounds, pruning, fast exact DTW (additions)
 
 - Wu, R. & Keogh, E. (2022). FastDTW is approximate and Generally Slower than the Algorithm it Approximates. *IEEE TKDE*, 34(8), 3779-3785 (also ICDE 2021). arXiv:2003.11246 — verbatim: "In any realistic data mining application, the approximate FastDTW is much slower than the exact DTW." Do not add FastDTW.
-- Herrmann, M. & Webb, G. I. (2021). Early abandoning and pruning for elastic distances including dynamic time warping (EAPruned). *Data Mining and Knowledge Discovery* 35(6). arXiv:2102.05221 — covers DTW, CDTW, WDTW, ERP, MSM, TWE; reference C++ impl: https://github.com/MonashTS/tempo (GPL — NOT ported; Task 5.4 is clean-room from the paper). DTW-specific precursor: Herrmann & Webb (2020), Early Abandoning PrunedDTW, arXiv:2010.05371. **Exact-mode use (Task 5.4 `dtw_kernel_eap`):** seed the prune with UB = the cost of ONE concrete warping path (the diagonal/L-path); every optimal-path cell has partial-cost ≤ DTW ≤ UB, so pruning cells above UB is provably exact. The headline ~2.88× is NN-search with a tightening cutoff; exact all-pairs (diagonal UB, no NN cutoff) prunes only near-diagonal pairs — data-cohesion-dependent, not a flat multiplier. Composes with a Sakoe-Chiba band but a tight band already excises the prunable region (so DTWC routes only UNBANDED Standard DTW through EAP).
+- Herrmann, M. & Webb, G. I. (2021). Early abandoning and pruning for elastic distances including dynamic time warping (EAPruned). *Data Mining and Knowledge Discovery* 35(6). arXiv:2102.05221 — covers DTW, CDTW, WDTW, ERP, MSM, TWE; reference C++ impl: https://github.com/MonashTS/tempo (GPL — NOT ported). DTW-specific precursor: Herrmann & Webb (2020), Early Abandoning PrunedDTW, arXiv:2010.05371. **Exact-mode use:** seed the prune with UB = the cost of ONE concrete warping path (the diagonal/L-path); every optimal-path cell has partial-cost ≤ DTW ≤ UB, so pruning cells above UB is provably exact. The headline ~2.88× is NN-search with a tightening cutoff; exact all-pairs (diagonal UB, no NN cutoff) prunes only near-diagonal pairs — data-cohesion-dependent, not a flat multiplier. Composes with a Sakoe-Chiba band but a tight band already excises the prunable region. DTWC++ has no EAPruned kernel.
 - Silva, D. F. & Batista, G. E. A. P. A. (2016). Speeding Up All-Pairwise Dynamic Time Warping Matrix Calculation (PrunedDTW). *SIAM SDM 2016*.
-- Tan, C. W., Petitjean, F., & Webb, G. I. (2019). Elastic bands across the path: A new framework and method to lower bound DTW (LB_Enhanced). *Proceedings of the 2019 SIAM International Conference on Data Mining*, 522–530. DOI `10.1137/1.9781611975673.59`; author preprint arXiv:1808.09617 (https://arxiv.org/pdf/1808.09617). **[confirmed 2026-07-30 from the SIAM record and complete preprint]** Theorem 3.1 supplies the elastic-cut crossing construction; Eq. 3.7 and Theorem 3.2 establish admissibility from disjoint selected sets. The paper explicitly calls `LB_Enhanced^1` uniformly tighter than LB_Keogh. DTWC++'s no-ordering claim for effective `V>=2` is supported by its own exact counterexamples, not attributed to this source.
-- Webb, G. I. & Petitjean, F. (2021). Tight lower bounds for Dynamic Time Warping (LB_Petitjean, LB_Webb). *Pattern Recognition*, 115, 107895. DOI `10.1016/j.patcog.2021.107895`; accepted preprint arXiv:2102.07076 (https://arxiv.org/pdf/2102.07076). **[confirmed 2026-07-30 from the journal record and complete preprint]** Theorem 2 and Eqs. 26–43 give the four-point bridge/correction condition and case partition; Algorithm 2 defines full LB_Webb with `MinLRPaths`, while the later `LB_Webb_NoLR` formula applies the bridge and corrections over all indices. The paper proves LB_Webb always at least LB_Keogh. Its Wafer table reports NoLR tightness 0.96904 versus full Webb 0.96891, so omitting `MinLRPaths` does not have a universal loosening direction.
+- Tan, C. W., Petitjean, F., & Webb, G. I. (2019). Elastic bands across the path: A new framework and method to lower bound DTW (LB_Enhanced). *Proceedings of the 2019 SIAM International Conference on Data Mining*, 522–530. DOI `10.1137/1.9781611975673.59`; author preprint arXiv:1808.09617 (https://arxiv.org/pdf/1808.09617). **[confirmed from the SIAM record and complete preprint]** Theorem 3.1 supplies the elastic-cut crossing construction; Eq. 3.7 and Theorem 3.2 establish admissibility from disjoint selected sets. The paper explicitly calls `LB_Enhanced^1` uniformly tighter than LB_Keogh. DTWC++'s no-ordering claim for effective `V>=2` is supported by its own exact counterexamples, not attributed to this source.
+- Webb, G. I. & Petitjean, F. (2021). Tight lower bounds for Dynamic Time Warping (LB_Petitjean, LB_Webb). *Pattern Recognition*, 115, 107895. DOI `10.1016/j.patcog.2021.107895`; accepted preprint arXiv:2102.07076 (https://arxiv.org/pdf/2102.07076). **[confirmed from the journal record and complete preprint]** Theorem 2 and Eqs. 26–43 give the four-point bridge/correction condition and case partition; Algorithm 2 defines full LB_Webb with `MinLRPaths`, while the later `LB_Webb_NoLR` formula applies the bridge and corrections over all indices. The paper proves LB_Webb always at least LB_Keogh. Its Wafer table reports NoLR tightness 0.96904 versus full Webb 0.96891, so omitting `MinLRPaths` does not have a universal loosening direction.
 - Ratanamahatana, C. A. & Keogh, E. (2004). Everything you know about Dynamic Time Warping is Wrong. *KDD Workshop on Mining Temporal and Sequential Data* — narrow bands (~10%) typically match or beat full DTW.
 - Tan, C. W., Herrmann, M., & Webb, G. I. (2021). Ultra fast warping window optimization for Dynamic Time Warping (UltraFastWWSearch). *IEEE ICDM 2021*.
 - Mueen, A., Chavoshi, N., Abu-El-Rub, N., et al. (2016). AWarp: Fast Warping Distance for Sparse Time Series. *IEEE ICDM 2016* — exact on binary series, orders of magnitude faster on sparse data.
@@ -196,7 +187,7 @@ References used during development. Verify each citation independently before pu
 
 ### Distance variants (additions)
 
-- Stefan, A., Athitsos, V., & Das, G. (2013). The Move-Split-Merge Metric for Time Series (MSM). *IEEE TKDE*, 25(6), 1425-1438. Task 5.5 `dtwc::core::msm_distance` matches aeon 1.5.0 exactly (split/merge cost `C(new,a,b)=c` if a≤new≤b else c+min(|new−a|,|new−b|); default c=1.0, window=None).
+- Stefan, A., Athitsos, V., & Das, G. (2013). The Move-Split-Merge Metric for Time Series (MSM). *IEEE TKDE*, 25(6), 1425-1438. `dtwc::core::msm_distance` matches aeon 1.5.0 exactly (split/merge cost `C(new,a,b)=c` if a≤new≤b else c+min(|new−a|,|new−b|); default c=1.0, window=None).
 - Zhao, J. & Itti, L. (2018). shapeDTW: Shape Dynamic Time Warping. *Pattern Recognition*, 74, 171-184. arXiv:1606.01601.
 - Ron Shapira Weber & Oren Freifeld. (2026).
   SoftDTW-CUDA-Torch: Memory-Efficient GPU-Accelerated Soft Dynamic Time
@@ -211,30 +202,29 @@ References used during development. Verify each citation independently before pu
 - Apache Arrow. The Arrow PyCapsule Interface.
   https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html
   — Standard `__arrow_c_array__` / `__arrow_c_stream__` export protocol.
-- Apache Arrow. *Install Apache Arrow*. https://arrow.apache.org/install/ — official Ubuntu apt-repository bootstrap and the `libarrow-dev` / `libparquet-dev` package names used by the F9 execution gate; re-verified 2026-07-23.
+- Apache Arrow. *Install Apache Arrow*. https://arrow.apache.org/install/ — official Ubuntu apt-repository bootstrap and the `libarrow-dev` / `libparquet-dev` package names that the Ubuntu CI job installs.
 - Battery Intelligence Lab. DTWC++ commit
   `eda1b92bc89ee51568b052a6af86f615d336de3c`,
   https://github.com/Battery-Intelligence-Lab/dtw-cpp/commit/eda1b92bc89ee51568b052a6af86f615d336de3c
-  — **[confirmed]** Repository-native 2.0.0rc1 boundary selected for the F11
-  standalone C++ example. The official GitHub archive and direct codeload
-  route both returned 4,928,286 bytes with SHA-256
-  `d9e991dc05804f5eedebdf3981eb400da229e485f4693ac3225ca17ae4a10696`
-  on 2026-07-23; on base `658a9cd`, the example CMake/main Git blobs equal
-  that commit.
+  — **[confirmed]** Repository-native 2.0.0rc1 boundary that the standalone
+  C++ example (`examples/cpp/example_project`) pins. The official GitHub archive
+  and direct codeload route both returned 4,928,286 bytes with SHA-256
+  `d9e991dc05804f5eedebdf3981eb400da229e485f4693ac3225ca17ae4a10696`, the
+  hash the example checks.
 - scikit-learn. Developing scikit-learn estimators (incl. `__sklearn_tags__`, sklearn >= 1.6). https://scikit-learn.org/stable/developers/develop.html
 - conda-forge. Contributing packages (staged-recipes). https://conda-forge.org/docs/maintainer/adding_pkgs/
 - cibuildwheel. Supported platforms (incl. Pyodide/WASM target). https://cibuildwheel.pypa.io/en/stable/platforms/
 - Microsoft STL. *VS 2022 Changelog*, VS 2022 17.10 mutex compatibility
   note. https://github.com/microsoft/STL/wiki/VS-2022-Changelog#vs-2022-1710
-  - re-verified 2026-07-24. **[confirmed]** Microsoft warns that mixing
+  — **[confirmed]** Microsoft warns that mixing
   binaries built by different supported toolsets requires a Redistributable at
   least as new as the newest toolset component, names null dereferences in
   mutex machinery as the failure mode, and documents
-  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` as an escape hatch. F20 independently
-  localizes the R2024b crash to this representation mismatch; the macro itself
-  remains runtime-unconfirmed in DTWC++.
+  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` as an escape hatch. An independent
+  investigation localizes the R2024b crash to this representation mismatch; the
+  macro itself remains runtime-unconfirmed in DTWC++.
 
-## First-Order LP / PDLP (Phase 4 · Task 4.5 — HiGHS PDLP arbiter)
+## First-Order LP / PDLP
 
 - Applegate, D., Díaz, M., Hinder, O., Lu, H., Lubin, M., O'Donoghue, B., & Schudy, W. (2021). *Practical Large-Scale Linear Programming using Primal-Dual Hybrid Gradient*. NeurIPS 2021. arXiv:2106.04756 — the PDLP method (PDHG on the LP saddle point; core op is matrix-vector, hence GPU-friendly).
 - Lu, H., et al. (2023). *cuPDLP-C: A Strengthened Implementation of cuPDLP for Linear Programming by C language*. arXiv:2312.14832 — the C/CUDA implementation HiGHS vendors as `solver="pdlp"`.
@@ -242,11 +232,11 @@ References used during development. Verify each citation independently before pu
   https://github.com/ERGO-Code/HiGHS/releases/tag/v1.15.1,
   https://github.com/ERGO-Code/HiGHS/tree/v1.15.1/highs/pdlp, and tagged
   CMake configuration
-  https://github.com/ERGO-Code/HiGHS/blob/v1.15.1/CMakeLists.txt — Maintained
-  LP arbiter used to cross-check the LR-core bound; the GPU path is controlled
-  by the upstream `CUPDLP_GPU` build option.
+  https://github.com/ERGO-Code/HiGHS/blob/v1.15.1/CMakeLists.txt — The HiGHS
+  release DTWC++ fetches as its MIP solver; DTWC++ does not use its PDLP solver,
+  and the build keeps the upstream `CUPDLP_GPU` option (its GPU path) off.
 
-## Multivariate DTW (Phase 5 · Task 5.6 — independent DTW)
+## Multivariate DTW (independent DTW)
 
 - Shokoohi-Yekta, M., Hu, B., Jin, H., Wang, J., & Keogh, E. (2017).
   *Generalizing DTW to the multi-dimensional case requires an adaptive approach*.
@@ -257,7 +247,7 @@ References used during development. Verify each citation independently before pu
   bound-tightening route remains deferred and is orthogonal to the DTW_I
   distance deliverable.
 
-## Arrow ingest (Phase 5 · Task 5.7)
+## Arrow ingest
 
 - The canonical Arrow C Data and PyCapsule specifications are recorded in the
   ecosystem section above; they define the ABI/protocol used by the zero-copy
@@ -272,7 +262,7 @@ References used during development. Verify each citation independently before pu
   archive's own `ci/scripts/bundle.py --symbol-namespace DtwcNanoarrow
   --with-ipc --with-flatcc`.
 
-## PMU counters for benchmarks (X-24 · D-17)
+## PMU counters for benchmarks
 
 - libpfm4 (MIT), perfmon2 project: http://perfmon2.sourceforge.net/ — helper
   library that translates symbolic event names into `perf_event_open`
