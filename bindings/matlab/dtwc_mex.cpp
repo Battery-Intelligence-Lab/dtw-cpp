@@ -45,6 +45,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include <string>
 #include <vector>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -1910,11 +1911,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
                       "First argument must be a command string.");
 
   // longjmp-safe: catch C++ exceptions, exit scope, THEN call mexErrMsgIdAndTxt. It does not
-  // return, so the error text lives in static storage, which the jump leaves alone, and cmd
-  // inside the try, gone before a handler runs.
-  static std::string error_id, error_msg;
-  error_id.clear();
-  error_msg.clear();
+  // return, so only trivially destructible locals hold the error (a longer message is cut to
+  // the buffer), and cmd lives inside the try, gone before a handler runs.
+  const char *error_id = nullptr; // a string literal
+  char error_msg[4096];           // written by the handler that sets error_id
   try {
     std::string cmd = get_string(prhs[0]);
     // Device
@@ -2093,37 +2093,37 @@ void mexFunction(int nlhs, mxArray *plhs[],
   // to dtwc:invalidArgument, as dtwc::InvalidInput does.
   catch (const dtwc::InvalidInput &e) {
     error_id = "dtwc:invalidArgument";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const dtwc::SolverError &e) {
     error_id = "dtwc:solverError";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const dtwc::DeviceError &e) {
     error_id = "dtwc:deviceError";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const dtwc::IOError &e) {
     error_id = "dtwc:ioError";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const dtwc::Error &e) {
     error_id = "dtwc:error";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const std::invalid_argument &e) {
     error_id = "dtwc:invalidArgument";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const std::out_of_range &e) {
     error_id = "dtwc:outOfRange";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const std::runtime_error &e) {
     error_id = "dtwc:runtime";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const std::exception &e) {
     error_id = "dtwc:internal";
-    error_msg = e.what();
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (...) {
     error_id = "dtwc:internal";
-    error_msg = "Unknown C++ exception";
+    std::snprintf(error_msg, sizeof error_msg, "%s", "Unknown C++ exception");
   }
 
   // No object with a destructor is alive in this frame here: the jump skips none
-  if (!error_id.empty())
-    mexErrMsgIdAndTxt(error_id.c_str(), "%s", error_msg.c_str());
+  if (error_id)
+    mexErrMsgIdAndTxt(error_id, "%s", error_msg);
 }
