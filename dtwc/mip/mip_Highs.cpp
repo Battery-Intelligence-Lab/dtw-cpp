@@ -47,7 +47,8 @@ mip::PMedianModel mip::build_p_median_model(Problem &prob)
     throw SolverError("HiGHS: the compact p-median model for N = " + std::to_string(n) + " has more than INT_MAX nonzeros; use Method::LRCore.");
 
   prob.fill_distance_matrix();                                           // We need full distance matrix before MIP clustering.
-  const auto scaling_factor = std::max(prob.max_distance() / 2.0, 1.0); // In case no distance is set.
+  const double max_distance = prob.max_distance();
+  const double scaling_factor = max_distance > 0.0 ? max_distance / 2.0 : 1.0; // the largest cost is 2 at any distance scale
 
   PMedianModel model;
   const std::size_t rows = 1 + n + n * (n - 1);

@@ -10,6 +10,7 @@
  */
 
 #include <dtwc.hpp>
+#include <mip/mip.hpp> // highs_solver_available
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -19,6 +20,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <random>
 #include <set>
@@ -477,4 +479,56 @@ TEST_CASE("k-medoids groups series of different lengths by shape", "[Phase1][clu
   REQUIRE(labels[0] == labels[1]);
   REQUIRE(labels[2] == labels[3]);
   REQUIRE(labels[0] != labels[2]);
+}
+
+// ---------------------------------------------------------------------------
+// k-medoids does not depend on the distances' unit. Series times 2^-85 have L1 distances exactly 2^-85 times theirs and
+// squared-L2 ones exactly 2^-170 times, so a method whose tolerances are relative to the data returns the same
+// clustering bit for bit. Soft-DTW, ADTW, MSM and TWE are left out: their parameters carry the data's unit.
+// ---------------------------------------------------------------------------
+TEST_CASE("Clustering is the same for series scaled by a power of two", "[clustering][scale]")
+{
+  constexpr int shift = 85;
+  std::vector<std::vector<data_t>> series(12, std::vector<data_t>(24));
+  for (int i = 0; i < 12; ++i)
+    for (int t = 0; t < 24; ++t)
+      series[i][t] = std::sin(0.3 * (i % 3 + 1) * t) + 0.1 * ((7 * i + 5 * t) % 13) - 0.6;
+  auto scaled = series;
+  for (auto &s : scaled)
+    for (auto &v : s) v = std::ldexp(v, -shift);
+
+  const auto run = [](const std::vector<std::vector<data_t>> &data, core::DTWVariant variant, core::MetricType metric,
+                      Method method) {
+    std::vector<std::string> names;
+    for (std::size_t i = 0; i < data.size(); ++i) names.push_back("s" + std::to_string(i));
+    Problem prob("scale");
+    prob.set_data(Data(std::vector<std::vector<data_t>>(data), std::move(names)));
+    prob.set_variant(variant);
+    prob.set_metric(metric);
+    prob.set_method(method);
+    prob.set_n_clusters(3);
+    prob.set_sample_size(8); // CLARA on subsamples, not delegating to pam
+    return prob.cluster();
+  };
+  using core::DTWVariant, core::MetricType;
+  const std::pair<DTWVariant, MetricType> configs[]{ { DTWVariant::Standard, MetricType::L1 },
+                                                     { DTWVariant::Standard, MetricType::SquaredL2 },
+                                                     { DTWVariant::DDTW, MetricType::L1 },
+                                                     { DTWVariant::DDTW, MetricType::SquaredL2 },
+                                                     { DTWVariant::WDTW, MetricType::L1 } };
+  std::vector<Method> methods{ Method::PAM,      Method::CLARA,   Method::Kmedoids, Method::Hierarchical,
+                               Method::OneBatch, Method::TADPole, Method::LRCore };
+  if (highs_solver_available()) methods.push_back(Method::MIP);
+  for (const auto &[variant, metric] : configs)
+    for (const Method method : methods) {
+      INFO("variant " << static_cast<int>(variant) << ", metric " << static_cast<int>(metric) << ", method "
+                      << name_of(method_names, method));
+      const auto unit = run(series, variant, metric, method);
+      const auto small = run(scaled, variant, metric, method);
+      CHECK(small.labels == unit.labels);
+      CHECK(small.medoid_indices == unit.medoid_indices);
+      CHECK(small.iterations == unit.iterations);
+      CHECK(small.converged == unit.converged);
+      CHECK(small.total_cost == std::ldexp(unit.total_cost, metric == MetricType::SquaredL2 ? -2 * shift : -shift));
+    }
 }

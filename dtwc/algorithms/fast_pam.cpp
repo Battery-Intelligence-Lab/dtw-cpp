@@ -257,9 +257,11 @@ void fasterpam_swap_impl(const core::DistanceMatrix& matrix, const T* values, in
   std::vector<double> rho(k);
   update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
 
-  // Accept only improvements below this threshold: guards against float noise
-  // cycling. Tied to the cost scale so it is meaningful for any distance range.
-  const double eps = 1e-9 * std::max(1.0, compute_total_cost(nearest_dist));
+  // A candidate is tried only below this threshold, relative to the cost so that it means the same for any distance
+  // scale; its swap is kept only if the recomputed cost then fell, as the decomposition cancels large terms and can
+  // report a rounding residue as a gain.
+  double total = compute_total_cost(nearest_dist);
+  const double eps = 1e-9 * std::abs(total);
 
   const bool grouped = N >= parallel_from;
   const index_t width = grouped ? G : 1; // candidates a group holds
@@ -267,6 +269,7 @@ void fasterpam_swap_impl(const core::DistanceMatrix& matrix, const T* values, in
   const index_t longest = threads > 1 ? 8 * threads : 1; // groups in a run
   std::vector<SwapEval> evals(static_cast<std::size_t>(longest * width)); // a run's candidates
   for (iter = 0; iter < max_iter; ++iter) {
+    if (total == 0.0) { converged = true; break; } // on non-negative distances a zero cost is the optimum
     bool any_swap = false;
     index_t groups = threads;
     for (index_t j0 = 0; j0 < N;) {
@@ -289,17 +292,22 @@ void fasterpam_swap_impl(const core::DistanceMatrix& matrix, const T* values, in
       run_openmp(run_group, static_cast<std::size_t>((j1 - j0 + width - 1) / width), threads > 1, 8);
 
       index_t j = j0;
-      while (j < j1 && (is_medoid[j] || !(evals[j - j0].change < -eps))) ++j;
+      for (;; ++j) { // the run's first candidate whose swap lowers the recomputed cost
+        while (j < j1 && (is_medoid[j] || !(evals[j - j0].change < -eps))) ++j;
+        if (j == j1) break;
+        const index_t m = evals[j - j0].best_m, out = medoids[m];
+        medoids[m] = j;
+        compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
+        const double swapped = compute_total_cost(nearest_dist);
+        if (swapped < total) { total = swapped; is_medoid[out] = false; is_medoid[j] = true; break; }
+        medoids[m] = out; // no gain: back to the state the run's evaluations were made against
+        compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
+      }
       if (j == j1) {
         j0 = j1;
         groups = std::min(2 * groups, longest);
         continue;
       }
-      const SwapEval e = evals[j - j0];
-      is_medoid[medoids[e.best_m]] = false;
-      medoids[e.best_m] = j;
-      is_medoid[j] = true;
-      compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
       update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
       any_swap = true;
       j0 = j + 1;
