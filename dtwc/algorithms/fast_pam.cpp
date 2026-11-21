@@ -257,11 +257,13 @@ void fasterpam_swap_impl(const core::DistanceMatrix& matrix, const T* values, in
   std::vector<double> rho(k);
   update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
 
-  // A candidate is tried only below this threshold, relative to the cost so that it means the same for any distance
-  // scale; its swap is kept only if the recomputed cost then fell, as the decomposition cancels large terms and can
-  // report a rounding residue as a gain.
+  // A candidate is tried only if its change is below -eps, 1e-9 of the current cost (set again with the removal losses
+  // after each kept swap), so that the threshold means the same for any distance scale; its swap is kept only if the
+  // recomputed cost then fell, as the decomposition cancels large terms and can report a rounding residue as a gain.
+  // There is no floor for that rounding: on distances of many scales the gains left lie below it, and a candidate
+  // passing on a residue costs one swap tried and reverted, once a sweep.
   double total = compute_total_cost(nearest_dist);
-  const double eps = 1e-9 * std::abs(total);
+  double eps = 1e-9 * std::abs(total);
 
   const bool grouped = N >= parallel_from;
   const index_t width = grouped ? G : 1; // candidates a group holds
@@ -309,6 +311,7 @@ void fasterpam_swap_impl(const core::DistanceMatrix& matrix, const T* values, in
         continue;
       }
       update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
+      eps = 1e-9 * std::abs(total);
       any_swap = true;
       j0 = j + 1;
       groups = threads;
