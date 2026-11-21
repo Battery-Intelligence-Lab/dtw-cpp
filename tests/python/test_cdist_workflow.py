@@ -157,6 +157,8 @@ class TestCasadiWorkflowAndFastIngest:
             dtwcpp.cdist(dtwcpp.load(ds.source, dtype="float32"), dtype="float64")
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Data was made with dtype='float64'"):
             dtwcpp.cdist(ds.as_data(), dtype="float32")
+        with pytest.raises(dtwcpp.InvalidInput, match="Data already carries ndim=2, which disagrees with ndim=3"):
+            dtwcpp.load_data(dtwcpp.load_data(ds.source, ndim=2).as_data(), ndim=3)
         assert dtwcpp.do_clustering(ds, cfg, skip_rows=1).n_series == 5
         assert dtwcpp.do_clustering(ds, cfg).n_series == 5
 

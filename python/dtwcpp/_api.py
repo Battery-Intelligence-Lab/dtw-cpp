@@ -793,9 +793,10 @@ def load_data(source=None, settings=None, **kwargs):
     ``Data`` without Python list conversion. A :class:`Dataset` passes through
     with the reader options it was made with: settings that give one of them
     (``skip_cols``, ``skip_rows``, ``delimiter``, ``dtype``, ``ndim``) a value
-    other than its default and the Dataset's raise :class:`dtwcpp.InvalidInput`.
+    other than its default and the Dataset's raise :class:`dtwcpp.InvalidInput`. A :class:`Data` keeps
+    its own ``ndim``: one given, or one the settings give other than 1, that differs is refused too.
     """
-    from dtwcpp import InvalidInput
+    from dtwcpp import InvalidInput, _dtwcpp_core
 
     s = settings if isinstance(settings, Settings) else Settings()
     if settings is not None and not isinstance(settings, Settings):
@@ -823,6 +824,7 @@ def load_data(source=None, settings=None, **kwargs):
                     "of the settings.")
         return source
 
+    ndim_given = "ndim" in kwargs
     skip_cols = kwargs.pop("skip_cols", s.skip_cols)
     skip_rows = kwargs.pop("skip_rows", s.skip_rows)
     delimiter = kwargs.pop("delimiter", s.delimiter)
@@ -836,10 +838,12 @@ def load_data(source=None, settings=None, **kwargs):
         raise TypeError("load_data: ndim must be an integer")
     if ndim < 1:
         raise InvalidInput("load_data: ndim must be at least 1.")
+    if isinstance(source, _dtwcpp_core.Data) and (ndim_given or ndim != 1) and ndim != source.ndim:
+        raise InvalidInput(f"load_data: Data already carries ndim={source.ndim}, which disagrees with ndim={ndim}.")
 
     ds = Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                  delimiter=delimiter, name=name, dtype=dtype)
-    ds._ndim = int(ndim) if ndim != 1 else ds._ndim  # a Data keeps its own ndim unless one is given
+    ds._ndim = int(ndim) if ndim != 1 else ds._ndim  # a Data keeps its own ndim (a given one equals it)
     return ds
 
 
