@@ -227,7 +227,9 @@ time they need it. Under `matrix_dtype` float32, `distance_matrix` is a NumPy
 into `dir` (created if missing): `<name>_labels.csv` (`name,cluster`), `<name>_medoids.csv`
 (`cluster,medoid_index,medoid_name`), `<name>_distance_matrix.csv` and
 `<name>_silhouettes.csv` (`name,cluster,silhouette`), with the series' names
-from the input. `save` then writes the run report, last, as `<name>_report.txt`
+from the input. Under `softdtw` the matrix, here and in `distance_matrix`, holds the Soft-DTW
+divergence the clustering uses ([DTW variants](../../method/dtw-variants/#soft-dtw)), not
+`cdist`'s raw value. `save` then writes the run report, last, as `<name>_report.txt`
 (the run's own: its times and machine; a run without an output directory, as
 `cluster()` is, reports its silhouettes not computed though `save` computes them;
 a `save` that fails before it writes none; none under `config.report = false`,

@@ -15,7 +15,7 @@ DTWC++ provides two exact $k$-medoids clustering paths:
 
 ## 1. Integer Linear Programming Formulations
 
-Let $N$ be the number of time series, $k \in \{1, \dots, N\}$ the target number of medoids, and $D \in \mathbb{R}^{N \times N}$ the pairwise elastic distance matrix (symmetric, not required to satisfy the triangle inequality, and permitting $D_{ii} < 0$ under Soft-DTW).
+Let $N$ be the number of time series, $k \in \{1, \dots, N\}$ the target number of medoids, and $D \in \mathbb{R}^{N \times N}$ the pairwise elastic distance matrix (symmetric and non-negative, not required to satisfy the triangle inequality; under Soft-DTW it holds the Soft-DTW divergence).
 
 ### 1.1 Cornuéjols–Fisher–Nemhauser Formulation (`LRCore`)
 
@@ -31,7 +31,7 @@ $$
 \end{aligned}
 $$
 
-When $D_{ii} = 0$ and $D_{ij} \ge 0$ (all standard elastic metrics: DTW, DDTW, WDTW, ADTW, MSM, TWE), every open medoid $i$ optimally assigns to itself ($x_{ii} = y_i$), reducing directly to Balinski's (1965) $N^2$-variable formulation implemented in `mip_Highs.cpp` and `mip_Gurobi.cpp`. At $N = 10^4$, the compact formulation has $10^8$ binary variables and $\approx 3 \times 10^8$ nonzeros, motivating an implicit $y$-space exact method that never materializes the $N^2$-column LP.
+When $D_{ii} = 0$ and $D_{ij} \ge 0$ (every distance a `Problem` computes: DTW, DDTW, WDTW, ADTW, MSM, TWE and the Soft-DTW divergence), every open medoid $i$ optimally assigns to itself ($x_{ii} = y_i$), reducing directly to Balinski's (1965) $N^2$-variable formulation implemented in `mip_Highs.cpp` and `mip_Gurobi.cpp`. At $N = 10^4$, the compact formulation has $10^8$ binary variables and $\approx 3 \times 10^8$ nonzeros, motivating an implicit $y$-space exact method that never materializes the $N^2$-column LP.
 
 ---
 
