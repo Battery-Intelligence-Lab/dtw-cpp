@@ -154,13 +154,11 @@ Data read_batches(ArrowArrayStream *stream, const ArrowSchema &schema, std::size
     if (batch.release == nullptr)
       break; // end of stream
 
-    try {
-      append_series(&schema, &batch, series, names);
-    } catch (...) {
-      release_arrow(nullptr, &batch);
-      throw;
-    }
-    release_arrow(nullptr, &batch);
+    struct ArrayGuard {
+      ArrowArray *a;
+      ~ArrayGuard() { release_arrow(nullptr, a); }
+    } bguard{ &batch };
+    append_series(&schema, &batch, series, names);
   }
   return Data(std::move(series), std::move(names), ndim);
 }
@@ -181,7 +179,6 @@ Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim, core::Pr
   if (stream == nullptr || stream->release == nullptr)
     fail("data_from_arrow_stream: null or already-released Arrow stream.");
 
-  // Guarantees stream->release runs on every exit path (success or throw).
   struct StreamGuard {
     ArrowArrayStream *s;
     ~StreamGuard() { if (s->release != nullptr) s->release(s); }
@@ -194,7 +191,7 @@ Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim, core::Pr
   }
   struct SchemaGuard {
     ArrowSchema *s;
-    ~SchemaGuard() { if (s->release != nullptr) s->release(s); }
+    ~SchemaGuard() { release_arrow(s, nullptr); }
   } scguard{ &schema };
 
   return dtype == core::Precision::Float32 ? read_batches<float>(stream, schema, ndim)
