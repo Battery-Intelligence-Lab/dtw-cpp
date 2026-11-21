@@ -467,16 +467,16 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   if (config.report && config.metric == core::MetricType::L2) // the report names the metric, and L2 has no name
     throw InvalidInput("run: the run report names the metric, and MetricType::L2 has none; use MetricType::L1, the "
                        "same on univariate series, or set report = false.");
-#ifdef DTWC_HAS_CUDA
-  if (!config.checkpoint.empty() && uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto)
-    throw InvalidInput("--checkpoint on a CUDA GPU needs an explicit --gpu-precision fp32 or fp64: CUDA's auto depends "
-                       "on the GPU, so it is not a stable cache identity.");
-#endif
 
   auto problem = std::make_shared<Problem>(run_name(config));
   Problem &prob = *problem;
   apply(config, prob);
   validate_gpu_request("run", prob, config.dtype);
+#ifdef DTWC_HAS_CUDA
+  if (!config.checkpoint.empty() && uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto)
+    throw InvalidInput("--checkpoint on a CUDA GPU needs an explicit --gpu-precision fp32 or fp64: CUDA's auto depends "
+                       "on the GPU, so it is not a stable cache identity.");
+#endif
 
   algorithms::CLARAOptions clara;
   clara.n_clusters = config.k;
