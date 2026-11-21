@@ -108,6 +108,9 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
         best_b = j;
       }
     }
+    if (best_a < 0)
+      throw InvalidInput("build_dendrogram: no finite linkage distance remains (a distance or an average-linkage "
+                         "update overflowed); rescale the series.");
 
     // Record the merge (best_a < best_b is guaranteed by construction).
     dend.merges.push_back({ best_a, best_b, best_dist, sz[static_cast<std::size_t>(best_a)] + sz[static_cast<std::size_t>(best_b)] });
