@@ -248,22 +248,17 @@ bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 
 TEST_CASE("run's TADPole at its memory limit keeps its cache in RAM and maps no matrix", "[cli][storage][mmap][tadpole]")
 {
+  // TADPole's cache of the pairs is in RAM whatever the limit, and it never writes the Problem's matrix, so no build
+  // maps that matrix (it would be a full-size file that holds nothing): below its limit the run is refused before any
+  // matrix is allocated, and at the limit it runs and leaves no file.
   const ScratchDirectory scratch{ "cli_tadpole_storage" };
   auto config = mapped_config(Method::TADPole, scratch, "tadpole");
   config.tadpole_dc = 3.0;
-#ifdef DTWC_HAS_MMAP
-  // TADPole's cache of the pairs is in RAM whatever the limit, and it never writes the Problem's matrix: mapping that
-  // matrix would leave a full-size file that holds nothing.
-  const auto result = dtwc::run(at_least_limit(config), tiny_series());
-  CHECK(result.labels().size() == 3);
-  CHECK_FALSE(cache_exists(scratch, "tadpole"));
-#else
-  // Refused before any matrix is allocated: it would stay in RAM beside the series and a thread.
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
-                    ContainsSubstring("cannot hold the series and the distance matrix")
-                      && ContainsSubstring("DTWC_ENABLE_LLFIO=OFF"));
+                    ContainsSubstring("cannot hold the series and the distance matrix"));
   CHECK_FALSE(cache_exists(scratch, "tadpole"));
-#endif
+  CHECK(dtwc::run(at_least_limit(config), tiny_series()).labels().size() == 3);
+  CHECK_FALSE(cache_exists(scratch, "tadpole"));
 }
 
 TEST_CASE("run's OneBatch keeps its own O(Nm) storage over the memory limit", "[cli][storage][onebatch]")
