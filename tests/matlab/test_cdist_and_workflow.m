@@ -122,6 +122,7 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
     end
     def_res = dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '', 'SkipRows', 0);
     verifyEqual(testCase, def_res.labels, res.labels);
+    verifyError(testCase, @() dtwc.cdist(ds, 'Dtype', 'float32'), 'dtwc:invalidArgument');
 
     dtwc.write_data(mem_res, manual_out);
     verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_labels.csv')));

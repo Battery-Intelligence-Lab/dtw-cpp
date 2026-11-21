@@ -80,6 +80,11 @@ end
 
 function [series, dtype, effNdim] = materialize_for_cdist(src, defaultDtype, requestedNdim)
     if isa(src, 'dtwc.Dataset')
+        if ~any(strcmp(defaultDtype, {'float64', src.Dtype}))   % a Dataset keeps its own: refuse another
+            error('dtwc:invalidArgument', ['cdist: the Dataset was made with Dtype %s and the settings give ' ...
+                  'Dtype %s; a Dataset keeps the options it was made with, so pass Dtype to load_data, or ' ...
+                  'leave it out of the settings.'], mat2str(src.Dtype), mat2str(defaultDtype));
+        end
         [series, ~, dsNdim] = src.as_series();
         dtype = src.Dtype;
         effNdim = dsNdim;
