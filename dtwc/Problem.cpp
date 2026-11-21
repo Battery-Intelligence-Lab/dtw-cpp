@@ -1043,9 +1043,9 @@ void Problem::fillDistanceMatrix_BruteForce()
                                  : decltype(core::resolve_dtw_packed_block_fn<float>(distance_)){};
   const size_t written = distMat.rows_written();
 #ifdef DTWC_HAS_CUDA
-  const bool fresh = !gpu && !written_ && (!sized || (distMat.is_mapped() && written == 0));
+  const bool fresh = !gpu && (!sized || (distMat.is_mapped() && written == 0));
 #else
-  const bool fresh = !written_ && (!sized || (distMat.is_mapped() && written == 0));
+  const bool fresh = (!sized || (distMat.is_mapped() && written == 0));
 #endif
   const bool use_slab_panels = fresh && ragged && lanes && ram_limit_ == 0 && !data_.is_mapped();
   constexpr size_t kMaxSlabPanelBytes = size_t{ 64 } << 20;
