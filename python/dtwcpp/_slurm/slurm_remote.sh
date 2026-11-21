@@ -198,6 +198,7 @@ shell_join() {
 # not name, is refused before any SSH.
 gpu_request() {
     local NAME CAPABILITY REQUEST
+    (( $# == 0 )) || set -- "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"  # any case, as dtwcpp._hpc
     if (( $# == 0 )) || [[ "$1" =~ ^[a-z0-9]+$ ]]; then
         while read -r NAME CAPABILITY REQUEST; do
             REQUEST="${REQUEST%$'\r'}"  # a CRLF copy of the table reads as the LF one
@@ -365,6 +366,7 @@ cmd_build() {
             echo "ERROR: --gpu-device needs a GPU profile, htc-gpu or h100, not '${PROFILE}'" >&2
             exit 1
         }
+        GPU_DEVICE="$(printf '%s' "${GPU_DEVICE}" | tr '[:upper:]' '[:lower:]')"  # build-<type>, as dtwcpp._hpc names it
         gpu_request "${GPU_DEVICE}"
         BUILD_PARTITION="${PARTITION}"
         BUILD_DIR="build-${GPU_DEVICE}"
@@ -445,6 +447,8 @@ _submit_job() {
 
     local -a SBATCH_ARGS=(sbatch --parsable)
     [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
+    [[ -n "${ACCOUNT_FLAG}" ]] && SBATCH_ARGS+=("${ACCOUNT_FLAG}")
+    [[ -n "${QOS_FLAG}" ]] && SBATCH_ARGS+=("${QOS_FLAG}")
     if [[ -n "${SLURM_EMAIL:-}" ]]; then
         SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
     fi
@@ -499,7 +503,7 @@ cmd_submit_job() {
     case "$#:${2:-}" in
         1:) ;;
         2:--gpu) BUILD="htc-gpu"; gpu_request ;;
-        3:--gpu-device) BUILD="$3"; gpu_request "$3" ;;
+        3:--gpu-device) BUILD="$(printf '%s' "$3" | tr '[:upper:]' '[:lower:]')"; gpu_request "${BUILD}" ;;
         *)
             echo "ERROR: submit-job syntax is 'submit-job <rundir> [--gpu | --gpu-device <type>]'" >&2
             exit 1

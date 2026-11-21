@@ -313,7 +313,10 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
     staged_rel_name = None
     if data.is_path:
         raw_path = os.fspath(data.source)
-        if upload_input and os.path.exists(raw_path):
+        if upload_input and not os.path.exists(raw_path):  # staged from this machine
+            raise FileNotFoundError(f"cluster: upload_input=True sends {raw_path!r} from this machine, "
+                                    "and it does not exist here.")
+        if upload_input:
             staged_local_path = raw_path
             if os.path.isdir(raw_path):
                 staged_rel_name = "input_data"
@@ -372,6 +375,9 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
         device="gpu" if gpu else "cpu", gpu_device=gpu_device)
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
     labels_path = os.fspath(runner.download_labels(name, job_id))
+    # The cluster ran its own copy and the labels are back; a file the copy kept
+    # read-only (copy2) may stay behind rather than fail a finished run.
+    shutil.rmtree(rundir, ignore_errors=True)
     parsed_labels = parse_labels_csv(labels_path, None if series is None else len(series))
     if not return_details:
         return parsed_labels

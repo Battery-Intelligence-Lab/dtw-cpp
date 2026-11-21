@@ -1180,6 +1180,11 @@ class TestLocalRoundTrip:
                 self.rundir = tmp_path / rundir
                 subprocess.run([dtwc_cl, "--config", "job.toml", "--output", str(out)],
                                cwd=self.rundir, check=True, capture_output=True)
+                self.written = (self.rundir / "job.toml").read_text(encoding="utf-8").splitlines()
+                self.printed = subprocess.run(
+                    [dtwc_cl, "--config", "job.toml", "--print-config"],
+                    cwd=self.rundir, check=True, capture_output=True,
+                ).stdout.decode("utf-8").splitlines()
                 return "1"
 
             def wait(self, job_id, **controls):
@@ -1199,13 +1204,9 @@ class TestLocalRoundTrip:
 
         assert len(set(res.labels[:5])) == len(set(res.labels[5:])) == 1
         assert res.labels[0] != res.labels[9]
-        written = (runner.rundir / "job.toml").read_text(encoding="utf-8").splitlines()
-        printed = subprocess.run(
-            [dtwc_cl, "--config", "job.toml", "--print-config"],
-            cwd=runner.rundir, check=True, capture_output=True,
-        ).stdout.decode("utf-8").splitlines()
-        assert 'name = "café"' in written and "wdtw-g = 0.17" in written
-        assert set(written) <= set(printed)
+        assert 'name = "café"' in runner.written and "wdtw-g = 0.17" in runner.written
+        assert set(runner.written) <= set(runner.printed)
+        assert not runner.rundir.exists()  # removed once the labels are back
 
     def test_a_string_crosses_as_dtwc_cl_writes_it(self, tmp_path, dtwc_cl):
         """job.toml quotes a string as dtwc_cl's own writer does (quotes,
