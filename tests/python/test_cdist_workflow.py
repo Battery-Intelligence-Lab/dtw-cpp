@@ -153,6 +153,10 @@ class TestCasadiWorkflowAndFastIngest:
             dtwcpp.do_clustering(ds, dtwcpp.settings(cfg, dtype="float32"))
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Dataset was made with dtype='float64'"):
             dtwcpp.cdist(ds, dtype="float32")
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32' and the settings give dtype='float64'"):
+            dtwcpp.cdist(dtwcpp.load(ds.source, dtype="float32"), dtype="float64")
+        with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Data was made with dtype='float64'"):
+            dtwcpp.cdist(ds.as_data(), dtype="float32")
         assert dtwcpp.do_clustering(ds, cfg, skip_rows=1).n_series == 5
         assert dtwcpp.do_clustering(ds, cfg).n_series == 5
 

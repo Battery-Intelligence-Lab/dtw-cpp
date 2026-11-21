@@ -35,7 +35,7 @@ function D = cdist(X, varargin)
     end
 
     ndim = 1;
-    dtype = 'float64';
+    dtype = '';   % not given: a Dataset keeps its own, other series are stored as 'float64'
     keep = true(1, numel(opts));
     for i = 1:2:numel(opts)
         if strcmpi(opts{i}, 'Ndim')
@@ -78,12 +78,16 @@ function series = cast_for_cdist(series, dtype)
     end
 end
 
-function [series, dtype, effNdim] = materialize_for_cdist(src, defaultDtype, requestedNdim)
+function [series, dtype, effNdim] = materialize_for_cdist(src, givenDtype, requestedNdim)
+    dtype = givenDtype;
+    if isempty(dtype)
+        dtype = 'float64';
+    end
     if isa(src, 'dtwc.Dataset')
-        if ~any(strcmp(defaultDtype, {'float64', src.Dtype}))   % a Dataset keeps its own: refuse another
+        if ~any(strcmp(givenDtype, {'', src.Dtype}))   % a Dataset keeps its own: refuse another
             error('dtwc:invalidArgument', ['cdist: the Dataset was made with Dtype %s and the settings give ' ...
                   'Dtype %s; a Dataset keeps the options it was made with, so pass Dtype to load_data, or ' ...
-                  'leave it out of the settings.'], mat2str(src.Dtype), mat2str(defaultDtype));
+                  'leave it out of the settings.'], mat2str(src.Dtype), mat2str(givenDtype));
         end
         [series, ~, dsNdim] = src.as_series();
         dtype = src.Dtype;
@@ -93,12 +97,11 @@ function [series, dtype, effNdim] = materialize_for_cdist(src, defaultDtype, req
                   dsNdim, requestedNdim);
         end
     elseif ischar(src) || (isstring(src) && isscalar(src))
-        ds = dtwc.Dataset(char(src), 0, 0, '', '', defaultDtype, requestedNdim);
+        ds = dtwc.Dataset(char(src), 0, 0, '', '', dtype, requestedNdim);
         [series, ~, effNdim] = ds.as_series();
         dtype = ds.Dtype;
     else
         series = src;
-        dtype = defaultDtype;
         effNdim = requestedNdim;
     end
 end
