@@ -16,17 +16,15 @@
 
 #include "hierarchical.hpp"
 #include "../Problem.hpp"
+#include "../base/error.hpp"
 
 #include <algorithm>
 #include <limits>
 #include <numeric>
+#include <string>
 #include <vector>
 
 namespace dtwc::algorithms {
-
-// ---------------------------------------------------------------------------
-// build_dendrogram
-// ---------------------------------------------------------------------------
 
 Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
 {
@@ -43,10 +41,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   if (N <= 1) return dend;
   dend.merges.reserve(static_cast<size_t>(N - 1));
 
-  // -------------------------------------------------------------------------
-  // Copy pairwise distances into a packed lower-triangular working array
-  // (half the memory of a dense N×N copy, widened once in a linear pass).
-  // -------------------------------------------------------------------------
+  // Packed lower-triangular working copy (half the memory of a dense N×N copy).
   const std::size_t n_packed = core::packed_size(static_cast<std::size_t>(N));
   std::vector<double> work(n_packed);
   prob.distance_matrix().visit([&](const auto *src) {
@@ -90,19 +85,18 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   for (index_t i = 0; i < N - 1; ++i)
     recompute_row_nn(i);
 
-  // -------------------------------------------------------------------------
-  // N-1 merge steps
-  // -------------------------------------------------------------------------
   for (index_t step = 0; step < N - 1; ++step) {
     double best_dist = kInf;
     index_t best_a = -1, best_b = -1;
 
+    // Strict `<` with i ascending, and nn_idx[i] the smallest j at its distance: a tie
+    // keeps the first pair met, the lexicographically smallest (a, b).
     for (index_t i = 0; i < N - 1; ++i) {
       if (!active[static_cast<std::size_t>(i)]) continue;
       const index_t j = nn_idx[static_cast<std::size_t>(i)];
       if (j < 0) continue;
       const double d = nn_dist[static_cast<std::size_t>(i)];
-      if (d < best_dist || (d == best_dist && (i < best_a || (i == best_a && j < best_b)))) {
+      if (d < best_dist) {
         best_dist = d;
         best_a = i;
         best_b = j;
@@ -166,9 +160,6 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   return dend;
 }
 
-// ---------------------------------------------------------------------------
-// Union-Find helpers (path compression + union-by-rank)
-// ---------------------------------------------------------------------------
 namespace {
 
   struct UF
@@ -236,10 +227,6 @@ namespace {
   }
 
 } // anonymous namespace
-
-// ---------------------------------------------------------------------------
-// cut_dendrogram
-// ---------------------------------------------------------------------------
 
 core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, index_t k)
 {

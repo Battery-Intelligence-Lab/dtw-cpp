@@ -42,8 +42,8 @@
 #include <cstdint>
 #include <limits>
 #include <random>
-#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dtwc {
@@ -82,7 +82,7 @@ void compute_nearest_and_second(
     bool has_second = false;
 
     for (index_t m = 0; m < k; ++m) {
-      const index_t medoid = medoids[m]; // read once: cl 19.50 read it again for the tie below (2026-10-11)
+      const index_t medoid = medoids[m]; // read once: cl 19.50 otherwise reads it again for the tie below
       const double d = matrix[core::tri_index(static_cast<std::size_t>(p), static_cast<std::size_t>(medoid))];
       // A medoid tied with another medoid (a duplicate series) serves itself,
       // or its own cluster would be published empty.
@@ -334,7 +334,7 @@ index_t checked_point_count(const Problem& prob, index_t n_clusters, int max_ite
   return n;
 }
 
-/// SWAP phase from the BUILD medoids; writes the result back into `prob`.
+/// SWAP phase from the BUILD medoids; returns the result without mutating `prob`.
 core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, int max_iter)
 {
   const index_t N = prob.size();
@@ -380,7 +380,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
   });
 
   core::ClusteringResult result;
-  result.medoid_indices = medoids;
+  result.medoid_indices = std::move(medoids);
   result.labels = std::move(nearest);
   result.total_cost = compute_total_cost(nearest_dist);
   result.iterations = iter;

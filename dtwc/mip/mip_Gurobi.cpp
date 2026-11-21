@@ -10,19 +10,17 @@
 #include "decode_assignment.hpp"
 #include "../algorithms/fast_pam.hpp"
 #include "../Problem.hpp"
-#include "../base/error.hpp" // for SolverError
+#include "../base/error.hpp"
 #include "../base/settings.hpp"
-#include "../types/types.hpp" // for Range
+#include "../types/types.hpp"
 
-
-#include <algorithm> // for std::max
-#include <cstddef>   // for std::size_t
-#include <iostream>  // for std::cout
-#include <limits>    // for std::numeric_limits
+#include <algorithm>
+#include <cstddef>
+#include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 #ifdef DTWC_ENABLE_GUROBI
@@ -48,7 +46,6 @@ void MIP_clustering_byGurobi(Problem &prob)
     if (n_uz > static_cast<std::size_t>(std::numeric_limits<int>::max()) / std::max<std::size_t>(n_uz, 1))
       throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
 
-    // Create variables
     std::unique_ptr<GRBVar[]> w{ model.addVars(static_cast<int>(n_uz * n_uz), GRB_BINARY) };
 
     // Branch on medoid selection first — once A[i,i] is fixed,
@@ -64,7 +61,6 @@ void MIP_clustering_byGurobi(Problem &prob)
       model.addConstr(lhs, '=', 1.0);
     }
 
-
     for (auto j : Range(Nb))
       for (auto i : Range(Nb))
         model.addConstr(w[i + j * Nb] <= w[i * (Nb + 1)]);
@@ -74,13 +70,12 @@ void MIP_clustering_byGurobi(Problem &prob)
       for (auto i : Range(Nb))
         lhs += w[i * (Nb + 1)];
 
-      model.addConstr(lhs == Nc); // There should be Nc clusters.
+      model.addConstr(lhs == Nc);
     }
 
-    prob.fill_distance_matrix(); // We need full distance matrix before MIP clustering.
+    prob.fill_distance_matrix();
     const double max_distance = prob.max_distance();
     const double scaling_factor = max_distance > 0.0 ? max_distance / 2.0 : 1.0; // the largest cost is 2 at any distance scale
-    // Set objective
     GRBLinExpr obj = 0;
     for (auto j : Range(Nb))
       for (auto i : Range(Nb))
@@ -133,14 +128,11 @@ void MIP_clustering_byGurobi(Problem &prob)
     prob.set_result(mip::decode_assignment(solution, Nb, Nc, true, "Gurobi"));
 
   } catch (GRBException &e) {
-    // Wrap solver-native failures as SolverError. GRBException derives from
-    // std::runtime_error in this Gurobi version, so this handler MUST precede the
-    // std::runtime_error handler below — otherwise it is shadowed and never runs.
+    // Must precede std::runtime_error (which GRBException derives from).
     throw SolverError("Gurobi optimisation failed (error code "
                       + std::to_string(e.getErrorCode()) + "): " + e.getMessage());
   } catch (const std::runtime_error &) {
-    // Propagate our own SolverError (see above) — and any other std::runtime_error
-    // raised inside the try (e.g. fast_pam validation) — unchanged; never swallow it.
+    // Every DTWC++ error (the SolverError above, fast_pam's validation) passes unchanged, never rewrapped below.
     throw;
   } catch (...) {
     throw SolverError("Unknown exception during Gurobi optimisation.");

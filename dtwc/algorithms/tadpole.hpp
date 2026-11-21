@@ -10,29 +10,19 @@
  *   Why this is the one method that need NOT materialise the full N×N matrix
  *   (contrast k-medoids / MIP / LR-core, which read essentially every entry):
  *   the local density uses the CUTOFF kernel ρ_i = |{ j≠i : d(i,j) < dc }| — a
- *   BINARY per-pair test. For finite, nonempty, equal-length Standard-L1
- *   univariate series whose length fits the integer band API, a lower bound LB
- *   and upper bound UB give an admissible decision without the exact DTW:
+ *   BINARY per-pair test. For equal-length Standard-L1 univariate series, a
+ *   lower bound LB and upper bound UB decide neighbours without exact DTW:
  *       LB(i,j) ≥ dc  ⇒  d(i,j) ≥ dc  ⇒  NOT a neighbour   (skip DTW)
  *       UB(i,j) <  dc  ⇒  d(i,j) <  dc ⇒  IS  a neighbour   (skip DTW)
  *       otherwise                       compute exact DTW.
- *   Rodriguez-Laio choose dc near the 1–2% distance percentile. A far pair is
- *   skipped only when the computed lower bound itself clears dc.
- *   Admissibility alone does not promise any prune rate. The Gaussian kernel
- *   Σ exp(-(d/dc)²) is deliberately not used: it needs every exact distance.
+ *   These hold in exact arithmetic; agreement with the brute-force path when a
+ *   rounded bound lands at dc (or at the δ stage's best) is not proved.
+ *   The Gaussian kernel Σ exp(-(d/dc)²) is deliberately not used because it
+ *   requires every exact distance.
  *
- *   LB = symmetric LB_Keogh (reuses each series' envelope across ALL pairs —
- *   Begum's "reuse cached envelope").
- *   UB = the no-warp diagonal cost Σ_t metric(x_t, y_t) for equal-length series
- *   (a valid DTW upper bound: the diagonal always satisfies the Sakoe-Chiba band).
- *
- *   Pruning is proved only for finite, nonempty, equal-length plain-L1
- *   univariate DTW with integer-representable lengths; unsupported variants
- *   and unequal-length pairs take the exact route. Exact arithmetic preserves
- *   the brute-force result, and the exactly representable regression confirms
- *   that regime. Floating bit-level identity at a threshold is not proved.
- *   Empty series are a known exception; the configuration predicate does
- *   not yet validate finiteness or integer length representability.
+ *   LB = symmetric LB_Keogh (reusing each series' cached envelope across pairs).
+ *   UB = the no-warp diagonal cost Σ_t |x_t − y_t| for equal-length series
+ *   (valid because the diagonal always satisfies any Sakoe-Chiba band ≥ 0).
  *
  * @author Volkan Kumtepeli
  * @date 8 Jul 2026
@@ -82,20 +72,12 @@ struct TADPoleStats {
  *                    the whole point is to avoid the full matrix.
  * @param n_clusters  Number of clusters k (top-k points by γ = ρ·δ become centers).
  * @param dc          Cutoff distance for the density kernel (must be > 0).
- * @param prune       true  → apply LB/UB pruning where the live predicate permits;
- *                    false → compute every DTW (independent brute-force oracle).
- *                    The predicate rejects anything but Standard, univariate,
- *                    float64, MissingStrategy::Error with Problem::metric() L1
- *                    (the bounds are L1), on a float64 matrix not yet filled (a
- *                    filled one is read, not bounded) — in particular there is NO
- *                    PRUNING ON FLOAT32 DATA (bounds from float64 storage against
- *                    an exact side that branches on is_f32() are inadmissible),
- *                    where prune=true costs the same as prune=false and
- *                    TADPoleStats::pruning_enabled reports it.
- *                    Exact-arithmetic identity is proved for finite, nonempty,
- *                    equal-length Standard-L1 univariate inputs with
- *                    integer-representable lengths. Floating threshold identity
- *                    is not proved; empty-series identity is open.
+ * @param prune       true  → apply LB/UB pruning when admissible (Standard L1
+ *                    univariate float64 DTW with MissingStrategy::Error and an
+ *                    unfilled float64 distance matrix; unequal-length pairs and
+ *                    other configurations fall back to exact DTW, reported via
+ *                    TADPoleStats::pruning_enabled);
+ *                    false → compute every DTW (brute-force oracle).
  * @param stats       If non-null, receives the pruning ledger.
  * @return core::ClusteringResult: labels[i] ∈ [0,k), medoid_indices = the k
  *         density-peak centers, total_cost = Σ_i d(i, its center).

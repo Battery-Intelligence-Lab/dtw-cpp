@@ -23,7 +23,6 @@
 #include <cstdint>
 #include <future>
 #include <limits>
-#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -146,8 +145,8 @@ private:
  * returned to the system, core::release_free_memory) before the next is read; so is the union's, before the pass.
  *
  * `prob` holds no series; its distance takes the series' features a time step from its data (an empty Data of the
- * file's ndim, for a file of more than one). Static, so each including file's instantiation is local to it: GCC
- * inlines the assignment into its caller only then (2026-11-01).
+ * file's ndim, for a file of more than one). Static so each including TU gets a local instantiation and GCC inlines
+ * the assignment into its caller.
  */
 template <bool F32, typename Reader>
 static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptions &opts, const Reader &reader,
@@ -316,7 +315,7 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
     // returned to the system before the next.
     if constexpr (Reader::decodes_with_team) core::release_free_memory();
   }
-  // The end phase is priced as if the batches went back to the system; glibc kept 320-680 MB (1 GiB, 2026-10-09).
+  // The end phase is priced assuming batch memory returned to the OS (glibc otherwise retains freed arena pages).
   if constexpr (!Reader::decodes_with_team) core::release_free_memory();
   check.band();
 

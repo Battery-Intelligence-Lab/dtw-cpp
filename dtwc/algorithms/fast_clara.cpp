@@ -45,11 +45,9 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <optional>
 #include <span>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -163,17 +161,9 @@ namespace detail {
   }
 
 #ifdef DTWC_HAS_CUDA
-  void assign_on_gpu(
-    const Problem &prob, const Data &points, index_t first, const std::vector<std::span<const double>> &medoids,
-    std::span<const index_t> medoid_indices, std::vector<std::vector<index_t>> &labels,
-    std::vector<core::detail::OrderedMedoidObjective> &costs, std::size_t staging_bytes)
-  {
-    assign_on_gpu(
-      prob, static_cast<std::size_t>(points.size()), [&points](std::size_t i) { return points.series(i); }, first,
-      medoids, medoid_indices, labels, costs, staging_bytes, true);
-  }
-
-  void assign_on_gpu(
+  /// assign_on_gpu on `count` points, point(i) the series of point first + i; `team` false: its blocks padded and assigned
+  /// on the calling thread alone (cpu+gpu's driving thread, whose team runs the CPU's share).
+  static void assign_on_gpu(
     const Problem &prob, std::size_t count, const std::function<std::span<const double>(std::size_t)> &point,
     index_t first, const std::vector<std::span<const double>> &medoids, std::span<const index_t> medoid_indices,
     std::vector<std::vector<index_t>> &labels, std::vector<core::detail::OrderedMedoidObjective> &costs,
@@ -208,16 +198,26 @@ namespace detail {
       });
   }
 
+  void assign_on_gpu(
+    const Problem &prob, const Data &points, index_t first, const std::vector<std::span<const double>> &medoids,
+    std::span<const index_t> medoid_indices, std::vector<std::vector<index_t>> &labels,
+    std::vector<core::detail::OrderedMedoidObjective> &costs, std::size_t staging_bytes)
+  {
+    assign_on_gpu(
+      prob, static_cast<std::size_t>(points.size()), [&points](std::size_t i) { return points.series(i); }, first,
+      medoids, medoid_indices, labels, costs, staging_bytes, true);
+  }
+
   /// cpu+gpu's share of the points for the GPU where no calibration block is measured (the two blocks would cover the
   /// input): the design's predicted rates at 4.19 M series of 128 steps, band 2, 25 medoid slots, FP64, on an RTX 4000
-  /// Ada beside 24 threads (2026-10-11, inferred): the CPU's lanes 55 Gcell/s, the GPU 26 Gcell/s where one thread pads
-  /// its blocks from a mapped file.
+  /// Ada beside 24 threads (inferred): the CPU's lanes 55 Gcell/s, the GPU 26 Gcell/s where one thread pads its blocks
+  /// from a mapped file.
   constexpr double recorded_gpu_share = 26.0 / (55.0 + 26.0);
 
   /// The CPU's calibration block under cpu+gpu: the last points of the pass, few, since the GPU idles while the team
   /// times them, and enough that the team's rate on them is its rate on a whole block (the smallest of 4,096, 8,192 and
-  /// 16,384 within about a tenth of that rate on 65,536 points, measured on 1.1 M series of 200 to 256 steps,
-  /// 2026-11-09, inferred: the machine was loaded).
+  /// 16,384 within about a tenth of that rate on 65,536 points, measured on 1.1 M series of 200 to 256 steps, inferred:
+  /// the machine was loaded).
   constexpr std::size_t calibration_cpu_points = 4096;
 
   /**

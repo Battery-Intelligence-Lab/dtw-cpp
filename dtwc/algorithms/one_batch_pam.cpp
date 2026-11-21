@@ -19,7 +19,6 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -62,13 +61,11 @@ namespace {
   }
 
   // The accessor for the stored precision, called once and serially before any
-  // OpenMP region: a legacy raw semantic mutation may require the mutable
-  // getter to rebind once, and its call validates the request (band
+  // OpenMP region: it applies a raw `band` write, validates the request (band
   // feasibility, non-finite values) with a typed error that must not be thrown
-  // inside a parallel region; under Soft-DTW it also computes the self terms
-  // Problem::pair_distance reads. Workers call pair_distance, which only reads;
-  // none calls the accessor. Only the getter for the stored precision: the
-  // Float32 one also rejects variant parameters Float64 data never narrows.
+  // inside a parallel region, and under Soft-DTW computes the self terms
+  // Problem::pair_distance reads, so workers only read. Not the Float32 getter
+  // for Float64 data: it also rejects variant parameters Float64 never narrows.
   Problem &checked(Problem &problem)
   {
     if (problem.data().is_f32())
@@ -208,12 +205,10 @@ namespace {
       scale = table_max > 0.0 ? table_max : 1.0;
       evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(), std::uint64_t{ 0 });
 
-      // Count/mean NNIW (Loog 2012): the fixed table already contains everything
-      // needed to estimate each sampled point's Voronoi-cell mass. This is
-      // deliberately combined with the obpam experiment code's
-      // finite-table-maximum diagonal correction in estimate(). The paper's
-      // literal +infinity and maintained OneBatchPAM v0.1.0 do not describe this
-      // exact hybrid estimator.
+      // Count/mean NNIW (Loog 2012) Voronoi-cell mass weights, deliberately paired
+      // with the obpam experiment code's finite-table-maximum diagonal correction
+      // in estimate(): neither the paper's literal +infinity nor OneBatchPAM
+      // v0.1.0 describes this hybrid.
       for (std::size_t i = 0; i < n; ++i) {
         std::size_t nearest = 0;
         double best = raw[i * m];
@@ -434,16 +429,12 @@ core::ClusteringResult one_batch_pam(Problem &prob,
   std::vector<std::uint64_t> point_evaluations(n, 0);
 
   // Race-free by design: point p alone writes labels[p], point_cost[p] and
-  // point_evaluations[p]; the batch table, the medoids and the series are
-  // read-only here. The DTW call count and the objective are combined serially
+  // point_evaluations[p]; the call count and the objective are combined serially
   // after the region, in point order, so neither depends on the thread count.
-  //
-  // exact() is the one distance read here that the fixed-batch table's
-  // finiteness check cannot cover: it is reached precisely when a selected
-  // medoid is NOT in the batch. Unguarded, a non-finite d makes `d < best` false
-  // in every slot, the point silently keeps label 0, and the run publishes a
-  // wrong partition where fast_pam and fast_clara throw. run_openmp rethrows the
-  // failure of the lowest point, the one a serial scan meets first.
+  // exact() reaches medoids outside the batch, which the table's finiteness check
+  // never saw: unguarded, a non-finite d would leave the point silently on label 0
+  // where fast_pam and fast_clara throw. run_openmp rethrows the lowest point's
+  // failure, the one a serial scan meets first.
   auto assign_point = [&](std::size_t point) {
     double best = std::numeric_limits<double>::infinity();
     index_t label = 0;
@@ -481,10 +472,8 @@ core::ClusteringResult one_batch_pam(Problem &prob,
   if (stats) {
     stats->batch_size = m;
     stats->distance_evaluations = distances.evaluations;
-    const long double denominator = static_cast<long double>(n) * static_cast<long double>(n);
-    stats->full_matrix_fraction = denominator > 0.0L
-                                    ? static_cast<double>(static_cast<long double>(distances.evaluations) / denominator)
-                                    : 0.0;
+    stats->full_matrix_fraction = static_cast<double>(
+      static_cast<long double>(distances.evaluations) / (static_cast<long double>(n) * static_cast<long double>(n)));
     stats->estimated_objective = estimated_cost(nearest_distance);
     stats->accepted_swaps = accepted_swaps;
   }

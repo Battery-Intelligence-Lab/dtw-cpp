@@ -46,11 +46,8 @@ class Problem; // Forward declaration
  *                  one result on every platform; dtwc::randGenerator is not read.
  * @return core::ClusteringResult containing labels, medoid indices, total cost, etc.
  *
- * @note 2.0: on return this WRITES the result back into `prob`
- *       (prob.centroids_ind = medoids, prob.clusters_ind = labels,
- *       prob.n_clusters() = n_clusters), so scores::silhouette(prob) etc. work
- *       with no manual wiring. In 1.x it left prob untouched and the bindings
- *       wired the result in; that binding auto-wire moves into core here.
+ * @note Writes the result back into `prob` (`centroids_ind`, `clusters_ind`,
+ *       `n_clusters`), so scores::silhouette(prob) etc. work with no manual wiring.
  * @note Requires prob to have data loaded (prob.size() > 0).
  * @throws InvalidInput if the problem is empty, `n_clusters` is outside `[1, N]` or
  *         `max_iter` is negative.

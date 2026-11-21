@@ -2,16 +2,9 @@
  * @file nearest_medoid.hpp
  * @brief Shared nearest-open-medoid scan for the MIP backends.
  *
- * @details Every Lagrangian primal repair and the LR-core publication
- * answer the same question: which of the k open medoids serves point j, and at
- * what cost? This is the single definition, and it fixes the tie-break: the
- * FIRST minimum wins, so ties resolve to the lowest position in the open-medoid
- * array.
- *
- * Performance contract: this sits inside the LR subgradient primal repair, which
- * runs every iteration. It is a header-inline function template over the
- * distance accessor — never `std::function`, never virtual, and it allocates
- * nothing, so the caller's accessor inlines into the scan.
+ * @details Resolves ties to the lowest position in `[0, k)` (strict `<`).
+ * Header-inline template over the distance accessor so primal repair inlines
+ * without virtual dispatch or allocation.
  *
  * @author Volkan Kumtepeli
  * @date 02 Sep 2026

@@ -20,7 +20,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <limits>
 #include <random>
 #include <span>
@@ -314,14 +313,6 @@ void assign_on_gpu(
   const Problem &prob, const Data &points, index_t first, const std::vector<std::span<const double>> &medoids,
   std::span<const index_t> medoid_indices, std::vector<std::vector<index_t>> &labels,
   std::vector<core::detail::OrderedMedoidObjective> &costs, std::size_t staging_bytes = 0);
-
-/// assign_on_gpu on `count` points, point(i) the series of point first + i; `team` false: its blocks padded and assigned
-/// on the calling thread alone (cpu+gpu's driving thread, whose team runs the CPU's share).
-void assign_on_gpu(
-  const Problem &prob, std::size_t count, const std::function<std::span<const double>(std::size_t)> &point,
-  index_t first, const std::vector<std::span<const double>> &medoids, std::span<const index_t> medoid_indices,
-  std::vector<std::vector<index_t>> &labels, std::vector<core::detail::OrderedMedoidObjective> &costs,
-  std::size_t staging_bytes, bool team);
 #else
 /// Metal has no kernel for the assignment, so on a GPU device it runs on the
 /// CPU (the sample matrices still fill on the GPU); verbose says so, once a pass.
