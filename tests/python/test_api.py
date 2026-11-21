@@ -80,7 +80,8 @@ class TestLoad:
     def test_arrow_ipc_path_reads_its_data_and_name_columns(self, tmp_path):
         """load('x.arrow') reads through the C++ reader, as dtwc_cl reads Arrow IPC:
         the series are the 'data' column, named by 'name', 'ndim' features a step,
-        and the Data is a view of the file, its p_vec and p_names read through it."""
+        and the Data is a view of the file, its p_vec and p_names read through it.
+        Once read, the file's ndim is the Dataset's, which settings may give."""
         pa = pytest.importorskip("pyarrow")
         rows = [[0.0, 0.5, 1.0, 1.5], [2.5, 1.0]]
         table = pa.table({"data": pa.array(rows, type=pa.list_(pa.float64())),
@@ -88,10 +89,12 @@ class TestLoad:
         path = tmp_path / "x.arrow"
         with pa.OSFile(str(path), "wb") as sink, pa.ipc.new_file(sink, table.schema) as writer:
             writer.write_table(table)
-        data = dtwcpp.load(path).as_data()
+        dataset = dtwcpp.load(path)
+        data = dataset.as_data()
         assert data.p_vec == rows
         assert data.p_names == ["a", "b"]
         assert data.ndim == 2
+        assert dtwcpp.load_data(dataset, dtwcpp.settings(ndim=2)) is dataset
 
     @pytest.mark.parametrize("suffix", [".csv", ".parquet"])
     def test_float32_load_clusters_as_the_from_float32_route(self, tmp_path, suffix):

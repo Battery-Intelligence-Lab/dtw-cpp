@@ -28,7 +28,7 @@ function res = do_clustering(varargin)
         else
             s = dtwc.settings(varargin{2:end});
         end
-        data = dtwc.load_data(rawData, s);
+        data = dtwc.load_data(rawData, varargin{2:end});   % the same settings, and the pairs given here
     end
 
     if s.K < 1

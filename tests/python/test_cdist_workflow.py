@@ -143,12 +143,14 @@ class TestCasadiWorkflowAndFastIngest:
 
     def test_a_dataset_refuses_reader_options_it_was_not_made_with(self):
         """A Dataset is read with the options it was made with: settings or overrides
-        that give one another value are refused, naming it; the same value or the
-        default runs."""
+        that give one another value are refused, naming it, an override even at its
+        default; the same value, or a setting left at its default, runs."""
         ds = dtwcpp.load(np.vstack([np.zeros((3, 6)), np.full((3, 6), 9.0)]), skip_rows=1)
         cfg = dtwcpp.settings(k=2, output="")
         with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=2"):
             dtwcpp.do_clustering(ds, cfg, skip_rows=2)
+        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=0"):
+            dtwcpp.do_clustering(ds, cfg, skip_rows=0)
         with pytest.raises(dtwcpp.InvalidInput, match="dtype='float64' and the settings give dtype='float32'"):
             dtwcpp.do_clustering(ds, dtwcpp.settings(cfg, dtype="float32"))
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Dataset was made with dtype='float64'"):
@@ -161,6 +163,7 @@ class TestCasadiWorkflowAndFastIngest:
             dtwcpp.load_data(dtwcpp.load_data(ds.source, ndim=2).as_data(), ndim=3)
         assert dtwcpp.do_clustering(ds, cfg, skip_rows=1).n_series == 5
         assert dtwcpp.do_clustering(ds, cfg).n_series == 5
+        assert dtwcpp.load_data(ds, skip_rows=1) is ds
 
     def test_settings_post_init_attribute_mutation_and_validation(self):
         rng = np.random.default_rng(31)
