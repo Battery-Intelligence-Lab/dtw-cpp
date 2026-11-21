@@ -264,14 +264,12 @@ endfunction()
 
 # Accepted total costs are the shortest round-trip text of these IEEE-754
 # values (big-endian hex):
-# 4011999999999998, 40119999EC000000, and for Soft-DTW C024B0200B5431CC
-# (the MSVC and Apple Clang baseline of 2026-07-23) or C024B0200B5431CE (GCC 14 +
-# -fassociative-math, 2 ULP; Arrhenius LastTest.log 2026-09-01).
+# 4011999999999998, 40119999EC000000, and for the Soft-DTW divergence
+# 40126B8423FB07EA (Windows clang 2026-11-21).
 # Labels/medoids stay exact. Resident and stream stay byte-identical.
 check_f8_config(f64_standard float64 standard none "4.399999999999999")
 check_f8_config(f32_standard float32 standard none "4.400001227855682")
-check_f8_config(f64_softdtw float64 softdtw 0.7
-    "-10.343994478252078;-10.343994478252082")
+check_f8_config(f64_softdtw float64 softdtw 0.7 "4.604996263691627")
 
 # The labels and medoids are the same in all three configurations; the exact
 # cost is what tells them apart.

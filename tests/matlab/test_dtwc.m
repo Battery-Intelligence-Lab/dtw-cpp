@@ -199,8 +199,8 @@ function test_a_float32_matrix_comes_back_single(testCase)
 end
 
 function test_a_negative_entry_is_refused_and_a_nan_one_computed(testCase)
-%   v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. Under every
-%   variant but Soft-DTW a negative entry is refused with the way to mark the pair.
+%   v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. A negative
+%   entry is refused with the way to mark the pair: no distance is negative.
 %   The oracle of a computed pair is dtwc.distance.dtw, the per-pair route.
     X = [0 1 3 2; 1 2 0 1; 4 0 2 2];
     D = dtwc.compute_distance_matrix(X);
@@ -212,7 +212,7 @@ function test_a_negative_entry_is_refused_and_a_nan_one_computed(testCase)
         verifyFail(testCase, 'a -1 entry was read as a distance');
     catch err
         verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
-        verifySubstring(testCase, err.message, 'is -1; only a Soft-DTW distance can be negative');
+        verifySubstring(testCase, err.message, 'is -1; no distance is negative');
         verifySubstring(testCase, err.message, 'D(D < 0) = NaN');
     end
     D(D < 0) = NaN;

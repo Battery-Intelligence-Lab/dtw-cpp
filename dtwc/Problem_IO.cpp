@@ -198,9 +198,8 @@ void Problem::writeBestRep(int best_rep)
  *         NaN) or Negative (also any value below zero, v1.0.0's -1).
  *  @throws IOError if the file cannot be opened or holds a non-numeric field;
  *          InvalidInput if it is not square and symmetric, if its size is not
- *          this Problem's series count, if a distance is ±inf, if one is
- *          negative under a variant other than Soft-DTW, for Negative under
- *          Soft-DTW, or if the matrix is memory-mapped.
+ *          this Problem's series count, if a distance is ±inf or negative, or
+ *          if the matrix is memory-mapped.
  */
 void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComputed not_computed)
 {
@@ -211,12 +210,6 @@ void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComput
     throw InvalidInput("read_distance_matrix: this Problem's distance matrix is memory-mapped "
                        "(use_mmap_distance_matrix), and a CSV matrix is read into RAM only; call "
                        "refresh_distance_matrix() first, or reuse the mapped file instead.");
-  const bool soft_dtw = distance_.variant.variant == core::DTWVariant::SoftDTW;
-  if (soft_dtw && not_computed == core::NotComputed::Negative)
-    throw InvalidInput("Problem::read_distance_matrix: not_computed = negative reads a negative entry as a pair "
-                       "never computed, but this Problem's variant is softdtw, whose distances can be negative; read "
-                       "a Soft-DTW matrix with not_computed = nan, the default: an empty field or NaN marks such a "
-                       "pair.");
   // Parsed into a local so a rejected file leaves the matrix untouched. A
   // matrix of another size, an empty one included, describes other series and
   // is refused: ignoring it would recompute every distance silently at the
@@ -232,7 +225,7 @@ void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComput
         "these series, or omit it to compute the distances.");
   const std::string variant(name_of(core::variant_names, distance_.variant.variant));
   const bool complete = loaded.all_computed(
-    "Problem::read_distance_matrix", soft_dtw,
+    "Problem::read_distance_matrix", false,
     "A v1.0.0 distance-matrix file marks a pair it never computed with -1: read it with --not-computed negative (C++ "
     "NotComputed::Negative, Python not_computed=\"negative\", MATLAB 'NotComputed','negative'); otherwise this is not "
     "a " + variant + " distance matrix.");

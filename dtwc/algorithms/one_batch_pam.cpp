@@ -61,18 +61,26 @@ namespace {
       throw InvalidInput("one_batch_pam: relative_tolerance must be finite and non-negative.");
   }
 
+  // The accessor for the stored precision, called once and serially before any
+  // OpenMP region: a legacy raw semantic mutation may require the mutable
+  // getter to rebind once, and its call validates the request (band
+  // feasibility, non-finite values) with a typed error that must not be thrown
+  // inside a parallel region; under Soft-DTW it also computes the self terms
+  // Problem::pair_distance reads. Workers call pair_distance, which only reads;
+  // none calls the accessor. Only the getter for the stored precision: the
+  // Float32 one also rejects variant parameters Float64 data never narrows.
+  Problem &checked(Problem &problem)
+  {
+    if (problem.data().is_f32())
+      (void)problem.dtw_function_f32();
+    else
+      (void)problem.dtw_function();
+    return problem;
+  }
+
   struct FixedBatchDistances
   {
     Problem &prob;
-    // The dispatcher for the stored precision, resolved once and serially before
-    // any OpenMP region: a legacy raw semantic mutation may require the mutable
-    // getter to rebind once, and its first call validates the request (band
-    // feasibility, non-finite values) with a typed error that must not be thrown
-    // inside a parallel region. Workers read the stable function object; none calls
-    // the accessor. Only the getter for the stored precision: the Float32 one also
-    // rejects variant parameters Float64 data never narrows.
-    const Problem::dtw_fn_f32_t *dtw_f32;
-    const Problem::dtw_fn_t *dtw_f64;
     std::size_t n;
     std::size_t m;
     std::vector<index_t> sample;
@@ -83,9 +91,7 @@ namespace {
     std::uint64_t evaluations = 0;
 
     FixedBatchDistances(Problem &problem, std::vector<index_t> batch)
-      : prob(problem),
-        dtw_f32(problem.data().is_f32() ? &problem.dtw_function_f32() : nullptr),
-        dtw_f64(problem.data().is_f32() ? nullptr : &problem.dtw_function()),
+      : prob(checked(problem)),
         n(problem.size()), m(batch.size()), sample(std::move(batch)),
         sample_position(n, -1), raw(n * m, 0.0), weights(m, 0.0)
     {
@@ -224,12 +230,7 @@ namespace {
       for (double &weight : weights) weight /= mean;
     }
 
-    double dtw(std::size_t a, std::size_t b) const
-    {
-      if (dtw_f32)
-        return (*dtw_f32)(prob.data().series_f32(a), prob.data().series_f32(b));
-      return (*dtw_f64)(prob.series(a), prob.series(b));
-    }
+    double dtw(std::size_t a, std::size_t b) const { return prob.pair_distance(a, b); }
 
     double estimate(std::size_t candidate, std::size_t batch_column) const
     {

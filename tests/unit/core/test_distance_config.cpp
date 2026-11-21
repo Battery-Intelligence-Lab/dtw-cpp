@@ -114,8 +114,13 @@ TEMPLATE_TEST_CASE("the facade and a Problem's fill accept the same configuratio
           for (std::size_t i = 0; i < series.size(); ++i)
             for (std::size_t j = i + 1; j < series.size(); ++j) {
               const double fill = problem.dist_by_ind(static_cast<dtwc::index_t>(i), static_cast<dtwc::index_t>(j));
-              const double facade = dtwc::distance::dtw<T>(std::span<const T>{ series[i] },
-                                                           std::span<const T>{ series[j] }, params, band, metric, missing);
+              const auto dtw = [&](std::size_t a, std::size_t b) -> double {
+                return dtwc::distance::dtw<T>(std::span<const T>{ series[a] }, std::span<const T>{ series[b] }, params,
+                                              band, metric, missing);
+              };
+              double facade = dtw(i, j);
+              // Under Soft-DTW a Problem holds the divergence sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2.
+              if (variant == DTWVariant::SoftDTW) facade -= (dtw(i, i) + dtw(j, j)) / 2;
               ++pairs;
               INFO("band " << band << ", pair " << i << "," << j << ": fill " << fill << ", facade " << facade);
               CHECK(ts::dtw_routes_agree<T>(fill, facade, series[i].size(), series[j].size()));

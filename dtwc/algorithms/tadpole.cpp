@@ -100,21 +100,19 @@ namespace algorithms {
     }
 
     /// The exact distance of a pair: the Problem's matrix when it is filled (a
-    /// matrix read from a file included), else the bound DTW function on the stored
-    /// series, whose request is checked here, once, serially. Neither writes, so
-    /// the parallel stages may call it for disjoint pairs.
+    /// matrix read from a file included), else Problem::pair_distance on the stored
+    /// series, whose request the accessor of their precision checks here, once,
+    /// serially. Neither writes, so the parallel stages may call it for disjoint pairs.
     auto exact_distance(Problem &prob)
     {
       const bool filled = prob.is_distance_matrix_filled();
-      const bool f32 = prob.data().is_f32();
-      const Problem::dtw_fn_t *f64_fn = filled || f32 ? nullptr : &prob.dtw_function();
-      const Problem::dtw_fn_f32_t *f32_fn = filled || !f32 ? nullptr : &prob.dtw_function_f32();
-      return [&prob, f64_fn, f32_fn](index_t i, index_t j) -> double {
-        if (f64_fn) return (*f64_fn)(prob.series(static_cast<std::size_t>(i)),
-                                     prob.series(static_cast<std::size_t>(j)));
-        if (f32_fn) return (*f32_fn)(prob.data().series_f32(static_cast<std::size_t>(i)),
-                                     prob.data().series_f32(static_cast<std::size_t>(j)));
-        return prob.dist_by_ind(i, j);
+      if (!filled && prob.data().is_f32())
+        (void)prob.dtw_function_f32();
+      else if (!filled)
+        (void)prob.dtw_function();
+      return [&prob, filled](index_t i, index_t j) -> double {
+        if (filled) return prob.dist_by_ind(i, j);
+        return prob.pair_distance(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
       };
     }
 
