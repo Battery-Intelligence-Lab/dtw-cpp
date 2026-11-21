@@ -78,7 +78,8 @@ void MIP_clustering_byGurobi(Problem &prob)
     }
 
     prob.fill_distance_matrix(); // We need full distance matrix before MIP clustering.
-    const auto scaling_factor = std::max(prob.max_distance() / 2.0, 1.0);
+    const double max_distance = prob.max_distance();
+    const double scaling_factor = max_distance > 0.0 ? max_distance / 2.0 : 1.0; // the largest cost is 2 at any distance scale
     // Set objective
     GRBLinExpr obj = 0;
     for (auto j : Range(Nb))
