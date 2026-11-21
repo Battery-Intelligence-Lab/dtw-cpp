@@ -457,6 +457,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     throw InvalidInput("--checkpoint-interval requires --checkpoint <dir>.");
   if (config.not_computed != core::NotComputed::NaN && config.dist_matrix.empty())
     throw InvalidInput("--not-computed says how a --dist-matrix file marks a pair, and requires --dist-matrix <path>.");
+  if (!config.dist_matrix.empty() && !config.checkpoint.empty())
+    throw InvalidInput("--dist-matrix and --checkpoint each supply the distance matrix; give one.");
 
   auto problem = std::make_shared<Problem>(run_name(config));
   Problem &prob = *problem;

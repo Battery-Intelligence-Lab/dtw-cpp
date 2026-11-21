@@ -332,3 +332,15 @@ TEST_CASE("run rejects a legacy precomputed CSV plus mmap before false success",
                       && ContainsSubstring("Raise --ram-limit"));
   CHECK_FALSE(cache_exists(scratch, "precomputed"));
 }
+
+TEST_CASE("run refuses --dist-matrix beside --checkpoint, which each supply the distance matrix",
+          "[cli][storage][checkpoint]")
+{
+  // A checkpoint resumed over the CSV's distances, and a fresh one saved the CSV's as computed ones.
+  const ScratchDirectory scratch{ "cli_matrix_and_checkpoint" };
+  auto config = quiet_config(2, Method::PAM);
+  config.dist_matrix = (scratch.path / "never_read.csv").string();
+  config.checkpoint = (scratch.path / "ckpt").string();
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("each supply the distance matrix"));
+  CHECK_FALSE(fs::exists(scratch.path / "ckpt")); // refused before any directory is made
+}
