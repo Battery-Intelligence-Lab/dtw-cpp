@@ -4,10 +4,9 @@
  *        a memory-mapped `.dtwm` file.
  *
  * @details One layout in memory and on disk: N(N+1)/2 doubles, row i holding
- * columns 0..i, NaN = not computed (Soft-DTW can return a negative distance, so
- * no finite sentinel works). get, set and is_computed index a raw `double *`
- * whichever storage holds the doubles; the storage is chosen once, when the
- * matrix is made.
+ * columns 0..i, NaN = not computed, a value no distance takes. get, set and
+ * is_computed index a raw `double *` whichever storage holds the doubles; the
+ * storage is chosen once, when the matrix is made.
  *
  * A `.dtwm` file is a 64-byte header and the packed values (binary64 or binary32,
  * the matrix's width), in the host's byte order (every supported platform is
@@ -243,12 +242,12 @@ public:
   double max() const; ///< Largest computed distance; 0 when none is computed.
   size_t count_computed() const;
   /// Whether every pair is computed (none is NaN, every row written), in one pass that also refuses
-  /// a distance that is ±inf, and one below zero unless `negative_is_distance`
-  /// (Soft-DTW's can be): InvalidInput, after `where`, names the first such pair,
+  /// a distance that is ±inf, and one below zero, which no variant gives (Soft-DTW's is the
+  /// divergence): InvalidInput, after `where`, names the first such pair,
   /// and for a negative one ends with `negative_way_out`, what the caller's route
   /// offers. Every matrix that enters a Problem from outside its fill passes this
   /// scan, so the clustering loops read the matrix unchecked.
-  bool all_computed(std::string_view where, bool negative_is_distance, std::string_view negative_way_out = {}) const;
+  bool all_computed(std::string_view where, std::string_view negative_way_out = {}) const;
 
 private:
   struct Mapping; // the llfio file handle and its map, in distance_matrix.cpp

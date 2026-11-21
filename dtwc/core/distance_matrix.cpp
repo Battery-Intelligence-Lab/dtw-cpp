@@ -234,7 +234,7 @@ void flush_range(llfio::mapped_file_handle &file, size_t first, size_t last,
 /// with the hint live through the loop (2026-10-11).
 template <typename T>
 bool all_computed_in(const T *values, size_t n, size_t rows, Precision width, std::string_view where,
-                     bool negative_is_distance, std::string_view negative_way_out)
+                     std::string_view negative_way_out)
 {
   const auto pair = [&](size_t i, size_t j) {
     return std::string(where) + ": the distance between series " + std::to_string(j) + " and " + std::to_string(i)
@@ -253,7 +253,7 @@ bool all_computed_in(const T *values, size_t n, size_t rows, Precision width, st
                                                             "up to 3.4e38 and stores a larger one as inf: set "
                                                             "matrix_dtype float64."
                                                           : ""));
-      else if (d < 0 && !negative_is_distance) {
+      else if (d < 0) {
         std::array<char, 32> text{}; // the shortest round-trip form of a double is at most 24 characters
         char *const end = std::to_chars(text.data(), text.data() + text.size(), d).ptr;
         throw InvalidInput(pair(i, j) + std::string(text.data(), end)
@@ -418,12 +418,9 @@ size_t DistanceMatrix::count_computed() const
   });
 }
 
-bool DistanceMatrix::all_computed(std::string_view where, bool negative_is_distance,
-                                  std::string_view negative_way_out) const
+bool DistanceMatrix::all_computed(std::string_view where, std::string_view negative_way_out) const
 {
-  return visit([&](const auto *values) {
-    return all_computed_in(values, n_, rows_, width_, where, negative_is_distance, negative_way_out);
-  });
+  return visit([&](const auto *values) { return all_computed_in(values, n_, rows_, width_, where, negative_way_out); });
 }
 
 void DistanceMatrix::clear_rows(size_t r0, size_t r1)

@@ -146,7 +146,7 @@ TEST_CASE("A new mapped matrix has no row written: its version-5 header says 0",
       REQUIRE(m.width() == width);
       REQUIRE(m.rows_written() == 0);
       REQUIRE(m.count_computed() == 0);
-      REQUIRE_FALSE(m.all_computed("test", false));
+      REQUIRE_FALSE(m.all_computed("test"));
     }
     const auto bytes = file_bytes(tmp);
     REQUIRE(bytes.size() == 64 + 55 * value);
@@ -181,7 +181,7 @@ TEST_CASE("Rows written: a wait that leaves rows on the device records them, and
   const auto mapped = DistanceMatrix::map(tmp, 4, fingerprint);
   REQUIRE(mapped.rows_written() == 2);
   REQUIRE(mapped.count_computed() == 1);
-  REQUIRE_FALSE(mapped.all_computed("test", false));
+  REQUIRE_FALSE(mapped.all_computed("test"));
   const auto full = dtwc::io::to_full_matrix(mapped);
   REQUIRE(full[0 * 4 + 1] == 2.5);
   REQUIRE(std::isnan(full[3 * 4 + 0]));
