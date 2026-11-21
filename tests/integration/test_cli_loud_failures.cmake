@@ -40,6 +40,9 @@ cmake_minimum_required(VERSION 3.26)
 #                        the input is read: the output folder is never made
 #   nan_error_strategy   --missing-strategy error on a NaN input names the series
 #                        and the strategies that accept it; no result is written
+#   tadpole_checkpoint   --checkpoint with tadpole, whose pairs stay in its own
+#                        cache, is refused before the input is read: no
+#                        checkpoint or output folder is made
 foreach(required_var IN ITEMS CLI WORK_ROOT HAS_GUROBI)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "missing required -D${required_var}=...")
@@ -286,6 +289,16 @@ expect_loud_failure(max_iter_zero
             --max-iter 0 --n-init 1 --method pam --name loud
             -o "${WORK_ROOT}/out_max_iter")
 
+# TADPole keeps the pairs it computes in its own cache, so a checkpoint would
+# hold none of them: refused before the input (which does not exist) is read.
+expect_loud_failure(tadpole_checkpoint
+    NAMES "--checkpoint" "tadpole" "--dist-matrix"
+    COMMAND "${cli}" -i "${WORK_ROOT}/no_such_input" -k 2 --method tadpole --name loud
+            -o "${WORK_ROOT}/out_tadpole" --checkpoint "${WORK_ROOT}/ckpt_tadpole")
+if(EXISTS "${WORK_ROOT}/out_tadpole" OR EXISTS "${WORK_ROOT}/ckpt_tadpole")
+    message(FATAL_ERROR "tadpole_checkpoint: the refused run made its output or checkpoint folder")
+endif()
+
 # The domain check comes before any data or file effect: the input does not
 # exist, and the output folder must not appear.
 expect_loud_failure(variant_domain
@@ -409,9 +422,9 @@ if(skip_match)
     message(FATAL_ERROR "dtwc_cl emitted skip text:\n${all_output}")
 endif()
 
-set(expected 18)
+set(expected 19)
 if(efbig STREQUAL "ran")
-    set(expected 19)
+    set(expected 20)
 endif()
 message(STATUS
     "CLI_LOUD_FAILURES subject=real_dtwc_cl cases=${cases}/${expected} "

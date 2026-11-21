@@ -207,8 +207,9 @@ TEST_CASE("dtwc_cl refuses a checkpoint of other data", "[cli][checkpoint]")
 
 TEST_CASE("dtwc_cl --checkpoint with a method that computes no matrix writes no .dtwm", "[cli][checkpoint]")
 {
-  // TADPole and OneBatchPAM never allocate the Problem's distance matrix. Saving it wrote all N^2 pairs as NaN (about
-  // 40 GB for 100,000 series) for a resume that computes every distance again. PAM fills it, and does write.
+  // OneBatchPAM never allocates the Problem's distance matrix. Saving it wrote all N^2 pairs as NaN (about 40 GB for
+  // 100,000 series) for a resume that computes every distance again. PAM fills it, and does write. (TADPole refuses
+  // --checkpoint before any data is read: its pairs stay in a cache of its own.)
   const dtwc::test_support::ScratchDirectory scratch{ "cli_ckpt_no_matrix" };
   write_fixture_series(scratch.path / "series");
   const auto checkpoint_files = [&](const std::string &method) {
@@ -224,7 +225,6 @@ TEST_CASE("dtwc_cl --checkpoint with a method that computes no matrix writes no 
     return std::vector<fs::path>(fs::directory_iterator(directory), fs::directory_iterator());
   };
 
-  REQUIRE(checkpoint_files("tadpole").empty());
   REQUIRE(checkpoint_files("onebatch").empty());
   const auto pam = checkpoint_files("pam");
   REQUIRE(pam == std::vector<fs::path>{ scratch.path / "ckpt_pam" / "cli_ckpt.dtwm" });

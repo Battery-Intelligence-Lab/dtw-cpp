@@ -345,8 +345,10 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
   plan.facts = facts;
   const std::size_t reserve = working_set(per_thread, requested);
   const std::size_t series = facts.series + facts.staging + facts.clara + facts.fixed;
-  // No budget, no plan: in RAM on every thread, nothing mapped or streamed.
-  plan.mapped = budget > 0 && facts.matrix > 0 && facts.held == nullptr && series + facts.matrix + reserve > budget;
+  // No budget, no plan: in RAM on every thread, nothing mapped or streamed. A method that keeps the matrix's bytes in
+  // a cache of its own (TADPole) gains nothing from mapping the matrix, which it never writes: it is never mapped.
+  plan.mapped = budget > 0 && facts.matrix > 0 && facts.held == nullptr && !facts.cache
+                && series + facts.matrix + reserve > budget;
   const bool matrix = facts.matrix > 0 && (!plan.mapped || facts.cache); // its bytes in RAM
   const std::size_t need = series + (matrix ? facts.matrix : 0);
   plan.held = need;
@@ -403,8 +405,8 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
 /// decided it (`mapped`). Returns the mapped file, or nullopt when the method keeps its own storage or the matrix
 /// stays in RAM. A mapped matrix costs one sequential pass and keeps the run out of swap. A method that reads no parent
 /// matrix (holds_matrix) maps none and refuses a --dist-matrix, which it would load and never read; non-full FastCLARA
-/// refuses a --checkpoint too. TADPole reads the matrix when it is complete (a file or a cache from an earlier
-/// run) and otherwise computes the pairs it needs.
+/// refuses a --checkpoint too. TADPole reads the matrix when a complete one is given (--dist-matrix) and otherwise
+/// computes the pairs it needs into a cache of its own, so its matrix is never mapped and --checkpoint is refused.
 std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, Method method,
                                                    bool clara_uses_full_sample, bool mapped, const fs::path &cache_path)
 {
@@ -464,6 +466,10 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     throw InvalidInput("--not-computed says how a --dist-matrix file marks a pair, and requires --dist-matrix <path>.");
   if (!config.dist_matrix.empty() && !config.checkpoint.empty())
     throw InvalidInput("--dist-matrix and --checkpoint each supply the distance matrix; give one.");
+  if (config.method == Method::TADPole && !config.checkpoint.empty())
+    throw InvalidInput("--checkpoint saves the distance matrix, and tadpole keeps the pairs it computes in a cache of "
+                       "its own: the file would hold none of them. Omit --checkpoint, or give tadpole a complete matrix "
+                       "with --dist-matrix.");
   if (config.report && config.metric == core::MetricType::L2) // the report names the metric, and L2 has no name
     throw InvalidInput("run: the run report names the metric, and MetricType::L2 has none; use MetricType::L1, the "
                        "same on univariate series, or set report = false.");

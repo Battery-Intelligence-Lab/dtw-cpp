@@ -246,16 +246,17 @@ bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 
 } // namespace
 
-TEST_CASE("run's TADPole over the memory limit uses mmap or fails before dense allocation", "[cli][storage][mmap][tadpole]")
+TEST_CASE("run's TADPole at its memory limit keeps its cache in RAM and maps no matrix", "[cli][storage][mmap][tadpole]")
 {
   const ScratchDirectory scratch{ "cli_tadpole_storage" };
   auto config = mapped_config(Method::TADPole, scratch, "tadpole");
   config.tadpole_dc = 3.0;
 #ifdef DTWC_HAS_MMAP
-  // TADPole is not exempt: it reads the matrix when a complete one is there.
+  // TADPole's cache of the pairs is in RAM whatever the limit, and it never writes the Problem's matrix: mapping that
+  // matrix would leave a full-size file that holds nothing.
   const auto result = dtwc::run(at_least_limit(config), tiny_series());
   CHECK(result.labels().size() == 3);
-  CHECK(cache_exists(scratch, "tadpole"));
+  CHECK_FALSE(cache_exists(scratch, "tadpole"));
 #else
   // Refused before any matrix is allocated: it would stay in RAM beside the series and a thread.
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
