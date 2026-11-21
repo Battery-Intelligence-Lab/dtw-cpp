@@ -1,6 +1,6 @@
 /**
  * @file distance_sampling_weights.hpp
- * @brief k-medoids++ seeding: stable D-sampling weights for signed
+ * @brief k-medoids++ seeding: D-sampling weights of non-negative
  *        dissimilarities, and the one seeding loop that draws from them.
  * @author Volkan Kumtepeli
  */
@@ -30,11 +30,10 @@ struct DistanceSamplingWeights
 };
 
 /**
- * Convert nearest-dissimilarity values to nonnegative D-sampling weights.
- * Nonnegative inputs are byte-for-byte unchanged. If an admissible variant
- * (notably raw Soft-DTW) yields negative off-diagonal values, every unselected
- * value is translated by the same `-min(0,d_min)`; ordering and differences
- * are preserved, while selected points remain weight zero.
+ * The D-sampling weights of nearest-dissimilarity values: each unselected value as it is, each selected one zero.
+ * Every caller's values are non-negative: fast_pam and init::Kmeanspp read a Problem's distances, which no variant
+ * gives below zero (Soft-DTW's is the divergence) and no matrix intake accepts below zero, and barycenter k-means
+ * its DTW of squared costs. portable_weighted_index refuses a negative weight.
  */
 template <typename Distance>
 DistanceSamplingWeights distance_sampling_weights(
@@ -49,27 +48,16 @@ DistanceSamplingWeights distance_sampling_weights(
     is_selected[static_cast<size_t>(index)] = true;
   }
 
-  double minimum = std::numeric_limits<double>::infinity();
+  DistanceSamplingWeights result;
+  result.values.resize(distances.size());
   for (size_t i = 0; i < distances.size(); ++i) {
     const double distance = static_cast<double>(distances[i]);
     if (!std::isfinite(distance))
       throw InvalidInput(
         caller + ": initialization distance must be finite");
     if (is_selected[i]) continue;
-    minimum = std::min(minimum, distance);
-  }
-
-  const double shift = std::min(0.0, minimum);
-  DistanceSamplingWeights result;
-  result.values.resize(distances.size());
-  for (size_t i = 0; i < distances.size(); ++i) {
-    if (is_selected[i]) continue;
-    const double weight = static_cast<double>(distances[i]) - shift;
-    if (!std::isfinite(weight) || weight < 0.0)
-      throw InvalidInput(
-        caller + ": translated initialization weight is invalid");
-    result.values[i] = weight;
-    result.total += weight;
+    result.values[i] = distance;
+    result.total += distance;
   }
   if (!std::isfinite(result.total))
     throw InvalidInput(
