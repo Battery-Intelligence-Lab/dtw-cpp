@@ -165,6 +165,16 @@ class TestCasadiWorkflowAndFastIngest:
         with pytest.raises(AttributeError, match="Unknown settings attribute"):
             cfg.unknown_key = 123
 
+    def test_settings_check_a_forced_gpu_share_on_their_own_device(self):
+        """settings() checks gpu_share on device="cpu+gpu", the device it names, not on the
+        CPU: what is left to refuse is the build's own lack of cpu+gpu, as cluster() refuses it."""
+        try:
+            cfg = dtwcpp.settings(k=2, device="cpu+gpu", gpu_share=0.5)
+        except dtwcpp.DeviceError as exc:
+            assert "device 'cpu+gpu' splits FastCLARA's assignment pass" in str(exc)
+        else:
+            assert cfg.gpu_share == 0.5
+
     def test_direct_numpy_and_3d_ingest_and_estimator_transform(self):
         rng = np.random.default_rng(5)
         X_f32 = np.vstack([

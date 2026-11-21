@@ -105,6 +105,7 @@ class TestSgSmooth:
         s = [1.0, 2.0, 3.0]   # len < default window 5
         out = pp.sg_smooth(s, window=5, poly=2)
         np.testing.assert_array_equal(out, s)
+        np.testing.assert_array_equal(pp.sg_smooth(s + [4.0], window=4), s + [4.0])  # 4 rounds up to 5
 
 
 @pytest.mark.skipif(_SCIPY, reason="scipy IS installed; test only when missing")

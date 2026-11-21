@@ -17,6 +17,7 @@ class TestSummariseBasic:
         mat, names = ft.summarise(series, standardise=False)
         assert mat.shape == (5, len(ft.DEFAULT_FEATURES))
         assert names == list(ft.DEFAULT_FEATURES.keys())
+        assert ft.summarise(np.vstack(series), standardise=False)[0].tolist() == mat.tolist()
 
     def test_known_features(self):
         # One series, exact features

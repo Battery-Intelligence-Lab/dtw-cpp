@@ -473,6 +473,8 @@ class Result:
         print(f"plot saved -> {png}")
         if show and "agg" not in matplotlib.get_backend().lower():
             plt.show()
+        else:
+            plt.close(fig)  # not shown: the saved file is what plot gives back
         return png
 
 
@@ -670,7 +672,7 @@ class Settings:
         self._update(**{name: value})
 
     def _update(self, **kwargs):
-        from dtwcpp import InvalidInput, _dtwcpp_core
+        from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
 
         if "k" in kwargs and "n_clusters" in kwargs and kwargs["k"] != kwargs["n_clusters"]:
             raise InvalidInput("settings: k and n_clusters disagree; pass only one.")
@@ -715,7 +717,6 @@ class Settings:
                     object.__setattr__(self, "checkpoint_interval", int(value))
                 elif key == "device":
                     if value is not None:
-                        from dtwcpp import _resolve_device
                         _resolve_device(value)
                     object.__setattr__(self, "device", value)
                 elif key == "gpu_device":
@@ -735,14 +736,18 @@ class Settings:
                     touched_config.append(key)
 
             if touched_config:
-                saved_k = self._config.n_clusters
+                saved_k, saved_device = self._config.n_clusters, self._config.device
                 try:
                     if saved_k < 1:
                         self._config.n_clusters = 1
+                    # Checked on the device chosen here, as do_clustering checks them; hpc on the CPU.
+                    if self.device is not None and _resolve_device(self.device)[0] != "hpc":
+                        self._config.device = self.device
                     _dtwcpp_core.apply(self._config, _dtwcpp_core.Problem())
                 finally:
                     if saved_k < 1:
                         self._config.n_clusters = saved_k
+                    self._config.device = saved_device
                 for key in touched_config:
                     if key != "n_clusters" and key not in self._clustering_keys:
                         self._clustering_keys.append(key)
@@ -788,6 +793,7 @@ class Settings:
             "metric": self._config.metric,
             "variant": self._config.variant,
             "device": self.device,
+            "gpu_device": self.gpu_device,
             "output": self.output,
             "checkpoint": self.checkpoint,
             "checkpoint_interval": self.checkpoint_interval,
@@ -900,6 +906,9 @@ def do_clustering(data=None, settings=None, **overrides):
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
+        if eff.checkpoint:  # the run is the cluster's: a local path names nothing there
+            raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would "
+                               "ignore a local checkpoint; leave checkpoint empty.")
         _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or dataset.name))
         details = _hpc.cluster_on_hpc(
             dataset,

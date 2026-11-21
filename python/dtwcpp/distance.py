@@ -9,12 +9,12 @@ from __future__ import annotations
 import os
 import numpy as np
 
+from dtwcpp._api import _float64
 from dtwcpp._dtwcpp_core import _cdist, dtw as _dtw
 
 
 def dtw(x, y, **settings):
-    return _dtw(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64),
-                **settings)
+    return _dtw(_float64(x), _float64(y), **settings)
 
 
 # The keywords, their defaults and the refusals are the C++ binding's.

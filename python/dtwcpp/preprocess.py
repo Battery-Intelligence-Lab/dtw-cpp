@@ -70,7 +70,8 @@ def sg_smooth(s: Sequence[float], window: int = 5, poly: int = 2) -> np.ndarray:
     rounded up to the next odd value internally.
     """
     a = np.asarray(s, dtype=np.float64)
-    if a.size < window:
+    w = window if window % 2 == 1 else window + 1
+    if a.size < w:
         return a
     try:
         from scipy.signal import savgol_filter
@@ -78,7 +79,6 @@ def sg_smooth(s: Sequence[float], window: int = 5, poly: int = 2) -> np.ndarray:
         raise ImportError(
             "sg_smooth requires scipy. Install it with: uv add scipy"
         ) from err
-    w = window if window % 2 == 1 else window + 1
     return savgol_filter(a, window_length=w, polyorder=poly)
 
 

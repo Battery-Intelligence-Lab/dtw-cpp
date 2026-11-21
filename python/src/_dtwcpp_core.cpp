@@ -145,7 +145,8 @@ void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb:
   const auto *data = dm.data();
   for (size_t i = 0; i < n; ++i)
     for (size_t j = i; j < n; ++j)
-      mat.set(i, j, data[i * n + j]);
+      if (!std::isnan(data[i * n + j])) // resize() left every pair to compute; a NaN entry keeps it so
+        mat.set(i, j, data[i * n + j]);
   // A complete matrix is filled; NaN entries are computed on first use.
   if (mat.all_computed("Problem.set_distance_matrix",
                        p.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,
@@ -1100,8 +1101,9 @@ NB_MODULE(_dtwcpp_core, m)
          "Result.medoids).")
     .def("series", [](const dtwc::Problem &p, std::int64_t i) {
       require_index("series", "i", i, p.size());
-      auto s = p.series(static_cast<size_t>(i));
-      return std::vector<double>(s.begin(), s.end()); }, "i"_a,
+      const auto copy = [](auto s) { return std::vector<double>(s.begin(), s.end()); };
+      const auto at = static_cast<size_t>(i);
+      return p.data().is_f32() ? copy(p.data().series_f32(at)) : copy(p.series(at)); }, "i"_a,
          "Copy of series i as a list of doubles.\n\n"
          "Raises InvalidInput if i is outside [0, N).")
     .def("series_name", [](const dtwc::Problem &p, std::int64_t i) {

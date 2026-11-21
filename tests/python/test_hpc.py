@@ -201,6 +201,20 @@ class TestJobToml:
             dtwcpp.cluster([[0.0, 1.0], [1.0, 0.0]], device="hpc", **{"k": 2, **keys})
         assert not (tmp_path / "results").exists()
 
+    def test_ndim_and_a_checkpoint_fail_before_anything_is_written(self, monkeypatch, tmp_path):
+        """job.toml has no ndim, so the cluster would read multivariate series as
+        univariate ones, and a local checkpoint path names nothing there: both are
+        refused before a run directory is written or the wrapper runs."""
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+        monkeypatch.setattr(_hpc, "SlurmRemoteRunner",
+                            lambda repo_root: pytest.fail("the wrapper was reached"))
+        with pytest.raises(dtwcpp.InvalidInput, match="ndim=3"):
+            dtwcpp.do_clustering(np.zeros((4, 5, 3)), dtwcpp.settings(k=2, ndim=3, device="hpc", output=""))
+        with pytest.raises(dtwcpp.InvalidInput, match="checkpoint"):
+            dtwcpp.do_clustering(np.zeros((4, 5)), dtwcpp.settings(
+                k=2, device="hpc", output="", checkpoint=str(tmp_path / "ckpt")))
+        assert not (tmp_path / "results").exists()
+
     def test_the_estimator_sends_its_parameters(self, monkeypatch, tmp_path):
         """DTWClustering(device='hpc') sends every parameter, its own defaults
         included (method pam; random_state None is seed 42), and batch_size,
@@ -856,7 +870,7 @@ class TestSlurmLastMile:
     def test_safe_optional_config_reaches_sbatch_as_single_argv(self, tmp_path):
         """The optional settings, the .env partition and the GPU request, its
         constraint's '|' included, reach sbatch as single arguments; the job
-        runs build-l40s."""
+        runs build-l40s. Keys the wrapper does not read change nothing."""
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
         cluster = "arc-prod"
         email = "first.last+dtwc@eng.ox.ac.uk"
@@ -866,6 +880,7 @@ class TestSlurmLastMile:
                 f"SLURM_CLUSTER={cluster}\n"
                 f"SLURM_EMAIL={email}\n"
                 "SLURM_PARTITION=medium\n"
+                "PATH=/nonexistent\nSCRIPT_DIR=/nonexistent\nSLURM_GATEWAY=gw.example.invalid\n"
             )
         binary = tmp_path / "remote/src/build-l40s/bin/dtwc_cl"
         binary.parent.mkdir(parents=True)
@@ -1180,6 +1195,11 @@ class TestLocalRoundTrip:
                 self.rundir = tmp_path / rundir
                 subprocess.run([dtwc_cl, "--config", "job.toml", "--output", str(out)],
                                cwd=self.rundir, check=True, capture_output=True)
+                self.written = (self.rundir / "job.toml").read_text(encoding="utf-8").splitlines()
+                self.printed = subprocess.run(
+                    [dtwc_cl, "--config", "job.toml", "--print-config"],
+                    cwd=self.rundir, check=True, capture_output=True,
+                ).stdout.decode("utf-8").splitlines()
                 return "1"
 
             def wait(self, job_id, **controls):
@@ -1199,13 +1219,9 @@ class TestLocalRoundTrip:
 
         assert len(set(res.labels[:5])) == len(set(res.labels[5:])) == 1
         assert res.labels[0] != res.labels[9]
-        written = (runner.rundir / "job.toml").read_text(encoding="utf-8").splitlines()
-        printed = subprocess.run(
-            [dtwc_cl, "--config", "job.toml", "--print-config"],
-            cwd=runner.rundir, check=True, capture_output=True,
-        ).stdout.decode("utf-8").splitlines()
-        assert 'name = "café"' in written and "wdtw-g = 0.17" in written
-        assert set(written) <= set(printed)
+        assert 'name = "café"' in runner.written and "wdtw-g = 0.17" in runner.written
+        assert set(runner.written) <= set(runner.printed)
+        assert not runner.rundir.exists()  # removed once the labels are back
 
     def test_a_string_crosses_as_dtwc_cl_writes_it(self, tmp_path, dtwc_cl):
         """job.toml quotes a string as dtwc_cl's own writer does (quotes,

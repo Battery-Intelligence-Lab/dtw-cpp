@@ -88,6 +88,7 @@ def summarise(
     """
     feats = features if features is not None else DEFAULT_FEATURES
     names = list(feats.keys())
+    series = list(series)  # a 2-D array's rows, or a generator's items
     if not series:
         return np.zeros((0, len(names))), names
 

@@ -65,6 +65,12 @@ class TestProblemData:
         p.set_data(data)
         assert [p.series_name(i) for i in range(p.size)] == ["a", "b"]
 
+    def test_series_reads_a_float32_problem(self):
+        """Problem.series widens a float32 series, as Data.series does."""
+        p = dtwcpp.Problem("f32")
+        p.set_data(dtwcpp.Data.from_float32([[0.5, 1.25], [2.0, -3.0]], ["a", "b"]))
+        assert p.series(1) == [2.0, -3.0]
+
 
 class TestDistanceMatrix:
     """Tests for fill_distance_matrix and dist_by_ind."""

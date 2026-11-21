@@ -273,6 +273,16 @@ def _problem_cluster(self):
 
 Problem.cluster = _problem_cluster
 
+_soft_dtw_gradient = soft_dtw_gradient
+
+
+def soft_dtw_gradient(x, y, gamma=1.0):
+    from dtwcpp._api import _float64
+    return _soft_dtw_gradient(_float64(x), _float64(y), gamma)
+
+
+soft_dtw_gradient.__doc__ = _soft_dtw_gradient.__doc__
+
 from . import distance
 from .distance import cdist
 from . import preprocess

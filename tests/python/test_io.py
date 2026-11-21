@@ -331,6 +331,19 @@ class TestHDF5:
         raw_size = data.nbytes  # 800_000
         assert file_size < raw_size / 2  # gzip on all-ones should compress well
 
+    @pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
+    def test_convert_writes_float32_and_int64_series_as_their_values(self, tmp_path):
+        """dtwc-convert reads an HDF5 'series' of another dtype as float64: the Arrow IPC file holds its values."""
+        import h5py
+        from dtwcpp import convert
+        for dtype in (np.float32, np.int64):
+            values = np.array([[-11, 23, 36], [4, 5, 6]], dtype=dtype)
+            src, out = tmp_path / f"{dtype.__name__}.h5", tmp_path / f"{dtype.__name__}.arrow"
+            with h5py.File(src, "w") as f:
+                f.create_dataset("series", data=values)
+            assert convert.main([str(src), "-o", str(out)]) == 0
+            assert dtwcpp.load(out).as_data().p_vec == values.astype(np.float64).tolist()
+
 
 # ---------------------------------------------------------------------------
 # Parquet (skip if pyarrow is not installed)
