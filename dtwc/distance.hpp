@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include "base/error.hpp"
 #include "base/settings.hpp"
 #include "cdist.hpp"
 #include "core/dtw_options.hpp"

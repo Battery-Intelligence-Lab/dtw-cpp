@@ -2,8 +2,6 @@
  * @file env.cpp
  * @brief The device grammar and the single-thread warning (see env.hpp).
  *
- * @details The DeviceError messages here are asserted in tests/unit/test_env_device.cpp.
- *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
  * @date 07 Jul 2026
@@ -98,7 +96,7 @@ std::pair<Device, int> parse_device(std::string_view name)
   if (lname == "cpu") return { Device::CPU, 0 };
   if (lname == "gpu" || lname == "cuda") return { Device::GPU, 0 };
   if (lname == "cpu+gpu") return { Device::CPU_GPU, 0 };
-  if (lname.rfind("gpu:", 0) == 0 || lname.rfind("cuda:", 0) == 0 || lname.rfind("cpu+gpu:", 0) == 0) {
+  if (lname.starts_with("gpu:") || lname.starts_with("cuda:") || lname.starts_with("cpu+gpu:")) {
     const std::string id = lname.substr(lname.find(':') + 1);
     if (!id.empty() && id.find_first_not_of("0123456789") == std::string::npos) {
       try {
@@ -108,7 +106,7 @@ std::pair<Device, int> parse_device(std::string_view name)
       }
     }
   }
-  if (lname == "hpc" || lname.rfind("hpc:", 0) == 0)
+  if (lname == "hpc" || lname.starts_with("hpc:"))
     throw DeviceError(
       "[dtwc] device '" + raw + "' submits a whole run to a SLURM cluster, which "
       "Python's dtwcpp.device(\"hpc\") and scripts/slurm/slurm_remote.sh do. C++, "

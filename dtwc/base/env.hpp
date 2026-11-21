@@ -74,7 +74,7 @@ namespace detail {
 ///         Python's dtwcpp.device("hpc") and slurm_remote.sh.
 std::pair<Device, int> parse_device(std::string_view name);
 
-/// @brief The message for `gpu` on a build with no GPU backend (tests pin it verbatim).
+/// @brief The message for `gpu` on a build with no GPU backend.
 std::string gpu_not_built_message();
 
 /// @brief The DeviceError text where `cpu+gpu` cannot run: `where` refuses it, `why` says what stands in the way.

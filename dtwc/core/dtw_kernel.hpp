@@ -5,9 +5,7 @@
  * @details One kernel each for {Linear-space, Sakoe-Chiba banded}.
  *          Variants (Standard, ADTW, WDTW, Soft-DTW, AROW) pick a Cell policy +
  *          Cost functor and call the same kernel. The wavefront shape,
- *          rolling-buffer scratch, and early-abandon handling live here once —
- *          the old per-variant `_impl` helpers in warping.hpp / warping_adtw.hpp
- *          / warping_wdtw.hpp are collapsed into these two kernels.
+ *          rolling-buffer scratch, and early-abandon handling live here once.
  *
  *          Contracts:
  *            Cost: T operator()(size_t short_idx, size_t long_idx) const noexcept
@@ -135,11 +133,8 @@ namespace detail {
 /// subtracted by M before exp/log).
 ///
 /// Sentinel handling: out-of-bounds predecessors (== std::numeric_limits<T>::max())
-/// are excluded from the LSE. This preserves the legacy `soft_dtw` boundary
-/// semantics — first-row/column cells have exactly one valid predecessor, and
-/// the softmin of a single value is that value, so `combine` reduces to
-/// `left + cost` (first col) or `up + cost` (first row), matching the hard
-/// accumulation used in `soft_dtw.hpp`.
+/// are excluded from the LSE, so first-row/column cells (one valid predecessor)
+/// reduce to `up + cost` or `left + cost`, matching `soft_dtw_gradient`.
 ///
 /// The value needs only dtw_kernel_linear's rolling column; soft_dtw_gradient
 /// keeps the full matrices its backward pass reads.
@@ -566,7 +561,7 @@ namespace detail {
   /// The lanes kernel's two thread_local buffers, one pair a T (both of its distances share them): reached here so
   /// that core::release_thread_scratch() can empty them (detail::lanes_scratch, core/dtw_lanes.cpp). Two thread_locals,
   /// as the kernel declared them, returned as references (`auto [y_buf, s_buf]` binds the buffers): one pair object
-  /// moved a column loop of the lanes, and a cell loop of TWE's, under GCC (2026-11-02).
+  /// moved a column loop of the lanes, and a cell loop of TWE's, under GCC.
   template <typename T>
   std::pair<std::vector<LanesRow<T>> &, std::vector<LanesRow<T>> &> lanes_bufs()
   {

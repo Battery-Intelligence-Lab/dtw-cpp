@@ -12,8 +12,7 @@
  *          Implementation-wise, ADTW differs from Standard DTW only in the
  *          cell-recurrence rule, so every ADTW entry point is a call of
  *          `core::run_dtw` with `core::ADTWCell<T>` and an L1 / MV-L1 cost
- *          functor. The loop body itself lives in core/dtw_kernel.hpp (one
- *          copy, shared with Standard + WDTW).
+ *          functor.
  *
  *          Reference: Herrmann, M. & Webb, G. I. (2023), "Amercing: An intuitive
  *          and effective constraint for dynamic time warping." Pattern

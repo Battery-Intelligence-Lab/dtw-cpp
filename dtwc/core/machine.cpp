@@ -81,7 +81,7 @@ std::string os_name()
   std::string pretty;
   std::ifstream release("/etc/os-release");
   for (std::string line; std::getline(release, line);)
-    if (line.rfind("PRETTY_NAME=", 0) == 0) {
+    if (line.starts_with("PRETTY_NAME=")) {
       pretty = line.substr(12);
       pretty.erase(std::remove(pretty.begin(), pretty.end(), '"'), pretty.end());
       break;

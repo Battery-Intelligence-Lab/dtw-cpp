@@ -31,16 +31,7 @@
 
 namespace dtwc {
 
-/**
- * @brief Compute the derivative transform of a time series.
- *
- * @details The derivative transform produces a series of the same length
- *          that captures the local slope at each point.
- *
- * @tparam data_t Data type of the elements.
- * @param x Input time series.
- * @return Derivative-transformed series (same length as input).
- */
+/// Compute the local-slope derivative transform of `x` into `dx` (same length as `x`).
 template <typename data_t>
 void derivative_transform_inplace(std::span<const data_t> x, std::vector<data_t> &dx)
 {
@@ -91,20 +82,8 @@ std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
   return derivative_transform(std::span<const data_t>{x});
 }
 
-/**
- * @brief Multivariate derivative transform: apply Keogh-Pazzani derivative
- *        independently per channel, preserving interleaved layout.
- *
- * @details Input and output are interleaved: x[t * ndim + d] is feature d at timestep t.
- *          Each channel is transformed independently using the same boundary rules
- *          as the univariate derivative_transform.
- *
- * @tparam data_t Data type of the elements.
- * @param x     Input series in interleaved layout (n_timesteps * ndim elements).
- * @param ndim  Number of features per timestep.
- * @return Derivative-transformed series in interleaved layout (same size as input).
- *         Returns empty for empty input; returns ndim zeros for single-timestep input.
- */
+/// Multivariate Keogh-Pazzani derivative per channel on interleaved `x[t * ndim + d]`, written into `dx`
+/// (same layout and size; empty for empty input, `ndim` zeros for a single time step).
 template <typename data_t>
 void derivative_transform_mv_inplace(std::span<const data_t> x, size_t ndim,
                                      std::vector<data_t> &dx)
@@ -201,26 +180,12 @@ data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
   return dtwBanded<data_t>(dx, dy, band, static_cast<data_t>(-1), metric);
 }
 
-/**
- * @brief DDTW using full linear-space DTW on derivative series.
- *
- * @details Computes the derivative transform of both input series, then
- *          calls dtwFull_L (the memory-efficient O(N) space variant) on
- *          the derivative series.
- *
- * @tparam data_t Data type of the elements.
- * @param x First time series.
- * @param y Second time series.
- * @return The DDTW distance.
- */
+/// DDTW using full linear-space DTW on derivative series.
 template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   core::MetricType metric = core::MetricType::L1)
 {
-  auto [dx, dy] = detail::derivative_bufs<data_t>();
-  derivative_transform_inplace(x, dx);
-  derivative_transform_inplace(y, dy);
-  return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);
+  return ddtwBanded<data_t>(x, y, -1, metric);
 }
 
 // Vector convenience overloads (vector -> span implicit conversion is non-deduced).

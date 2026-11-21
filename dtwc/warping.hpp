@@ -39,7 +39,7 @@
 #include <cstdint>   // for uint32_t, uint64_t
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
-#include <cmath>     // for floor, round
+#include <cmath>     // for isfinite, isnan, abs
 #include <limits>    // for numeric_limits
 #include <stdexcept> // for logic_error
 #include <type_traits> // for conditional_t

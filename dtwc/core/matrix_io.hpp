@@ -130,11 +130,9 @@ inline void write_csv(const core::DistanceMatrix &dm, const std::filesystem::pat
 
 /// Read a full N×N CSV file into the matrix.
 /// Empty fields are treated as uncomputed; numeric fields are set, but under
-/// NotComputed::Negative one below zero is uncomputed too. The file
-/// must be square and symmetric, or InvalidInput names the row: it used to
-/// read a 2×3 file as 2×2, let the later of two different values of a pair
-/// win, and leave a short row's missing cells silently uncomputed. One cell of
-/// a pair may be empty (an upper- or lower-triangle file).
+/// NotComputed::Negative one below zero is uncomputed too. The file must be
+/// square and symmetric, or InvalidInput names the row. One cell of a pair may
+/// be empty (an upper- or lower-triangle file).
 inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path,
                      core::NotComputed not_computed = core::NotComputed::NaN)
 {
@@ -237,8 +235,7 @@ inline void to_full_matrix(const core::DistanceMatrix &dm, T *full)
     }
 }
 
-/// As above, into a flat `std::vector<T>` rather than an Eigen matrix: every
-/// caller copied it straight into one, so returning one removes an N×N copy.
+/// As above, returning a flat N×N `std::vector<T>`.
 template <typename T = double>
 inline std::vector<T> to_full_matrix(const core::DistanceMatrix &dm)
 {

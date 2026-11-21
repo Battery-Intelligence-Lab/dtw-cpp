@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include "../base/missing_utils.hpp" // for is_missing — bitwise NaN, safe under -ffast-math
+#include "../base/missing_utils.hpp" // is_missing
 
 #include <cmath>     // std::abs
 #include <cstddef>   // size_t

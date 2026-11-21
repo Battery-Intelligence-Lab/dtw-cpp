@@ -1,13 +1,6 @@
 /**
  * @file settings.hpp
- * @brief Compatibility forwarder — this header moved to dtwc/base/settings.hpp.
- *
- * @details The foundation layer now lives in its own directory, so
- * that the folder a header sits in matches the layer the dependency checker
- * assigns it. This forwarder keeps the old path working for one release.
- *
- * Every include inside this repository was updated to the new path when the move
- * happened, so the message below can only be reached by code outside it.
+ * @brief Compatibility forwarder to dtwc/base/settings.hpp.
  * @author Volkan Kumtepeli
  */
 

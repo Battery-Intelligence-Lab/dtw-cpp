@@ -202,8 +202,8 @@ T lb_keogh(const T *query, std::size_t n,
  * @param lower Lower envelope of the candidate.
  * @return Lower bound value.
  *
- * @warning The current overload does not validate either envelope length. Both
- *          vectors must contain at least query.size() elements.
+ * @warning Does not validate envelope lengths; both vectors must contain at
+ *          least query.size() elements.
  */
 template <typename T>
 T lb_keogh(const std::vector<T> &query,

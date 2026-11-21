@@ -2,12 +2,9 @@
  * @file gpu_dtw_common.hpp
  * @brief Shared base structs for CUDA/Metal distance matrix options + results.
  *
- * @details Both backends historically duplicated the common fields (band,
- *          use_squared_l2, verbose).
- *          This header factors those into `DistMatOptionsBase` and
- *          `DistMatResultBase`; `CUDADistMatOptions` / `MetalDistMatOptions`
- *          inherit and append backend-specific fields. Designated aggregate
- *          initialisation still works in C++20 (`opts.band = 5; ...`).
+ * @details `CUDADistMatOptions` / `MetalDistMatOptions` and their result
+ *          types inherit from `DistMatOptionsBase` / `DistMatResultBase` and
+ *          append backend-specific fields.
  *
  * @author Volkan Kumtepeli
  * @date 2026-04-12
@@ -15,7 +12,7 @@
 
 #pragma once
 
-#include "public_distance.hpp"
+#include "public_distance.hpp" // normalize_public_distance (used by GPU backends)
 
 #include <cstddef>
 #include <string>

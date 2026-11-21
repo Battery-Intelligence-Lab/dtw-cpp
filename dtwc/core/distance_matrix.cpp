@@ -58,7 +58,7 @@
 #ifdef _WIN32
 // After llfio: psapi.h maps names such as GetPerformanceInfo to their K32 forms, and llfio declares an inline variable
 // of that name, which the macro would rename in this file alone: two llfio definitions of one entity, and a call
-// through the null pointer of the one never loaded (Arrow IPC reads crashed so, 2026-11-03).
+// through the null pointer of the one never loaded.
 #include <psapi.h> // K32GetProcessMemoryInfo
 #endif
 
@@ -231,7 +231,7 @@ void flush_range(llfio::mapped_file_handle &file, size_t first, size_t last,
 
 /// DistanceMatrix::all_computed's pass over packed rows [0, rows) of an n x n matrix's `values`, `width` wide. A
 /// function, not a lambda, with the float32 hint built where it is thrown: GCC 13 kept each value on the stack too
-/// with the hint live through the loop (2026-10-11).
+/// with the hint live through the loop.
 template <typename T>
 bool all_computed_in(const T *values, size_t n, size_t rows, Precision width, std::string_view where,
                      std::string_view negative_way_out)
@@ -289,7 +289,7 @@ size_t available_memory()
   // group and its ancestors; "max", no limit, reads as no number.
   std::ifstream cgroups("/proc/self/cgroup");
   for (std::string line; std::getline(cgroups, line);) {
-    if (line.rfind("0::", 0) != 0) continue;
+    if (!line.starts_with("0::")) continue;
     for (fs::path group = line.substr(3);; group = group.parent_path()) {
       std::ifstream limit(fs::path("/sys/fs/cgroup") / group.relative_path() / "memory.max");
       std::uint64_t value = 0;
@@ -325,12 +325,11 @@ size_t peak_memory()
   return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) : 0; // bytes
 #else
 #ifdef __linux__
-  // VmHWM, this program's own peak: getrusage keeps ru_maxrss across execve(2), so a process that a large one started
-  // read at least its starter's peak (dtwc_cl started by a Python process that had touched 600 MiB printed 637 MB,
-  // 8.7 MB started by a small one, 2026-11-03).
+  // VmHWM, this program's own peak: getrusage keeps ru_maxrss across execve(2), so a child process would inherit a
+  // larger parent's peak.
   std::ifstream status("/proc/self/status");
   for (std::string line; std::getline(status, line);)
-    if (line.rfind("VmHWM:", 0) == 0) return static_cast<size_t>(std::strtoull(line.c_str() + 6, nullptr, 10)) * 1024;
+    if (line.starts_with("VmHWM:")) return static_cast<size_t>(std::strtoull(line.c_str() + 6, nullptr, 10)) * 1024;
 #endif
   rusage usage{};
   return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) * 1024 : 0; // KiB
@@ -550,8 +549,7 @@ bool DistanceMatrix::is_mapped_to(const fs::path &path) const
 
 void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerprint) const
 {
-  std::error_code ec;
-  if (mapping_ && fs::equivalent(mapping_->path, path, ec)) {
+  if (is_mapped_to(path)) {
     sync(); // renaming over a mapped file fails on Windows and orphans the map on POSIX
     return;
   }
@@ -568,14 +566,14 @@ void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerp
     close_output(out, temporary);
   }
   flush_to_device(temporary);
+  std::error_code ec;
   fs::rename(temporary, path, ec);
   if (ec) throw IOError("Cannot rename " + shown(temporary) + " to " + shown(path) + ": " + ec.message());
 }
 
 void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerprint, size_t r0, size_t r1)
 {
-  std::error_code ec;
-  if (mapping_ && fs::equivalent(mapping_->path, path, ec)) {
+  if (is_mapped_to(path)) {
     flush_rows(r0, r1, true);
     return;
   }
@@ -583,6 +581,7 @@ void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerp
   // are NaN or this matrix's distances, written by an earlier save.
   const Header expected = header_for(n_, fingerprint, width_, rows_);
   Header header{};
+  std::error_code ec;
   std::fstream file(path, std::ios::in | std::ios::out | std::ios::binary);
   if (!file.read(reinterpret_cast<char *>(&header), sizeof header) || std::memcmp(&header, &expected, sizeof header) != 0
       || fs::file_size(path, ec) != row_offset(n_)) {
