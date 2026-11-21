@@ -122,6 +122,9 @@ def _load_hdf5(path: Path):
 
     result = load_dataset_hdf5(path)
     data = result["series"]  # (N, L) array
+    if data.dtype.kind not in "biuf":
+        raise ValueError(f"HDF5 'series' must hold real numbers, got dtype {data.dtype}.")
+    data = data.astype(np.float64, copy=False)  # the writer reads the values' bytes as native float64
     names = result["names"] or [f"series_{i}" for i in range(data.shape[0])]
     series_list = [data[i] for i in range(data.shape[0])]
     return series_list, names
