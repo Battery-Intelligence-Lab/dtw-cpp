@@ -104,14 +104,12 @@ int main(int argc, char *argv[])
     const dtwc::Clock clock;
     if (config.verbose) print_settings(config);
     const dtwc::Result result = dtwc::run(config);
-    // Shortest round-trip form: the printed cost is the exact double, so two runs
-    // can be compared bit for bit from their output.
-    const std::string cost = dtwc::shortest_text(result.cost());
 
+    // Cost uses shortest round-trip form so runs compare bit-for-bit from stdout.
     std::cout << "\n=== Results ===\n"
-              << "  Method:     " << dtwc::name_of(dtwc::method_names, result.method()) << "\n";
-    std::cout << "  Clusters:   " << config.k << "\n"
-              << "  Total cost: " << cost << "\n"
+              << "  Method:     " << dtwc::name_of(dtwc::method_names, result.method()) << "\n"
+              << "  Clusters:   " << config.k << "\n"
+              << "  Total cost: " << dtwc::shortest_text(result.cost()) << "\n"
               << "  Converged:  " << (result.converged() ? "yes" : "no") << "\n"
               << "  Iterations: " << result.iterations() << "\n"
               << "  Output:     " << config.output << "/\n"
