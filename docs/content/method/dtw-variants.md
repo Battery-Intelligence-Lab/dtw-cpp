@@ -184,8 +184,8 @@ $$D_\gamma(x, y) = \text{sdtw}_\gamma(x, y) - \tfrac{1}{2}\big(\text{sdtw}_\gamm
 
 For this Soft-DTW, univariate with the absolute-value cost, the paper proves $$D_\gamma \ge 0$$, with
 $$D_\gamma(x, y) = 0$$ only for identical series, at every $$\gamma > 0$$. A `Problem`'s matrix holds
-it, as do `compute_distance_matrix` and `<name>_distance_matrix.csv`, its zero diagonal exact; every
-clustering method and score reads it, and `DTWClustering`'s `transform`, `predict` and `score`
+it, as do a result's `distance_matrix` and `<name>_distance_matrix.csv`, its zero diagonal exact;
+every clustering method and score reads it, and `DTWClustering`'s `transform`, `predict` and `score`
 compute it. The distance functions (`soft_dtw`, `distance.dtw`, `cdist`), `soft_dtw_gradient` and the
 Soft-DTW barycentre keep the raw value. A computed divergence below 0 is rounding and reads 0; as a
 small difference of larger raw values, in float32 it can read 0 for two distinct but very close series too.
