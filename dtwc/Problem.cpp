@@ -39,25 +39,25 @@
 #include "io/parse_number.hpp"         // for io::parse_number
 
 
-#include <algorithm> // for min
-#include <array>     // for array
-#include <cctype>    // for toupper
-#include <charconv>  // for from_chars
-#include <chrono>    // for steady_clock (cpu+gpu's calibration)
-#include <cmath>     // for ldexp, ceil
-#include <cstdint>   // for uint32_t, uint64_t
-#include <cstring>   // for memcpy
-#include <exception> // for exception_ptr
-#include <iomanip>   // for operator<<, setprecision
-#include <iostream>  // for cout
-#include <limits>    // for numeric_limits
-#include <numeric>   // for iota
-#include <optional>  // for optional
-#include <sstream>   // for ostringstream
-#include <string>    // for allocator, char_traits, operator+
-#include <type_traits> // for underlying_type_t
-#include <utility>   // for pair
-#include <vector>    // for vector, operator==
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <charconv>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <numeric>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace dtwc {
 
@@ -392,11 +392,6 @@ void Problem::set_max_iter(int n)
   maxIter = n;
 }
 
-int Problem::max_iter() const
-{
-  return maxIter;
-}
-
 void Problem::set_n_repetitions(int n)
 {
   if (n < 1)
@@ -405,11 +400,6 @@ void Problem::set_n_repetitions(int n)
       + std::to_string(n) + ". It counts the random restarts, and one run is the "
         "minimum.");
   N_repetition = n;
-}
-
-int Problem::n_repetitions() const
-{
-  return N_repetition;
 }
 
 /**
@@ -458,13 +448,6 @@ void Problem::set_result(const core::ClusteringResult &result)
   clusters_ind = labels;
 }
 
-/**
- * @brief Sets the solver to be used for clustering.
- *
- * @param solver_ The solver to use.
- * @return True if the solver is set successfully,
- * False otherwise (e.g., if Gurobi is not available and a default solver is used instead).
- */
 bool Problem::set_solver(Solver solver_)
 {
 #ifndef DTWC_ENABLE_GUROBI
@@ -477,10 +460,6 @@ bool Problem::set_solver(Solver solver_)
   return true;
 }
 
-/**
- * @brief Prints the current distance matrix to the standard output.
- * @details Outputs the distance matrix in a human-readable format, useful for debugging and verification.
- */
 void Problem::print_distance_matrix() const
 {
   std::cout << distMat;
@@ -1581,16 +1560,12 @@ void Problem::cluster_and_process()
     ~ArtifactScope() { flag = false; }
   } artifact_scope{ persist_run_artifacts_ };
   cluster();
-  print_clusters(); // Prints to screen.
+  print_clusters();
   write_distance_matrix();
-  write_clusters(); // Prints to file.
+  write_clusters();
   write_silhouettes();
 }
 
-/**
- *@brief Clusters the data using Mixed Integer Programming (MIP) based on the chosen solver.
- *@details Uses either Gurobi or HiGHS solver for MIP clustering, depending on the solver set in the Problem instance.
- */
 void Problem::cluster_by_mip()
 {
   // A negative `mip_gap` would otherwise reach HiGHS as an out-of-domain option
@@ -1609,11 +1584,6 @@ void Problem::cluster_by_mip()
   }
 }
 
-
-/**
- * @brief Assigns each data point to the nearest cluster centroid.
- * @details Iterates over each data point, calculating its distance to each centroid, and assigns it to the nearest one.
- */
 void Problem::assign_clusters()
 {
   fill_distance_matrix(); // every point against every medoid: a read each
@@ -1648,11 +1618,6 @@ void Problem::assign_clusters()
   clusters_ind = std::move(labels);
 }
 
-/**
- * @brief Calculates and updates the medoids of each cluster.
- * @details This function iterates through each data point and calculates the total cost of designating that point
- * as the medoid of its cluster. The point with the minimum total cost is set as the new medoid for that cluster.
- */
 void Problem::calculate_medoids()
 {
   require_clustered("calculate_medoids");
@@ -1693,7 +1658,6 @@ void Problem::calculate_medoids()
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
-  const bool persist_artifacts = persist_run_artifacts_;
   // The setters reject both; the public fields maxIter and N_repetition bypass them.
   const int repetitions = n_repetitions();
   if (repetitions <= 0)
@@ -1719,22 +1683,62 @@ void Problem::cluster_by_kmedoids_lloyd()
                 << Nc << " medoids are initialised.\n"
                 << "Start clustering:\n";
 
-    auto [status, total_cost, iters] =
-      cluster_by_kMedoidsLloyd_single(i_rand, persist_artifacts);
-    last_iterations_ = iters;
+    // A caller's init_fun may leave the medoids unset; it is then called a second time.
+    if (centroids_ind.empty())
+      init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
 
+    auto oldmedoids = centroids_ind;
+    bool converged = false;
+    std::vector<std::vector<index_t>> centroids_all;
+    int actual_iters = 0;
+    const int iteration_limit = max_iter();
+    for (int i = 0; i < iteration_limit; i++) {
+      actual_iters = i + 1;
+      if (verbose_) {
+        std::cout << "Medoids: ";
+        for (auto medoid : centroids_ind)
+          std::cout << series_name(medoid) << ' ';
+      }
+      if (persist_run_artifacts_)
+        centroids_all.push_back(centroids_ind);
+
+      assign_clusters();
+      if (verbose_) {
+        std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
+                  << find_total_cost() << ".\n";
+        print_clusters();
+      }
+      calculate_medoids(); // Changes centroids_ind
+      if (oldmedoids == centroids_ind) {
+        converged = true;
+        break;
+      }
+      oldmedoids = centroids_ind;
+    }
+
+    // A converged iteration leaves the medoids unchanged, so its assignment is
+    // already current. A capped iteration may have just updated the medoids;
+    // realign once before costing and keeping this repetition's state.
+    if (!converged)
+      assign_clusters();
+
+    const double total_cost = find_total_cost();
+    if (verbose_)
+      std::cout << "Procedure is completed with cost: " << total_cost << '\n';
+    if (persist_run_artifacts_)
+      writeMedoids(centroids_all, i_rand, total_cost);
+
+    last_iterations_ = actual_iters;
     if (verbose_) {
-      if (status == 0)
-        std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
-      else if (status == -1)
-        std::cout << "Maximum iteration is reached before medoids are converged!\n";
+      std::cout << (converged ? "Medoids are same for last two iterations, algorithm is converged!\n"
+                              : "Maximum iteration is reached before medoids are converged!\n");
     }
 
     if (i_rand == 0 || total_cost < best_cost) {
       best_cost = total_cost;
       best_rep = i_rand;
-      best_iterations = iters;
-      last_converged_ = status == 0;
+      best_iterations = actual_iters;
+      last_converged_ = converged;
       best_medoids = centroids_ind;
       best_labels = clusters_ind;
     }
@@ -1745,83 +1749,12 @@ void Problem::cluster_by_kmedoids_lloyd()
   centroids_ind = std::move(best_medoids);
   clusters_ind = std::move(best_labels);
   last_iterations_ = best_iterations;
-  if (persist_artifacts)
+  if (persist_run_artifacts_)
     writeBestRep(best_rep);
   else if (verbose_)
     std::cout << "Best repetition: " << best_rep << '\n';
 }
 
-/**
- * @brief Executes a single run of the Lloyd k-medoids clustering.
- * @details This function performs a single run of the Lloyd k-medoids algorithm, updating the medoids and clusters,
- * and calculating the total cost for this run.
- * @param rep The current repetition number.
- * @param persist_artifacts Write this repetition's medoids per iteration (writeMedoids).
- * @return The status (0: the medoids stopped changing, -1: max_iter was reached first), the total cost of this
- *         repetition's clustering and the iterations run.
- */
-std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
-  int rep, bool persist_artifacts)
-{
-  if (centroids_ind.empty())
-    init_with_seed(random_seed_ + static_cast<std::uint64_t>(rep));
-
-  auto oldmedoids = centroids_ind;
-
-  int status = -1;
-  std::vector<std::vector<index_t>> centroids_all;
-
-  int actual_iters = 0;
-  const int iteration_limit = max_iter();
-  for (int i = 0; i < iteration_limit; i++) {
-    actual_iters = i + 1;
-
-    if (verbose_) {
-      std::cout << "Medoids: ";
-      for (auto medoid : centroids_ind)
-        std::cout << series_name(medoid) << ' ';
-    }
-
-    centroids_all.push_back(centroids_ind);
-
-    assign_clusters();
-
-    if (verbose_) {
-      std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
-                << find_total_cost() << ".\n"; // Uses clusters_ind to find cost.
-
-      print_clusters();
-    }
-    calculate_medoids(); // Changes centroids_ind
-
-    if (oldmedoids == centroids_ind) {
-      status = 0;
-      break;
-    }
-
-    oldmedoids = centroids_ind;
-  }
-
-  // A converged iteration leaves the medoids unchanged, so its assignment is
-  // already current. A capped iteration may have just updated the medoids;
-  // realign once before costing and snapshotting the returned state.
-  if (status == -1)
-    assign_clusters();
-
-  const double total_cost = find_total_cost();
-  if (verbose_)
-    std::cout << "Procedure is completed with cost: " << total_cost << '\n';
-  if (persist_artifacts)
-    writeMedoids(centroids_all, rep, total_cost);
-  return {status, total_cost, actual_iters};
-}
-
-/**
- * @brief Calculates the total cost of the current clustering solution.
- * @details Computes the sum of the distances between each point and its closest medoid.
- * This serves as a measure of the quality of the current clustering solution.
- * @return The total cost of the clustering.
- */
 double Problem::find_total_cost()
 {
   require_clustered("find_total_cost");

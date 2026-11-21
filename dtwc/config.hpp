@@ -90,7 +90,7 @@ struct Config
 };
 
 /// `device` as to_config_text() writes it and detail::parse_device() reads it
-/// back: cpu, gpu, gpu:N (N the GPU index when it is not 0).
+/// back: cpu, gpu, gpu:N, cpu+gpu, cpu+gpu:N (N the GPU index when it is not 0).
 inline std::string device_text(const Config &config)
 {
   std::string text = to_string(config.device);

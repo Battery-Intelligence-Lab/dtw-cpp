@@ -185,17 +185,9 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
   config.band = band;
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not
-  config.name = dataset.name();
-  config.dtype = dataset.dtype();                    // run() reads a path in it and converts series in memory to it
-  const std::string process_device = dtwc::device(); // used when `device` is ""
   std::tie(config.device, config.device_index) =
-    detail::parse_device(device.empty() ? std::string_view(process_device) : device);
-  if (!dataset.is_path()) return run(config, std::move(dataset).materialize_local());
-  config.input = path_to_utf8(dataset.path());
-  config.skip_cols = dataset.skip_cols();
-  config.skip_rows = dataset.skip_rows();
-  config.delimiter = dataset.delimiter();
-  return run(config);
+    device.empty() ? detail::parse_device(dtwc::device()) : detail::parse_device(device);
+  return do_clustering(std::move(dataset), config);
 }
 
 namespace {
@@ -216,9 +208,8 @@ namespace {
 Config make_settings(std::initializer_list<SettingPair> options)
 {
   Config base;
-  const std::string proc_dev = dtwc::device();
-  std::tie(base.device, base.device_index) = detail::parse_device(proc_dev);
-  return parse_config(std::move(base), to_string_pairs(options));
+  std::tie(base.device, base.device_index) = detail::parse_device(dtwc::device());
+  return make_settings(std::move(base), options);
 }
 
 Config make_settings(Config base, std::initializer_list<SettingPair> overrides)
@@ -330,10 +321,7 @@ std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg)
 
 std::vector<double> cdist(const Dataset &X, const Dataset &Y)
 {
-  Config cfg;
-  const std::string proc_dev = dtwc::device();
-  std::tie(cfg.device, cfg.device_index) = detail::parse_device(proc_dev);
-  return cdist(X, Y, cfg);
+  return cdist(X, Y, make_settings());
 }
 
 } // namespace dtwc

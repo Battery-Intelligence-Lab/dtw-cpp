@@ -12,41 +12,38 @@
 
 #pragma once
 
-#include "Data.hpp"           // for Data
-#include "DataLoader.hpp"     // for DataLoader
-#include "base/settings.hpp"       // for data_t, DEFAULT_BAND
-#include "base/env.hpp"            // for Device, GpuPrecision
-#include "base/error.hpp"          // for InvalidInput
-#include "enums/enums.hpp"    // for using Enum types.
-#include "initialisation.hpp" // for init functions
-#include "core/dtw_options.hpp" // for DTWVariant
-#include "core/storage.hpp"     // for Precision
-#include "core/distance_matrix.hpp" // for DistanceMatrix
-#include "core/clustering_result.hpp" // for set_result
-#include "algorithms/hierarchical.hpp" // for Linkage
+#include "Data.hpp"
+#include "DataLoader.hpp"
+#include "base/settings.hpp"
+#include "base/env.hpp"
+#include "base/error.hpp"
+#include "enums/enums.hpp"
+#include "initialisation.hpp"
+#include "core/dtw_options.hpp"
+#include "core/storage.hpp"
+#include "core/distance_matrix.hpp"
+#include "core/clustering_result.hpp"
+#include "algorithms/hierarchical.hpp"
+#include "checkpoint.hpp"
 
-#include <cstddef>     // for size_t
-#include <cstdint>     // for uint64_t, int64_t
-#include <filesystem>  // for operator/, path
-#include <string>      // for char_traits, operator+, operator<<
-#include <string_view> // for string_view
-#include <utility>     // for pair
-#include <vector>      // for vector, allocator
-#include <functional>  // std::function
-#include <iosfwd>      // std::ostream
-#include <limits>      // std::numeric_limits
-#include <span>        // std::span
-#include <memory>
-#include <optional>    // std::optional
-#include <stdexcept>
-#include <tuple>       // std::tuple
-
-#include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <iosfwd>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 namespace dtwc {
 
 /// The root dual of Method::LRCore. Both bound the same LP relaxation; which one certifies at the root, with
-/// no branching, depends on the data (measured 2026-10-06: the subgradient on noisy series, Kelley on a line metric).
+/// no branching, depends on the data (measured: the subgradient on noisy series, Kelley on a line metric).
 enum class LRRoot {
   Subgradient, ///< Polyak subgradient steps; needs no LP solver.
   Kelley       ///< Kelley's cutting planes; its master LP solves on linked HiGHS (Python: the user's highspy).
@@ -255,11 +252,8 @@ private:
   /// refused (core::refuse_float32_range, its value computed again in double). A float64 matrix is not scanned.
   void refuse_float32_overflow(size_t r0, size_t r1);
 
-  // Private functions:
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
-  std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(
-    int rep, bool persist_artifacts);
   void init_with_seed(std::uint64_t seed); // in initialisation.cpp, beside what it seeds
 
   void writeBestRep(int best_rep);
@@ -445,10 +439,10 @@ public:
   /// @throws InvalidInput for n < 1: no iteration would report the initial
   ///         medoids' cost as a clustering result.
   void set_max_iter(int n);
-  int max_iter() const;
+  int max_iter() const { return maxIter; }
   /// @throws InvalidInput for n < 1: at least one run is needed.
   void set_n_repetitions(int n);
-  int n_repetitions() const;
+  int n_repetitions() const { return N_repetition; }
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
   void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
   /// CLARA's subsample size and count, OneBatchPAM's batch size and the hierarchical
