@@ -307,7 +307,7 @@ class TestHDF5:
     @pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
     def test_convert_writes_float32_and_int64_series_as_their_values(self, tmp_path):
         """dtwc-convert reads an HDF5 'series' of another dtype, 2-D or ragged (h5py.vlen_dtype), as float64:
-        the Arrow IPC file holds its values."""
+        the Arrow IPC file holds its values. A 3-D one, whose rows are not series, is refused."""
         import h5py
         from dtwcpp import convert
         rows, ragged = [[-11, 23, 36], [4, 5, 6]], np.array([np.array([-11, 23, 36]), np.array([4, 5])], dtype=object)
@@ -318,6 +318,11 @@ class TestHDF5:
                 f.create_dataset("series", data=values, dtype=dtype)
             assert convert.main([str(src), "-o", str(out)]) == 0
             assert dtwcpp.load(out).as_data().p_vec == [[float(v) for v in row] for row in values]
+        cube = tmp_path / "cube.h5"
+        with h5py.File(cube, "w") as f:
+            f.create_dataset("series", data=np.zeros((2, 3, 2)))
+        with pytest.raises(ValueError, match=r"Expected 1D series, got shape \(3, 2\)"):
+            convert.main([str(cube), "-o", str(tmp_path / "cube.arrow"), "--ndim", "2"])
 
 
 # ---------------------------------------------------------------------------
