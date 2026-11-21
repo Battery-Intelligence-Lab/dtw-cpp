@@ -253,6 +253,9 @@ Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
     }
   }
   const double cost = at(nx - 1, ny - 1);
+  // An overflowed cost has +inf cells on its edges, where the walk below would step past row or column 0. Every
+  // caller refuses a non-finite cost before it reads the path.
+  if (!std::isfinite(cost)) return { cost, {} };
 
   std::size_t i = nx - 1;
   std::size_t j = ny - 1;
