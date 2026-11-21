@@ -213,8 +213,8 @@ void bind(CLI::App &app, Config &config)
       "Hierarchical linkage: single, complete, average");
 
   // CSV parsing
-  key(app, "--skip-rows", config.skip_rows, "Number of header rows to skip");
-  key(app, "--skip-cols", config.skip_cols, "Number of leading columns to skip");
+  key(app, "--skip-rows", config.skip_rows, "Number of header rows to skip")->check(CLI::NonNegativeNumber);
+  key(app, "--skip-cols", config.skip_cols, "Number of leading columns to skip")->check(CLI::NonNegativeNumber);
   app.add_option_function<std::string>(
        "--delimiter",
        [&config](const std::string &text) {
@@ -241,7 +241,7 @@ void bind(CLI::App &app, Config &config)
   key(app, "--mip-gap", config.mip.mip_gap, "MIP optimality gap tolerance (default: 1e-5)");
   key(app, "--time-limit", config.mip.time_limit_sec, "MIP solver time limit in seconds (-1 = unlimited)");
   app.add_flag_function(
-       "--no-warm-start", [&config](std::int64_t count) { if (count > 0) config.mip.warm_start = false; },
+       "--no-warm-start", [&config](std::int64_t count) { config.mip.warm_start = count <= 0; },
        "Disable FastPAM warm start for MIP")
     ->default_function([&config] { return text_of(!config.mip.warm_start); })
     ->capture_default_str();
@@ -272,7 +272,7 @@ void bind(CLI::App &app, Config &config)
 
   key(app, "-v,--verbose", config.verbose, "Verbose output");
   app.add_flag_function(
-       "--no-report", [&config](std::int64_t count) { if (count > 0) config.report = false; },
+       "--no-report", [&config](std::int64_t count) { config.report = count <= 0; },
        "Write no run report (<name>_report.txt: the run's machine, memory plan, stages and result, in plain text)")
     ->default_function([&config] { return text_of(!config.report); })
     ->capture_default_str();

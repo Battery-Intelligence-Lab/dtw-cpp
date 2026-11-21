@@ -273,6 +273,13 @@ TEST_CASE("run's OneBatch keeps its own O(Nm) storage over the memory limit", "[
   CHECK_FALSE(cache_exists(scratch, "onebatch"));
 }
 
+TEST_CASE("run's OneBatch refuses a --dist-matrix, which it would load and never read", "[cli][storage][onebatch]")
+{
+  auto config = quiet_config(2, Method::OneBatch); // no output directory
+  config.dist_matrix = "never_read.csv";
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("unused O(N^2) state"));
+}
+
 TEST_CASE("run's non-full FastCLARA does not open an unused parent matrix", "[cli][storage][clara]")
 {
   const ScratchDirectory scratch{ "cli_clara_storage" };
@@ -287,6 +294,8 @@ TEST_CASE("run's non-full FastCLARA does not open an unused parent matrix", "[cl
                        Catch::Matchers::MessageMatches(ContainsSubstring("unused O(N^2) state")));
   config.checkpoint.clear();
   config.dist_matrix = (scratch.path / "never_read.csv").string();
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("unused O(N^2) state"));
+  config.output.clear(); // a run that writes no files is refused alike
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("unused O(N^2) state"));
 }
 
@@ -331,4 +340,16 @@ TEST_CASE("run rejects a legacy precomputed CSV plus mmap before false success",
                     ContainsSubstring("for the distance matrix, which --dist-matrix reads into RAM")
                       && ContainsSubstring("Raise --ram-limit"));
   CHECK_FALSE(cache_exists(scratch, "precomputed"));
+}
+
+TEST_CASE("run refuses --dist-matrix beside --checkpoint, which each supply the distance matrix",
+          "[cli][storage][checkpoint]")
+{
+  // A checkpoint resumed over the CSV's distances, and a fresh one saved the CSV's as computed ones.
+  const ScratchDirectory scratch{ "cli_matrix_and_checkpoint" };
+  auto config = quiet_config(2, Method::PAM);
+  config.dist_matrix = (scratch.path / "never_read.csv").string();
+  config.checkpoint = (scratch.path / "ckpt").string();
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("each supply the distance matrix"));
+  CHECK_FALSE(fs::exists(scratch.path / "ckpt")); // refused before any directory is made
 }

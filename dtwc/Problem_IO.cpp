@@ -242,6 +242,23 @@ void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComput
   }
 }
 
+namespace {
+
+/// `name` as one CSV field (RFC 4180): quoted, each quote doubled, where it holds a comma, a quote or a line break, so
+/// a CSV reader takes it whole; any other name as it is.
+std::string csv_field(std::string name)
+{
+  if (name.find_first_of(",\"\r\n") == std::string::npos) return name;
+  std::string quoted = "\"";
+  for (const char c : name) {
+    if (c == '"') quoted += '"';
+    quoted += c;
+  }
+  return quoted + '"';
+}
+
+} // namespace
+
 void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress,
                                 const std::vector<std::string> &streamed_names)
 {
@@ -267,7 +284,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
   {
     auto out = open_output(labels_path);
     out << "name,cluster\n";
-    for (std::size_t i = 0; i < labels.size(); ++i) out << series_name(i) << ',' << labels[i] << '\n';
+    for (std::size_t i = 0; i < labels.size(); ++i) out << csv_field(series_name(i)) << ',' << labels[i] << '\n';
     close_output(out, labels_path);
   }
   if (progress) *progress << "Labels written to " << labels_path << "\n";
@@ -277,7 +294,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
     auto out = open_output(medoids_path);
     out << "cluster,medoid_index,medoid_name\n";
     for (std::size_t c = 0; c < medoids.size(); ++c)
-      out << c << ',' << medoids[c] << ',' << series_name(static_cast<std::size_t>(medoids[c])) << '\n';
+      out << c << ',' << medoids[c] << ',' << csv_field(series_name(static_cast<std::size_t>(medoids[c]))) << '\n';
     close_output(out, medoids_path);
   }
   if (progress) *progress << "Medoids written to " << medoids_path << "\n";
@@ -326,7 +343,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
     auto out = open_output(silhouettes_path);
     out << "name,cluster,silhouette\n";
     for (std::size_t i = 0; i < silhouettes.size(); ++i)
-      out << series_name(i) << ',' << labels[i] << ',' << std::setprecision(8) << silhouettes[i] << '\n';
+      out << csv_field(series_name(i)) << ',' << labels[i] << ',' << std::setprecision(8) << silhouettes[i] << '\n';
     close_output(out, silhouettes_path);
   }
   // The report's mean is -v's: one sum of the silhouettes already computed.

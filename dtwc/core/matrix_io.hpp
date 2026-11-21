@@ -144,6 +144,7 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
   std::ifstream file(path, std::ios::in | std::ios::binary);
   if (!file.good())
     throw IOError("Cannot open file for reading: " + path_to_utf8(path));
+  ignoreBOM(file, path); // as the series reader does: Excel's "CSV UTF-8" and pandas' utf-8-sig write one
 
   struct Cell { double value; bool valid; };
   std::vector<std::vector<Cell>> rows;
@@ -162,8 +163,8 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
     std::size_t start = 0;
     while (true) {
       const auto comma = text.find(',', start);
-      const auto cell = text.substr(
-        start, comma == std::string_view::npos ? comma : comma - start);
+      const auto cell = text_io_detail::trim_ascii(text.substr( // the spaces around a field are not its value
+        start, comma == std::string_view::npos ? comma : comma - start));
       if (cell.empty()) {
         row.push_back({ 0.0, false }); // empty field → uncomputed
       } else {

@@ -717,6 +717,21 @@ TEST_CASE("The matrix reader reads the file's bytes: a Ctrl-Z is a field and a C
     for (size_t j = 0; j < lf.size(); ++j) CHECK(crlf.get(i, j) == lf.get(i, j));
 }
 
+TEST_CASE("The matrix reader skips a UTF-8 byte-order mark and the spaces around a field, as the series reader does",
+          "[csv][dense][read]")
+{
+  // Excel's "CSV UTF-8" and pandas' encoding="utf-8-sig" start the file with EF BB BF; numpy.savetxt with
+  // delimiter=", " pads every field after the first.
+  const auto path = fresh_path("bom-padded.csv");
+  seed_binary(path, "\xEF\xBB\xBF" "0, 1.5\n1.5 ,\t0\n");
+  dtwc::core::DistanceMatrix loaded;
+  dtwc::io::read_csv(loaded, path);
+  REQUIRE(loaded.size() == 2);
+  CHECK(loaded.get(0, 0) == 0.0);
+  CHECK(loaded.get(0, 1) == 1.5);
+  CHECK(loaded.get(1, 1) == 0.0);
+}
+
 TEST_CASE("A matrix reader error names its file in UTF-8, whatever the file is called", "[csv][dense][read]")
 {
   // path::string() is the ANSI code page on Windows, where it threw for this

@@ -82,9 +82,11 @@ inline void extract_series_from_column(
 
   if (is_list) {
     auto append_cells = [&](auto list) {
-      // Two null_count() reads per chunk: the list cells and their values.
+      // Two null_count() reads per chunk: the list cells and the values they hold, not the whole child, which a
+      // sliced list shares with the rows it dropped (the rows --skip-rows skips among them).
       require_no_nulls(*list, "list column cell");
-      require_no_nulls(*list->values(), "list column value");
+      const auto first = list->value_offset(0);
+      require_no_nulls(*list->values()->Slice(first, list->value_offset(list->length()) - first), "list column value");
       const int64_t len = list->length();
       for (int64_t i = 0; i < len; ++i) {
         std::vector<T> series;

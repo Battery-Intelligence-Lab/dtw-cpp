@@ -242,3 +242,22 @@ TEST_CASE("report = false: no report text and no report file, the results as eve
   CHECK_FALSE(fs::exists(scratch.path / "out" / "rr_report.txt"));
   CHECK(fs::exists(scratch.path / "out" / "rr_labels.csv"));
 }
+
+TEST_CASE("The result files quote a name that holds a comma, a quote or a line break, and no other", "[run][report]")
+{
+  // A CSV reader, such as the HPC route's csv.DictReader, would split such a name into fields.
+  const dtwc::test_support::ScratchDirectory scratch{ "run_report_names" };
+  auto data = three_groups(6);
+  data.p_names[0] = "a,1";
+  data.p_names[1] = "say \"hi\"";
+  data.p_names[2] = "two\nlines";
+  const auto result = dtwc::run(pam_into(scratch.path / "out"), std::move(data));
+  const std::string fields[]{ "\"a,1\"", "\"say \"\"hi\"\"\"", "\"two\nlines\"", "s3", "s4", "s5" };
+  std::string labels = "name,cluster\n", medoids = "cluster,medoid_index,medoid_name\n";
+  for (std::size_t i = 0; i < 6; ++i) labels += fields[i] + ',' + std::to_string(result.labels()[i]) + '\n';
+  for (std::size_t c = 0; c < 3; ++c)
+    medoids += std::to_string(c) + ',' + std::to_string(result.medoids()[c]) + ',' + fields[result.medoids()[c]] + '\n';
+  CHECK(read_text(scratch.path / "out" / "rr_labels.csv") == labels);
+  CHECK(read_text(scratch.path / "out" / "rr_medoids.csv") == medoids);
+  CHECK_THAT(read_text(scratch.path / "out" / "rr_silhouettes.csv"), ContainsSubstring("\n\"say \"\"hi\"\"\","));
+}

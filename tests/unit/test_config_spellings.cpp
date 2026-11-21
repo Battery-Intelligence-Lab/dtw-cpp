@@ -362,6 +362,10 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   CHECK(values.at("n-clusters") == "9");
   CHECK(values.at("method") == "pam");
   CHECK(values.at("band") == "7"); // the file still supplies the rest
+  dtwc::Config off; // a base that turned both off, which "false" turns back on
+  off.report = off.mip.warm_start = false;
+  const auto on = dtwc::parse_config(off, { { "no_report", "false" }, { "no_warm_start", "false" } });
+  CHECK((on.report && on.mip.warm_start));
 
   CHECK_THROWS_MATCHES(dtwc::parse_config({ { "max_iterations", "5" } }), dtwc::InvalidInput,
                        Catch::Matchers::Message("INI was not able to parse max-iterations"));
@@ -371,6 +375,8 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   CHECK_THROWS_AS(dtwc::parse_config({ { "method", "kmeans" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "k", "three" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "seed", "-1" } }), dtwc::InvalidInput); // unsigned: the type says no
+  for (const char *skip : { "skip_rows", "skip_cols" }) // counts: cdist would skip SIZE_MAX series for -1
+    CHECK_THROWS_AS(dtwc::parse_config({ { skip, "-1" } }), dtwc::InvalidInput);
   // Keys of deleted features are unknown keys, not silently ignored ones.
   for (const char *gone : { "benders", "max_benders_iter", "batch_weighting", "mmap_threshold" })
     CHECK_THROWS_AS(dtwc::parse_config({ { gone, "1" } }), dtwc::InvalidInput);
