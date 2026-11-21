@@ -258,8 +258,6 @@ private:
   // Private functions:
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
-  std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(
-    int rep, bool persist_artifacts);
   void init_with_seed(std::uint64_t seed); // in initialisation.cpp, beside what it seeds
 
   void writeBestRep(int best_rep);
