@@ -10,6 +10,7 @@
  */
 
 #include <dtwc.hpp>
+#include <mip/lagrangian_root.hpp>
 #include <mip/mip.hpp> // highs_solver_available
 
 #include <catch2/catch_test_macros.hpp>
@@ -456,7 +457,9 @@ TEST_CASE("k-medoids groups series of different lengths by shape", "[Phase1][clu
 // ---------------------------------------------------------------------------
 // k-medoids does not depend on the distances' unit. Series times 2^-85 have L1 distances exactly 2^-85 times theirs and
 // squared-L2 ones exactly 2^-170 times, so a method whose tolerances are relative to the data returns the same
-// clustering bit for bit. Soft-DTW, ADTW, MSM and TWE are left out: their parameters carry the data's unit.
+// clustering bit for bit. MIP runs from no start and LR-core from no seed as well: each would otherwise start from
+// FasterPAM's clustering, optimal here at both scales. Soft-DTW, ADTW, MSM and TWE are left out: their parameters
+// carry the data's unit.
 // ---------------------------------------------------------------------------
 TEST_CASE("Clustering is the same for series scaled by a power of two", "[clustering][scale]")
 {
@@ -469,8 +472,8 @@ TEST_CASE("Clustering is the same for series scaled by a power of two", "[cluste
   for (auto &s : scaled)
     for (auto &v : s) v = std::ldexp(v, -shift);
 
-  const auto run = [](const std::vector<std::vector<data_t>> &data, core::DTWVariant variant, core::MetricType metric,
-                      Method method) {
+  const auto problem = [](const std::vector<std::vector<data_t>> &data, core::DTWVariant variant,
+                          core::MetricType metric, Method method) {
     std::vector<std::string> names;
     for (std::size_t i = 0; i < data.size(); ++i) names.push_back("s" + std::to_string(i));
     Problem prob("scale");
@@ -480,7 +483,18 @@ TEST_CASE("Clustering is the same for series scaled by a power of two", "[cluste
     prob.set_method(method);
     prob.set_n_clusters(3);
     prob.set_sample_size(8); // CLARA on subsamples, not delegating to pam
-    return prob.cluster();
+    prob.mip_settings.warm_start = false;
+    return prob;
+  };
+  // Method::LRCore always seeds from FasterPAM, so its solver runs here on the Problem's matrix with no seed.
+  const auto unseeded_lr_core = [&](const std::vector<std::vector<data_t>> &data, core::DTWVariant variant,
+                                    core::MetricType metric) {
+    auto prob = problem(data, variant, metric, Method::LRCore);
+    prob.fill_distance_matrix();
+    std::vector<double> d;
+    for (index_t i = 0; i < prob.size(); ++i)
+      for (index_t j = 0; j < prob.size(); ++j) d.push_back(prob.dist_by_ind(i, j));
+    return mip::lagrangian_root_exact(d.data(), prob.size(), 3);
   };
   using core::DTWVariant, core::MetricType;
   const std::pair<DTWVariant, MetricType> configs[]{ { DTWVariant::Standard, MetricType::L1 },
@@ -491,16 +505,23 @@ TEST_CASE("Clustering is the same for series scaled by a power of two", "[cluste
   std::vector<Method> methods{ Method::PAM,      Method::CLARA,   Method::Kmedoids, Method::Hierarchical,
                                Method::OneBatch, Method::TADPole, Method::LRCore };
   if (highs_solver_available()) methods.push_back(Method::MIP);
-  for (const auto &[variant, metric] : configs)
+  for (const auto &[variant, metric] : configs) {
+    const int exponent = metric == MetricType::SquaredL2 ? -2 * shift : -shift;
     for (const Method method : methods) {
       INFO("variant " << static_cast<int>(variant) << ", metric " << static_cast<int>(metric) << ", method "
                       << name_of(method_names, method));
-      const auto unit = run(series, variant, metric, method);
-      const auto small = run(scaled, variant, metric, method);
+      const auto unit = problem(series, variant, metric, method).cluster();
+      const auto small = problem(scaled, variant, metric, method).cluster();
       CHECK(small.labels == unit.labels);
       CHECK(small.medoid_indices == unit.medoid_indices);
       CHECK(small.iterations == unit.iterations);
       CHECK(small.converged == unit.converged);
-      CHECK(small.total_cost == std::ldexp(unit.total_cost, metric == MetricType::SquaredL2 ? -2 * shift : -shift));
+      CHECK(small.total_cost == std::ldexp(unit.total_cost, exponent));
     }
+    INFO("variant " << static_cast<int>(variant) << ", metric " << static_cast<int>(metric) << ", LR-core, no seed");
+    const auto unit = unseeded_lr_core(series, variant, metric);
+    const auto small = unseeded_lr_core(scaled, variant, metric);
+    CHECK(small.medoids == unit.medoids);
+    CHECK(small.upper_bound == std::ldexp(unit.upper_bound, exponent));
+  }
 }
