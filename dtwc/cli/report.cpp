@@ -164,10 +164,8 @@ std::string stopped(const RunReport::Clustering &clustering, const Config &confi
   case Method::OneBatch:
     return clustering.converged ? "a sweep found no improving swap on its batch (k = 1 and k = N need none)"
                                 : "max-iter reached";
-  case Method::Kmedoids: // Problem::cluster's flag: Lloyd's iterations below max-iter
-    return clustering.converged ? "the medoids stopped changing before max-iter"
-                                : "max-iter reached (or the medoids stopped changing at the last iteration, which the "
-                                  "converged flag does not tell apart)";
+  case Method::Kmedoids: // Problem::cluster's flag: the medoids stopped changing, on the last allowed iteration too
+    return clustering.converged ? "the medoids stopped changing" : "max-iter reached";
   case Method::MIP:
     return "the solver's optimum within --mip-gap (a stop short of it is a SolverError)";
   case Method::LRCore:
