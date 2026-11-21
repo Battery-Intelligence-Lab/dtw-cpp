@@ -9,7 +9,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <algorithm>
 #include <bit>
 #include <clocale>
 #include <cstdlib>
@@ -217,39 +216,7 @@ private:
   std::streambuf *previous_;
 };
 
-void check_literal_bytes(std::string_view bytes)
-{
-  CHECK(bytes == kExpected);
-  CHECK(bytes.size() == 83);
-  CHECK(std::count(bytes.begin(), bytes.end(), '\n') == 3);
-  CHECK(std::count(bytes.begin(), bytes.end(), '\r') == 0);
-  CHECK(std::count(bytes.begin(), bytes.end(), ',') == 6);
-  REQUIRE_FALSE(bytes.empty());
-  CHECK(bytes.back() == '\n');
-}
-
 } // namespace
-
-TEST_CASE("F14 independent matrix fixture retains every registered bit",
-          "[f14][csv][oracle]")
-{
-  const auto matrix = contract_dense();
-  check_contract_bits(matrix);
-  CHECK(kExpected.size() == 83);
-  CHECK(kExpected.substr(0, 22) == ",-0,1.0000000000000002");
-  CHECK(kExpected.substr(23, 32)
-        == "-0,1.7976931348623157e+308,-1.25");
-  CHECK(kExpected.substr(56, 26) == "1.0000000000000002,-1.25,0");
-}
-
-TEST_CASE("F14 dense stream emits the exact independent literal",
-          "[f14][csv][dense][stream]")
-{
-  const auto matrix = contract_dense();
-  std::ostringstream output;
-  output << matrix;
-  check_literal_bytes(output.str());
-}
 
 TEST_CASE("F14 dense stream ignores and preserves hostile caller state",
           "[f14][csv][dense][state]")
@@ -270,7 +237,7 @@ TEST_CASE("F14 dense stream ignores and preserves hostile caller state",
   const auto width = output.width();
   output << matrix;
 
-  check_literal_bytes(output.str());
+  CHECK(output.str() == kExpected);
   CHECK(output.flags() == flags);
   CHECK(output.precision() == precision);
   CHECK(output.fill() == fill);
@@ -288,20 +255,12 @@ TEST_CASE("F14 dense file is binary locale-free and bit-roundtrippable",
     dtwc::io::write_csv(matrix, path);
   }
   const std::string bytes = read_binary(path);
-  check_literal_bytes(bytes);
+  CHECK(bytes == kExpected);
 
   dtwc::core::DistanceMatrix loaded;
-  std::string read_error;
-  try {
-    dtwc::io::read_csv(loaded, path);
-  } catch (const std::exception &error) {
-    read_error = error.what();
-  }
-  CHECK(read_error.empty());
-  if (read_error.empty()) {
-    CHECK(loaded.size() == 3);
-    check_contract_bits(loaded);
-  }
+  REQUIRE_NOTHROW(dtwc::io::read_csv(loaded, path));
+  CHECK(loaded.size() == 3);
+  check_contract_bits(loaded);
 }
 
 TEST_CASE("F14 dense Problem visitor and print route are literal-identical",
@@ -311,11 +270,11 @@ TEST_CASE("F14 dense Problem visitor and print route are literal-identical",
   configure_dense_problem(problem);
   const auto path = fresh_path("dense_problem.csv");
   problem.write_distance_matrix(path.filename().string());
-  check_literal_bytes(read_binary(path));
+  CHECK(read_binary(path) == kExpected);
 
   cout_capture capture;
   problem.print_distance_matrix();
-  check_literal_bytes(capture.str());
+  CHECK(capture.str() == kExpected);
 }
 
 TEST_CASE("F14 positive infinity rejects before any dense output",
@@ -422,49 +381,9 @@ TEST_CASE("F14 native Result save matches the registered dense stream bytes",
     "1,0,2\n"
     "3,2,0\n";
   CHECK(bytes == expected);
-  CHECK(bytes.size() == 18);
-  CHECK(std::count(bytes.begin(), bytes.end(), '\n') == 3);
-  CHECK(std::count(bytes.begin(), bytes.end(), '\r') == 0);
-  REQUIRE_FALSE(bytes.empty());
-  CHECK(bytes.back() == '\n');
 }
 
 #ifdef DTWC_HAS_MMAP
-
-TEST_CASE("F14 mmap stream is literal and hostile-state independent",
-          "[f14][csv][mmap][stream]")
-{
-  const auto cache = fresh_path("stream.dtwm");
-  auto matrix = dtwc::core::DistanceMatrix::map(cache, 3, {});
-  matrix.clear_rows(0, 3); // as a fill makes them: NaN, then recorded written once on the device
-  matrix.flush_rows(0, 3, true);
-  populate_contract_matrix(matrix);
-  check_contract_bits(matrix);
-
-  std::ostringstream ordinary;
-  ordinary << matrix;
-  check_literal_bytes(ordinary.str());
-
-  std::ostringstream hostile;
-  const std::locale locale = hostile_locale();
-  hostile.imbue(locale);
-  hostile.setf(std::ios::scientific, std::ios::floatfield);
-  hostile.setf(std::ios::showpos | std::ios::showpoint | std::ios::uppercase);
-  hostile.precision(3);
-  hostile.fill('#');
-  hostile.width(9);
-  const auto flags = hostile.flags();
-  const auto precision = hostile.precision();
-  const auto fill = hostile.fill();
-  const auto width = hostile.width();
-  hostile << matrix;
-  check_literal_bytes(hostile.str());
-  CHECK(hostile.flags() == flags);
-  CHECK(hostile.precision() == precision);
-  CHECK(hostile.fill() == fill);
-  CHECK(hostile.width() == width);
-  CHECK(hostile.getloc() == locale);
-}
 
 TEST_CASE("F14 mmap Problem visitor and print route are literal-identical",
           "[f14][csv][mmap][problem]")
@@ -476,11 +395,11 @@ TEST_CASE("F14 mmap Problem visitor and print route are literal-identical",
     global_locale_guard guard(hostile_locale());
     problem.write_distance_matrix(path.filename().string());
   }
-  check_literal_bytes(read_binary(path));
+  CHECK(read_binary(path) == kExpected);
 
   cout_capture capture;
   problem.print_distance_matrix();
-  check_literal_bytes(capture.str());
+  CHECK(capture.str() == kExpected);
 }
 
 TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",

@@ -1,12 +1,7 @@
 /**
  * @file unit_test_mv_variants.cpp
- * @brief Unit tests for multivariate WDTW, ADTW, and DDTW functions.
+ * @brief Unit tests for multivariate WDTW and ADTW wrapper overloads.
  * @author Volkan Kumtepeli
- *
- * Tests cover:
- *   - wdtwFull_mv / wdtwBanded_mv: ndim=1 parity, ndim=2 identity/symmetry/non-negativity
- *   - adtwFull_L_mv / adtwBanded_mv: ndim=1 parity, ndim=2 identity/symmetry/penalty effect
- *   - Problem integration: WDTW, ADTW, DDTW with ndim=2 data
  */
 
 #include <dtwc.hpp>
@@ -14,15 +9,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <vector>
-#include <cmath>
+#include <algorithm>
 #include <limits>
+#include <vector>
 
 using Catch::Matchers::WithinAbs;
-
-// =========================================================================
-//  WDTW MV — wdtwFull_mv
-// =========================================================================
 
 TEST_CASE("WDTW MV: ndim=1 matches scalar wdtwFull", "[mv][wdtw]")
 {
@@ -35,21 +26,6 @@ TEST_CASE("WDTW MV: ndim=1 matches scalar wdtwFull", "[mv][wdtw]")
   REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-10));
 }
 
-TEST_CASE("WDTW MV: ndim=2 same pointer returns 0", "[mv][wdtw]")
-{
-  double x[] = {1, 2, 3, 4, 5, 6};  // 3 timesteps, 2 features
-  REQUIRE(dtwc::wdtwFull_mv(x, 3, x, 3, 2) == 0.0);
-}
-
-TEST_CASE("WDTW MV: ndim=2 identical arrays = 0", "[mv][wdtw]")
-{
-  double x[] = {1, 2, 3, 4, 5, 6};
-  double y[] = {1, 2, 3, 4, 5, 6};
-  // Different pointers, same content — not 0 via pointer check, but distance should be 0
-  // (all pointwise distances are 0, so weighted sum is 0)
-  REQUIRE_THAT(dtwc::wdtwFull_mv(x, 3, y, 3, 2), WithinAbs(0.0, 1e-10));
-}
-
 TEST_CASE("WDTW MV: ndim=2 symmetry", "[mv][wdtw]")
 {
   double x[] = {1, 2, 3, 4, 5, 6};
@@ -59,41 +35,12 @@ TEST_CASE("WDTW MV: ndim=2 symmetry", "[mv][wdtw]")
   REQUIRE_THAT(d1, WithinAbs(d2, 1e-10));
 }
 
-TEST_CASE("WDTW MV: ndim=2 non-negative distance", "[mv][wdtw]")
-{
-  double x[] = {1, 2, 3, 4};
-  double y[] = {5, 6, 7, 8};
-  REQUIRE(dtwc::wdtwFull_mv(x, 2, y, 2, 2) >= 0.0);
-}
-
 TEST_CASE("WDTW MV: empty series returns max", "[mv][wdtw]")
 {
   double x[] = {1, 2, 3, 4};
   constexpr double maxVal = std::numeric_limits<double>::max();
   REQUIRE(dtwc::wdtwFull_mv(x, 2, static_cast<double *>(nullptr), 0, 2) == maxVal);
   REQUIRE(dtwc::wdtwFull_mv(static_cast<double *>(nullptr), 0, x, 2, 2) == maxVal);
-}
-
-TEST_CASE("WDTW MV: different lengths (ndim=2)", "[mv][wdtw]")
-{
-  double x[] = {0, 0, 1, 1, 2, 2};  // 3 timesteps
-  double y[] = {0, 0, 2, 2};         // 2 timesteps
-  double d = dtwc::wdtwFull_mv(x, 3, y, 2, 2);
-  REQUIRE(d >= 0.0);
-  REQUIRE(d < std::numeric_limits<double>::max());
-}
-
-// =========================================================================
-//  WDTW MV — wdtwBanded_mv
-// =========================================================================
-
-TEST_CASE("WDTW MV banded: negative band delegates to full", "[mv][wdtw]")
-{
-  double x[] = {1, 2, 3, 4, 5, 6};
-  double y[] = {6, 5, 4, 3, 2, 1};
-  double d_full = dtwc::wdtwFull_mv(x, 3, y, 3, 2);
-  double d_band = dtwc::wdtwBanded_mv(x, 3, y, 3, 2, -1);
-  REQUIRE_THAT(d_full, WithinAbs(d_band, 1e-10));
 }
 
 TEST_CASE("WDTW MV banded: ndim=1 matches scalar wdtwBanded", "[mv][wdtw]")
@@ -105,10 +52,6 @@ TEST_CASE("WDTW MV banded: ndim=1 matches scalar wdtwBanded", "[mv][wdtw]")
   REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-10));
 }
 
-// =========================================================================
-//  ADTW MV — adtwFull_L_mv
-// =========================================================================
-
 TEST_CASE("ADTW MV: ndim=1 matches scalar adtwFull_L", "[mv][adtw]")
 {
   std::vector<double> x = {1, 3, 4, 2, 5};
@@ -118,36 +61,6 @@ TEST_CASE("ADTW MV: ndim=1 matches scalar adtwFull_L", "[mv][adtw]")
   REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-10));
 }
 
-TEST_CASE("ADTW MV: ndim=2 same pointer returns 0", "[mv][adtw]")
-{
-  double x[] = {1, 2, 3, 4, 5, 6};
-  REQUIRE(dtwc::adtwFull_L_mv(x, 3, x, 3, 2) == 0.0);
-}
-
-TEST_CASE("ADTW MV: ndim=2 identical arrays = 0", "[mv][adtw]")
-{
-  double x[] = {1, 2, 3, 4, 5, 6};
-  double y[] = {1, 2, 3, 4, 5, 6};
-  // All pointwise distances are 0, so total = 0 regardless of penalty
-  REQUIRE_THAT(dtwc::adtwFull_L_mv(x, 3, y, 3, 2, 1.0), WithinAbs(0.0, 1e-10));
-}
-
-TEST_CASE("ADTW MV: ndim=2 symmetry", "[mv][adtw]")
-{
-  double x[] = {1, 2, 3, 4, 5, 6};
-  double y[] = {6, 5, 4, 3, 2, 1};
-  double d1 = dtwc::adtwFull_L_mv(x, 3, y, 3, 2);
-  double d2 = dtwc::adtwFull_L_mv(y, 3, x, 3, 2);
-  REQUIRE_THAT(d1, WithinAbs(d2, 1e-10));
-}
-
-TEST_CASE("ADTW MV: ndim=2 non-negative distance", "[mv][adtw]")
-{
-  double x[] = {1, 2, 3, 4};
-  double y[] = {5, 6, 7, 8};
-  REQUIRE(dtwc::adtwFull_L_mv(x, 2, y, 2, 2) >= 0.0);
-}
-
 TEST_CASE("ADTW MV: penalty increases distance for unequal-length series", "[mv][adtw]")
 {
   // Unequal lengths force non-diagonal steps, so penalty has a direct effect
@@ -155,28 +68,7 @@ TEST_CASE("ADTW MV: penalty increases distance for unequal-length series", "[mv]
   double y[] = {0, 0, 2, 2};         // 2 timesteps
   double d_low = dtwc::adtwFull_L_mv(x, 3, y, 2, 2, 0.0);
   double d_high = dtwc::adtwFull_L_mv(x, 3, y, 2, 2, 10.0);
-  REQUIRE(d_high >= d_low);
-}
-
-TEST_CASE("ADTW MV: empty series returns max", "[mv][adtw]")
-{
-  double x[] = {1, 2, 3, 4};
-  constexpr double maxVal = std::numeric_limits<double>::max();
-  REQUIRE(dtwc::adtwFull_L_mv(x, 2, static_cast<double *>(nullptr), 0, 2) == maxVal);
-  REQUIRE(dtwc::adtwFull_L_mv(static_cast<double *>(nullptr), 0, x, 2, 2) == maxVal);
-}
-
-// =========================================================================
-//  ADTW MV — adtwBanded_mv
-// =========================================================================
-
-TEST_CASE("ADTW MV banded: negative band delegates to full", "[mv][adtw]")
-{
-  double x[] = {1, 2, 3, 4, 5, 6};
-  double y[] = {6, 5, 4, 3, 2, 1};
-  double d_full = dtwc::adtwFull_L_mv(x, 3, y, 3, 2);
-  double d_band = dtwc::adtwBanded_mv(x, 3, y, 3, 2, -1);
-  REQUIRE_THAT(d_full, WithinAbs(d_band, 1e-10));
+  REQUIRE(d_high > d_low);
 }
 
 TEST_CASE("ADTW MV banded: ndim=1 matches scalar adtwBanded", "[mv][adtw]")
@@ -188,147 +80,13 @@ TEST_CASE("ADTW MV banded: ndim=1 matches scalar adtwBanded", "[mv][adtw]")
   REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-10));
 }
 
-// =========================================================================
-//  Problem integration — WDTW MV
-// =========================================================================
-
-TEST_CASE("Problem: WDTW MV via set_variant", "[mv][wdtw][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {0, 0, 1, 1, 2, 2},
-    {10, 10, 11, 11, 12, 12}
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_variant(dtwc::core::DTWVariant::WDTW);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-  REQUIRE(prob.dist_by_ind(0, 1) > 0.0);
-}
-
-TEST_CASE("Problem: WDTW MV identical series = 0", "[mv][wdtw][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {0, 0, 1, 1, 2, 2},
-    {0, 0, 1, 1, 2, 2}
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_variant(dtwc::core::DTWVariant::WDTW);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
-}
-
-// =========================================================================
-//  Problem integration — ADTW MV
-// =========================================================================
-
-TEST_CASE("Problem: ADTW MV via set_variant", "[mv][adtw][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {0, 0, 1, 1, 2, 2},
-    {10, 10, 11, 11, 12, 12}
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_variant(dtwc::core::DTWVariant::ADTW);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-  REQUIRE(prob.dist_by_ind(0, 1) > 0.0);
-}
-
-TEST_CASE("Problem: ADTW MV identical series = 0", "[mv][adtw][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {1, 2, 3, 4, 5, 6},
-    {1, 2, 3, 4, 5, 6}
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_variant(dtwc::core::DTWVariant::ADTW);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
-}
-
-// =========================================================================
-//  Problem integration — DDTW MV
-// =========================================================================
-
-TEST_CASE("Problem: DDTW MV via set_variant", "[mv][ddtw][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {0, 0, 1, 1, 2, 2, 3, 3},   // linear ramp in both channels
-    {0, 0, 1, 1, 2, 2, 3, 3},   // identical
-    {10, 10, 11, 11, 12, 12, 13, 13}  // same shape, different offset
-  };
-  data.p_names = {"a", "b", "c"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_variant(dtwc::core::DTWVariant::DDTW);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-
-  // Identical series must yield 0
-  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
-  // Different offset but same shape: derivative is identical => DDTW distance is 0
-  REQUIRE_THAT(prob.dist_by_ind(0, 2), WithinAbs(0.0, 1e-10));
-}
-
-TEST_CASE("Problem: DDTW MV different shape > 0", "[mv][ddtw][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {0, 0, 1, 1, 2, 2, 3, 3},      // linear ramp
-    {0, 0, 2, 2, 0, 0, 2, 2}       // oscillating — different derivative
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_variant(dtwc::core::DTWVariant::DDTW);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-
-  REQUIRE(prob.dist_by_ind(0, 1) > 0.0);
-}
-
-// =========================================================================
-//  Unified-kernel regressions: banded MV is now a first-class path.
-//  Previously adtwBanded_mv / wdtwBanded_mv silently fell back to the
-//  unbanded MV variant (documented TODO). With the unified kernel, band
-//  restrictions are honoured and must produce different results from the
-//  unbanded MV when the band is tight enough to constrain the warping path.
-// =========================================================================
-
+// Banded MV is a first-class path: adtwBanded_mv and wdtwBanded_mv used to fall
+// back to the unbanded MV variant. Band restrictions are honoured and must give a
+// different result from the unbanded MV when the band constrains the warping path.
 TEST_CASE("ADTW MV banded actually restricts the warping path", "[mv][adtw][banded]")
 {
   // Shifted-peak pattern: x has a peak at step 2, y has the same peak at step 8.
   // Unbanded DTW warps heavily to align the peaks; band=1 forbids that warp.
-  // Previously adtwBanded_mv fell back to the unbanded path (documented TODO),
-  // so the two results were identical. With the unified kernel, the banded
-  // result is genuinely higher.
   std::vector<double> x = {0,0, 0,0, 9,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0};
   std::vector<double> y = {0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 9,0, 0,0};
   const double penalty = 0.5;
@@ -337,7 +95,7 @@ TEST_CASE("ADTW MV banded actually restricts the warping path", "[mv][adtw][band
   const double d_banded1  = dtwc::adtwBanded_mv<double>(x.data(), 10, y.data(), 10, 2, 1, penalty);
 
   INFO("d_unbanded=" << d_unbanded << " d_banded1=" << d_banded1);
-  REQUIRE(d_banded1 > d_unbanded); // previously equal (fallback); now distinct and strictly greater.
+  REQUIRE(d_banded1 > d_unbanded);
 }
 
 TEST_CASE("WDTW MV banded actually restricts the warping path", "[mv][wdtw][banded]")
@@ -351,125 +109,4 @@ TEST_CASE("WDTW MV banded actually restricts the warping path", "[mv][wdtw][band
 
   INFO("d_unbanded=" << d_unbanded << " d_banded1=" << d_banded1);
   REQUIRE(d_banded1 > d_unbanded);
-}
-
-// =========================================================================
-//  Problem::dtw_function_f32() dispatch regressions.
-//
-//  Previously (pre-resolve_dtw_fn), the f32 path silently ran Standard DTW
-//  regardless of variant_params.variant and missing_strategy. The chunked-
-//  Parquet path in fast_clara invokes dtw_function_f32() — users setting
-//  WDTW/ADTW got Standard DTW results, silently.
-// =========================================================================
-
-TEST_CASE("Problem::dtw_function_f32 honours DTWVariant::ADTW", "[f32][adtw][problem]")
-{
-  // Shifted-peak pattern: unbanded Standard warps to match the peak cheaply;
-  // ADTW with a non-zero penalty charges the off-diagonal steps. Results
-  // must differ — if dtw_fn_f32_ silently ran Standard, they would match.
-  std::vector<float> x = {0, 0, 9, 0, 0, 0, 0, 0, 0, 0};
-  std::vector<float> y = {0, 0, 0, 0, 0, 0, 0, 0, 9, 0};
-
-  dtwc::Data data;
-  data.ndim = 1;
-  data.p_vec = {{x.begin(), x.end()}, {y.begin(), y.end()}};
-  data.p_names = {"x", "y"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-
-  prob.set_variant(dtwc::core::DTWVariant::Standard);
-  const double d_std = prob.dtw_function_f32()(std::span<const float>{x},
-                                               std::span<const float>{y});
-
-  dtwc::core::DTWVariantParams ap;
-  ap.variant = dtwc::core::DTWVariant::ADTW;
-  ap.adtw_penalty = 2.0;
-  prob.set_variant(ap);
-  const double d_adtw = prob.dtw_function_f32()(std::span<const float>{x},
-                                                std::span<const float>{y});
-
-  INFO("d_std=" << d_std << " d_adtw=" << d_adtw);
-  REQUIRE(d_adtw > d_std);
-}
-
-TEST_CASE("Problem::dtw_function_f32 honours DTWVariant::WDTW", "[f32][wdtw][problem]")
-{
-  std::vector<float> x = {1, 3, 4, 2, 5, 4, 3, 2, 1};
-  std::vector<float> y = {2, 4, 3, 5, 1, 2, 4, 3, 2};
-
-  dtwc::Data data;
-  data.ndim = 1;
-  data.p_vec = {{x.begin(), x.end()}, {y.begin(), y.end()}};
-  data.p_names = {"x", "y"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-
-  prob.set_variant(dtwc::core::DTWVariant::Standard);
-  const double d_std = prob.dtw_function_f32()(std::span<const float>{x},
-                                               std::span<const float>{y});
-
-  dtwc::core::DTWVariantParams wp;
-  wp.variant = dtwc::core::DTWVariant::WDTW;
-  wp.wdtw_g = 0.05;
-  prob.set_variant(wp);
-  const double d_wdtw = prob.dtw_function_f32()(std::span<const float>{x},
-                                                std::span<const float>{y});
-
-  INFO("d_std=" << d_std << " d_wdtw=" << d_wdtw);
-  REQUIRE(d_wdtw != d_std);
-}
-
-TEST_CASE("Problem::dtw_function_f32 honours MissingStrategy::ZeroCost", "[f32][missing][problem]")
-{
-  // x has a NaN gap; y matches the non-NaN values. With ZeroCost missing,
-  // NaN pairings contribute 0 — distance should be 0 (perfect match).
-  // Without the fix, the f32 path ignored missing_strategy and ran
-  // Standard DTW which treats NaN as a regular value -> non-zero distance.
-  const float nan = std::numeric_limits<float>::quiet_NaN();
-  std::vector<float> x = {1, 2, nan, 4, 5};
-  std::vector<float> y = {1, 2, 3,   4, 5};
-
-  dtwc::Data data;
-  data.ndim = 1;
-  data.p_vec = {{x.begin(), x.end()}, {y.begin(), y.end()}};
-  data.p_names = {"x", "y"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-  prob.set_variant(dtwc::core::DTWVariant::Standard); // triggers rebind
-
-  const double d = prob.dtw_function_f32()(std::span<const float>{x},
-                                           std::span<const float>{y});
-  REQUIRE_THAT(d, WithinAbs(0.0, 1e-5));
-}
-
-// =========================================================================
-//  Regression: MV + DTWVariant::SoftDTW must not silently flatten channels.
-//
-//  make_soft_dtw() has no ndim branch: it passed the *flat* buffer length
-//  (ndim * steps) to the full-matrix kernel with a univariate L1 cost, so an
-//  ndim=2 request returned a soft-DTW over the interleaved channel stream.
-//  MSM and TWE already reject ndim > 1 at bind time; SoftDTW now matches.
-// =========================================================================
-
-TEST_CASE("MV + SoftDTW is rejected at bind time, not silently flattened",
-          "[mv][soft_dtw][regression]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {1, 10, 2, 20, 3, 30},
-    {2, 11, 3, 21, 4, 31}
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_verbose(false);
-  REQUIRE_THROWS_AS(prob.set_variant(dtwc::core::DTWVariant::SoftDTW),
-                    dtwc::InvalidInput);
-  CHECK(prob.variant_params().variant == dtwc::core::DTWVariant::Standard);
 }

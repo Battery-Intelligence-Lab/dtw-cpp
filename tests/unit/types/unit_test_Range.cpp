@@ -13,15 +13,11 @@
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_string.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 using namespace dtwc;
 
 TEST_CASE("Range class functionality", "[Range]")
 {
-  using namespace dtwc;
-
   SECTION("Default constructor")
   {
     Range range;

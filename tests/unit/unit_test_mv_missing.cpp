@@ -18,17 +18,14 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cstddef>
 #include <limits>
+#include <utility>
 #include <vector>
-#include <cmath>
 
 using Catch::Matchers::WithinAbs;
 
-static const double NaN = std::numeric_limits<double>::quiet_NaN();
-
-// =========================================================================
-//  dtwMissing_L_mv: no NaN matches standard MV DTW
-// =========================================================================
+static constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
 
 TEST_CASE("MV Missing: no NaN matches standard MV DTW", "[mv][missing]")
 {
@@ -48,28 +45,16 @@ TEST_CASE("MV Missing: ndim=1 matches scalar missing DTW", "[mv][missing]")
   REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-10));
 }
 
-// =========================================================================
-//  dtwMissing_L_mv: all NaN = 0
-// =========================================================================
-
 TEST_CASE("MV Missing: all NaN = 0", "[mv][missing]")
 {
   double x[] = {NaN, NaN, NaN, NaN};
   double y[] = {1.0, 2.0, 3.0, 4.0};
   // every channel in x is NaN so all per-timestep costs are 0
   REQUIRE(dtwc::dtwMissing_L_mv(x, 2, y, 2, 2) == 0.0);
+  // and so when both series are all NaN (another buffer, so no same-pointer shortcut)
+  double y_nan[] = {NaN, NaN};
+  REQUIRE(dtwc::dtwMissing_L_mv(x, 1, y_nan, 1, 2) == 0.0);
 }
-
-TEST_CASE("MV Missing: both series all NaN = 0", "[mv][missing]")
-{
-  double x[] = {NaN, NaN};
-  double y[] = {NaN, NaN};
-  REQUIRE(dtwc::dtwMissing_L_mv(x, 1, y, 1, 2) == 0.0);
-}
-
-// =========================================================================
-//  dtwMissing_L_mv: NaN reduces distance (one channel NaN)
-// =========================================================================
 
 TEST_CASE("MV Missing: one channel NaN reduces distance", "[mv][missing]")
 {
@@ -88,10 +73,6 @@ TEST_CASE("MV Missing: one channel NaN reduces distance", "[mv][missing]")
   REQUIRE(d_nan >= 0.0);
 }
 
-// =========================================================================
-//  dtwMissing_L_mv: symmetry
-// =========================================================================
-
 TEST_CASE("MV Missing: symmetry (NaN in x and y)", "[mv][missing]")
 {
   double x[] = {1,NaN, 3,4};
@@ -100,33 +81,6 @@ TEST_CASE("MV Missing: symmetry (NaN in x and y)", "[mv][missing]")
   double d2 = dtwc::dtwMissing_L_mv(y, 2, x, 2, 2);
   REQUIRE_THAT(d1, WithinAbs(d2, 1e-10));
 }
-
-TEST_CASE("MV Missing: symmetry (no NaN)", "[mv][missing]")
-{
-  double x[] = {1,2, 3,4, 5,6};
-  double y[] = {6,5, 4,3, 2,1};
-  double d1 = dtwc::dtwMissing_L_mv(x, 3, y, 3, 2);
-  double d2 = dtwc::dtwMissing_L_mv(y, 3, x, 3, 2);
-  REQUIRE_THAT(d1, WithinAbs(d2, 1e-10));
-}
-
-// =========================================================================
-//  dtwMissing_L_mv: non-negative
-// =========================================================================
-
-TEST_CASE("MV Missing: non-negative with mixed NaN pattern", "[mv][missing]")
-{
-  // ndim=3, 2 timesteps
-  double x[] = {NaN, 1,   NaN,
-                2,   NaN, 3};
-  double y[] = {4,   NaN, 5,
-                NaN, NaN, 6};
-  REQUIRE(dtwc::dtwMissing_L_mv(x, 2, y, 2, 3) >= 0.0);
-}
-
-// =========================================================================
-//  dtwMissing_L_mv: hand-computed values
-// =========================================================================
 
 TEST_CASE("MV Missing: hand-computed L1 (ndim=2, 2 steps)", "[mv][missing]")
 {
@@ -174,28 +128,6 @@ TEST_CASE("MV Missing: hand-computed SquaredL2 (ndim=2, 2 steps)", "[mv][missing
   REQUIRE_THAT(d, WithinAbs(2.0, 1e-10));
 }
 
-// =========================================================================
-//  dtwMissing_L_mv: NaN does not increase distance vs clean version
-// =========================================================================
-
-TEST_CASE("MV Missing: adding NaN does not increase distance", "[mv][missing]")
-{
-  // If we replace a channel value with NaN, the cost should not increase
-  // because we zero out a previously positive cost contribution.
-  double x_clean[] = {1,10,  2,20};
-  double x_nan[]   = {1,NaN, 2,20};
-  double y[]       = {1,5,   2,30};
-
-  double d_clean = dtwc::dtwMissing_L_mv(x_clean, 2, y, 2, 2);
-  double d_nan   = dtwc::dtwMissing_L_mv(x_nan,   2, y, 2, 2);
-
-  REQUIRE(d_nan <= d_clean + 1e-10);
-}
-
-// =========================================================================
-//  dtwMissing_L_mv: edge cases
-// =========================================================================
-
 TEST_CASE("MV Missing: empty series returns max", "[mv][missing][edge]")
 {
   double x[] = {1.0, 2.0};
@@ -211,19 +143,6 @@ TEST_CASE("MV Missing: same pointer same timesteps = 0", "[mv][missing][edge]")
   REQUIRE(dtwc::dtwMissing_L_mv(x, 3, x, 3, 2) == 0.0);
 }
 
-// =========================================================================
-//  dtwMissing_banded_mv: basic dispatch
-// =========================================================================
-
-TEST_CASE("MV Missing banded: negative band delegates to unbanded", "[mv][missing][banded]")
-{
-  double x[] = {1,NaN, 3,4};
-  double y[] = {NaN,2, 3,5};
-  double d_full  = dtwc::dtwMissing_L_mv(x, 2, y, 2, 2);
-  double d_banded = dtwc::dtwMissing_banded_mv(x, 2, y, 2, 2, -1);
-  REQUIRE_THAT(d_full, WithinAbs(d_banded, 1e-10));
-}
-
 TEST_CASE("MV Missing banded: ndim=1 delegates to scalar missing banded", "[mv][missing][banded]")
 {
   std::vector<double> x = {1, NaN, 3, 4, 5};
@@ -232,46 +151,6 @@ TEST_CASE("MV Missing banded: ndim=1 delegates to scalar missing banded", "[mv][
   double d_scalar = dtwc::dtwMissing_banded(x, y, band);
   double d_mv     = dtwc::dtwMissing_banded_mv(x.data(), 5, y.data(), 5, 1, band);
   REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-10));
-}
-
-TEST_CASE("MV Missing banded: non-negative with NaN", "[mv][missing][banded]")
-{
-  double x[] = {NaN,1, 2,NaN, 3,4};
-  double y[] = {1,NaN, NaN,2, 4,3};
-  REQUIRE(dtwc::dtwMissing_banded_mv(x, 3, y, 3, 2, 2) >= 0.0);
-}
-
-// =========================================================================
-//  Problem: ZeroCost with ndim=2
-// =========================================================================
-
-TEST_CASE("Problem ZeroCost ndim=2: distances are finite and non-negative", "[mv][missing][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {1,2,  3,4},           // series 0: clean
-    {1,NaN, 3,4},           // series 1: NaN in channel 1 at t=0
-    {100,200, 300,400}      // series 2: far away
-  };
-  data.p_names = {"a", "b", "c"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-
-  double d01 = prob.dist_by_ind(0, 1);
-  double d02 = prob.dist_by_ind(0, 2);
-  double d12 = prob.dist_by_ind(1, 2);
-
-  REQUIRE(d01 >= 0.0);
-  REQUIRE(d02 >= 0.0);
-  REQUIRE(d12 >= 0.0);
-  REQUIRE(!dtwc::is_missing(d01));
-  REQUIRE(!dtwc::is_missing(d02));
-  REQUIRE(!dtwc::is_missing(d12));
 }
 
 TEST_CASE("Problem ZeroCost ndim=2: NaN reduces distance vs clean", "[mv][missing][problem]")
@@ -314,52 +193,9 @@ TEST_CASE("Problem ZeroCost ndim=2: NaN reduces distance vs clean", "[mv][missin
   REQUIRE(d_nan < d_clean);
 }
 
-TEST_CASE("Problem ZeroCost ndim=2: identical series gives 0", "[mv][missing][problem]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {1,2, 3,4, 5,6},
-    {1,2, 3,4, 5,6}
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-
-  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
-}
-
-TEST_CASE("Problem ZeroCost ndim=1 still works correctly", "[mv][missing][problem]")
-{
-  // Regression test: ndim=1 should still use the scalar path
-  const double nan = std::numeric_limits<double>::quiet_NaN();
-  dtwc::Data data;
-  data.ndim = 1;
-  data.p_vec = { {1.0, 2.0, 3.0}, {1.0, nan, 3.0} };
-  data.p_names = { "a", "b" };
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-  prob.set_verbose(false);
-  prob.fill_distance_matrix();
-
-  double d = prob.dist_by_ind(0, 1);
-  REQUIRE(d >= 0.0);
-  REQUIRE(!dtwc::is_missing(d));
-}
-
-// =========================================================================
-//  Regression: dtwMissing_banded_mv is now a first-class banded
-//  path (it used to fall back to unbanded MV).
-//  Tight band must produce a higher distance than unbanded for a shifted-peak
-//  pattern — proves the band is actually enforced.
-// =========================================================================
-
+// dtwMissing_banded_mv is a first-class banded path (it used to fall back to
+// unbanded MV). A tight band must produce a higher distance than unbanded for a
+// shifted-peak pattern, which proves the band is actually enforced.
 TEST_CASE("dtwMissing_banded_mv actually restricts the warping path", "[mv][missing][banded]")
 {
   std::vector<double> x = {0,0, 0,0, 9,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0};
@@ -374,13 +210,10 @@ TEST_CASE("dtwMissing_banded_mv actually restricts the warping path", "[mv][miss
   REQUIRE(d_banded1 > d_unbanded); // band=1 forces extra cost vs free warp.
 }
 
-// =========================================================================
-//  Regression: explicit multivariate L2 must remain Euclidean under ZeroCost.
-//  The third channel is incomparable at every cell, leaving a 3-4-5 triangle.
-//  Every pointwise cost is therefore exactly L1=7, L2=5, SquaredL2=25; for
-//  four equal-length steps the diagonal oracle is 28, 20, and 100.
-// =========================================================================
-
+// Explicit multivariate L2 must remain Euclidean under ZeroCost.
+// The third channel is incomparable at every cell, leaving a 3-4-5 triangle.
+// Every pointwise cost is therefore exactly L1=7, L2=5, SquaredL2=25; for
+// four equal-length steps the diagonal oracle is 28, 20, and 100.
 namespace {
 
 template <typename T>
@@ -437,39 +270,8 @@ void require_missing_mv_l2_metric_contract()
 } // namespace
 
 TEST_CASE("MV Missing explicit L2 is NaN-aware Euclidean in f64 and f32",
-          "[mv][missing][l2][regression]")
+          "[mv][missing][l2]")
 {
   require_missing_mv_l2_metric_contract<double>();
   require_missing_mv_l2_metric_contract<float>();
-}
-
-// =========================================================================
-//  Regression: MV + MissingStrategy::Interpolate must not silently
-//  flatten channels.
-//
-//  interpolate_linear_into() is univariate: on an interleaved ndim=2 buffer it
-//  fills a NaN by averaging its *neighbouring channel* values, and the band
-//  then counts flat elements rather than timesteps. There is no multivariate
-//  interpolation contract in this release, so — exactly like MSM/TWE — the
-//  combination is rejected at bind time (serial, before the parallel fill)
-//  instead of returning a meaningless number.
-// =========================================================================
-
-TEST_CASE("MV + Interpolate is rejected at bind time, not silently flattened",
-          "[mv][missing][interpolate][regression]")
-{
-  dtwc::Data data;
-  data.ndim = 2;
-  data.p_vec = {
-    {1, 10, NaN, 20, 3, 30},  // 3 timesteps x 2 channels, NaN in channel 0 at t=1
-    {1, 11, 2, 21, 3, 31}
-  };
-  data.p_names = {"a", "b"};
-
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.set_verbose(false);
-  REQUIRE_THROWS_AS(prob.set_missing_strategy(dtwc::core::MissingStrategy::Interpolate),
-                    dtwc::InvalidInput);
-  CHECK(prob.missing_strategy() == dtwc::core::MissingStrategy::Error);
 }

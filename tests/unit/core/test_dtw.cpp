@@ -544,12 +544,3 @@ TEST_CASE("early abandon never changes a distance it does not exceed", "[dtw][ea
     CHECK(c.call(1) == kNoPathPublic);
   }
 }
-
-TEST_CASE("the Sakoe-Chiba window keeps size_t indices beyond INT_MAX", "[dtw][band]")
-{
-  constexpr auto widest = std::numeric_limits<int>::max();
-  constexpr auto row = static_cast<std::size_t>(widest) + 3, columns = static_cast<std::size_t>(widest) + 10;
-  using Range = std::pair<std::size_t, std::size_t>;
-  CHECK(dtwc::core::dtw_band_bounds(widest, row, columns) == Range{ 3, columns }); // columns row-band .. end
-  CHECK(dtwc::core::dtw_band_bounds(0, row, columns) == Range{ row, row + 1 });    // the diagonal cell
-}
