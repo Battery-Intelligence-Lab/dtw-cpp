@@ -130,7 +130,8 @@ res = dtwc.cluster(series, 3);
 ```
 
 The clustering is the path's, with two differences. The result files name series in
-memory `0`, `1`, ..., not by `names`. And `as_series()` returns no `ndim`: an Arrow IPC
+memory `0`, `1`, ..., not by `names`. And `dtwc.cluster` takes no `Ndim` for series in
+memory, so the third output of `as_series()`, the `Ndim`, does not reach it: an Arrow IPC
 file whose schema says `ndim` above 1 clusters as multivariate from its path, and as
 univariate series (each row's interleaved values) from `as_series()`.
 
