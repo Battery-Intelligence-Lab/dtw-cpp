@@ -90,7 +90,7 @@ def parse_labels_csv(path, n=None):
     series a folder or Parquet file names its own way), the labels keep the
     rows' order.
     """
-    with open(path, newline="") as f:
+    with open(path, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     if n is None:
         return np.array([int(row["cluster"]) for row in rows], dtype=np.int64)
