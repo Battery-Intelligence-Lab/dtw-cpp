@@ -24,6 +24,7 @@
 #include <istream>
 #include <iterator>
 #include <limits>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -36,11 +37,15 @@ namespace dtwc::cli
 class ConfigFile : public CLI::ConfigBase
 {
 public:
-  /// @param app owning application; used only to name the file in diagnostics.
+  /// @param app owning application: it names the file in diagnostics, and its options say what the command line gave.
   explicit ConfigFile(const CLI::App *app = nullptr) : app_{ app } {}
 
   std::vector<CLI::ConfigItem> from_config(std::istream &input) const override
   {
+    // What the command line gave, recorded before any of the file's keys is applied (given()).
+    if (app_ != nullptr)
+      for (const CLI::Option *option : app_->get_options())
+        if (option->count() > 0) given_.insert(option);
     const std::string text{ std::istreambuf_iterator<char>{ input },
                             std::istreambuf_iterator<char>{} };
     if (is_toml(text)) {
@@ -49,6 +54,9 @@ public:
     }
     return from_yaml(text);
   }
+
+  /// Whether the command line gave option `name` (a hidden one too) beside the config file; false until a file is read.
+  bool given(const std::string &name) const { return app_ != nullptr && given_.count(app_->get_option_no_throw(name)); }
 
 private:
   /// Sniff rule: the first line that is neither blank nor a `#` comment decides.
@@ -149,6 +157,7 @@ private:
   }
 
   const CLI::App *app_{ nullptr };
+  mutable std::set<const CLI::Option *> given_; ///< from_config's record of what the command line gave
 };
 
 } // namespace dtwc::cli

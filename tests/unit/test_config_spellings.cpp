@@ -362,6 +362,13 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   CHECK(values.at("n-clusters") == "9");
   CHECK(values.at("method") == "pam");
   CHECK(values.at("band") == "7"); // the file still supplies the rest
+  {
+    CapturedStderr quiet; // v1.0.0's spellings beat the file too (5 and 7 there), and a canonical flag beats them
+    const auto v1 = values_of(dtwc::to_config_text(parse_args({ "--config", toml, "--Nc", "9", "--bandwidth", "8" })));
+    CHECK((v1.at("n-clusters") == "9" && v1.at("band") == "8"));
+    CHECK(values_of(dtwc::to_config_text(parse_args({ "--config", toml, "--Nc", "9", "-k", "2" }))).at("n-clusters")
+          == "2");
+  }
   dtwc::Config off; // a base that turned both off, which "false" turns back on
   off.report = off.mip.warm_start = false;
   const auto on = dtwc::parse_config(off, { { "no_report", "false" }, { "no_warm_start", "false" } });
