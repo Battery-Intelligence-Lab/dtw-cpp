@@ -162,6 +162,23 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
                     + "; no backend call or CPU fallback was attempted. " + fix);
 }
 
+/// The pair function a Problem binds: core::resolve_dtw_fn's, and under Soft-DTW the divergence of it, which the
+/// clustering uses (core::soft_dtw_divergence), three raw values a pair. `raw`, when given, takes the raw function
+/// under Soft-DTW and is emptied under any other variant.
+template <typename T>
+std::function<double(std::span<const T>, std::span<const T>)>
+bind_pair_function(const core::DistanceConfig &config, const Data &data,
+                   std::function<double(std::span<const T>, std::span<const T>)> *raw)
+{
+  auto pair = core::resolve_dtw_fn<T>(config, data);
+  const bool divergence = config.variant.variant == core::DTWVariant::SoftDTW;
+  if (raw) *raw = divergence ? pair : nullptr;
+  if (!divergence) return pair;
+  return [pair = std::move(pair)](std::span<const T> x, std::span<const T> y) {
+    return core::soft_dtw_divergence(pair(x, y), pair(x, x), pair(y, y));
+  };
+}
+
 } // namespace
 
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
@@ -487,6 +504,7 @@ void Problem::refresh_distance_matrix()
   distMat = core::DistanceMatrix(0, matrix_dtype_); // empty, of the width every resize keeps
   filled_ = false;
   fill_split_.reset(); // the split of the fill that made the matrix dropped here
+  self_terms_ = {};    // Soft-DTW's, of the series and gamma the matrix had
   rebind_dtw_fn(); // series edited in place may have new lengths (the WDTW table)
 }
 
@@ -499,12 +517,13 @@ void Problem::refresh_distance_matrix()
  */
 void Problem::rebind_dtw_fn()
 {
-  dtw_fn_ = core::resolve_dtw_fn<data_t>(distance_, data_);
+  dtw_fn_ = bind_pair_function<data_t>(distance_, data_, &raw_fn_);
   dtw_block_fn_ = core::resolve_dtw_block_fn<data_t>(distance_);
   dtw_fn_f32_ = {};
+  raw_fn_f32_ = {};
   dtw_block_fn_f32_ = {};
   if (data_.is_f32()) {
-    dtw_fn_f32_ = core::resolve_dtw_fn<float>(distance_, data_);
+    dtw_fn_f32_ = bind_pair_function<float>(distance_, data_, &raw_fn_f32_);
     dtw_block_fn_f32_ = core::resolve_dtw_block_fn<float>(distance_);
   }
 }
@@ -632,6 +651,7 @@ const Problem::dtw_fn_t &Problem::dtw_function()
   auto check = series_check("Problem::dtw_function", false);
   check.check(0, static_cast<std::size_t>(data_.size()));
   check.finish();
+  fill_self_terms(); // pair_distance's, from the series just checked
   return dtw_function(check);
 }
 
@@ -640,6 +660,7 @@ const Problem::dtw_fn_f32_t &Problem::dtw_function_f32()
   auto check = series_check("Problem::dtw_function_f32", true);
   check.check(0, static_cast<std::size_t>(data_.size()));
   check.finish();
+  fill_self_terms();
   return dtw_function_f32(check);
 }
 
@@ -660,8 +681,29 @@ const Problem::dtw_fn_f32_t &Problem::dtw_function_f32(const SeriesCheck &check)
 {
   if (check.problem_ != this || !check.f32_)
     throw std::logic_error("Problem::dtw_function_f32: the check is another Problem's, or not the float32 function's.");
-  if (!dtw_fn_f32_) dtw_fn_f32_ = core::resolve_dtw_fn<float>(distance_, data_);
+  if (!dtw_fn_f32_) dtw_fn_f32_ = bind_pair_function<float>(distance_, data_, nullptr);
   return dtw_fn_f32_;
+}
+
+void Problem::fill_self_terms()
+{
+  if (!raw_fn_ || self_terms_.size() == data_.size()) return; // another variant, or computed
+  std::vector<double> terms(data_.size());
+  auto term = [&](std::size_t i) {
+    terms[i] = data_.is_f32() ? raw_fn_f32_(data_.series_f32(i), data_.series_f32(i)) : raw_fn_(series(i), series(i));
+  };
+  run_openmp(term, terms.size());
+  self_terms_ = std::move(terms);
+}
+
+double Problem::pair_distance(std::size_t i, std::size_t j) const
+{
+  const bool f32 = data_.is_f32();
+  if (self_terms_.empty()) // another variant, or Soft-DTW's divergence from three raw values
+    return f32 ? dtw_fn_f32_(data_.series_f32(i), data_.series_f32(j)) : dtw_fn_(data_.series(i), data_.series(j));
+  return core::soft_dtw_divergence(
+    f32 ? raw_fn_f32_(data_.series_f32(i), data_.series_f32(j)) : raw_fn_(data_.series(i), data_.series(j)),
+    self_terms_[i], self_terms_[j]);
 }
 
 core::DistanceMatrix::fingerprint_type
@@ -708,6 +750,12 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   hash_enum(configuration, distance_.variant.mv_mode);
   hash_enum(configuration, distance_.missing);
   hash_enum(configuration, computed);
+  // A Soft-DTW matrix holds the divergence (rebind_dtw_fn), where an earlier build stored the raw values: a file of
+  // those is another matrix. Only Soft-DTW's identity takes the mark, so every other variant's files still load.
+  if (distance_.variant.variant == core::DTWVariant::SoftDTW) {
+    static constexpr char divergence[] = "soft-dtw-divergence";
+    configuration.update(divergence, sizeof(divergence) - 1);
+  }
 
   FingerprintHash hash;
   static constexpr char domain[] = "dtwc-distance-cache-fingerprint-v1";
@@ -753,8 +801,7 @@ void Problem::use_mmap_distance_matrix(
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
                                           distance_checkpoint_identity(metric), matrix_dtype_);
   // A warm start holds every pair.
-  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix",
-                                            distance_.variant.variant == core::DTWVariant::SoftDTW);
+  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix", false);
   if (distance_.metric != metric) { // new semantics, as in set_metric
     distance_.metric = metric;
     clusters_ind.clear();
@@ -966,14 +1013,13 @@ void Problem::SeriesCheck::finish() const
 
 /**
  * @brief Fills the distance matrix using brute-force parallel computation.
- * @details Every pair through the bound lane and per-pair functions (all DTW
+ * @details Every pair through the bound lane functions or pair_distance (all DTW
  *          variants), block by block (see the body).
  */
 void Problem::fillDistanceMatrix_BruteForce()
 {
   const size_t N = data_.size();
   const bool f32 = data_.is_f32();
-  const dtw_fn_f32_t *f32_function = f32 ? &dtw_fn_f32_ : nullptr;
   const bool sized = distMat.size() == N; // sized before this fill: it may hold computed entries
 #ifdef DTWC_HAS_CUDA
   // cpu+gpu: the GPU's session before the matrix is touched, so its refusals come first: the route on the longest
@@ -1063,7 +1109,7 @@ void Problem::fillDistanceMatrix_BruteForce()
 
   // `matrix` holds the values at the matrix's width: a pair is NaN until computed, then its distance rounded to it.
   auto fill_column = [&](auto *matrix, size_t k, size_t R0, size_t R1, size_t c, auto column, const auto &block,
-                         const auto &packed_block, const auto *slab_panels, const auto &one_pair) {
+                         const auto &packed_block, const auto *slab_panels) {
     using T = typename decltype(column(c))::value_type;
     using V = std::remove_pointer_t<decltype(matrix)>;
     constexpr size_t Wt = core::dtw_lanes<T>;
@@ -1123,7 +1169,7 @@ void Problem::fillDistanceMatrix_BruteForce()
     }
     if (!(fresh && block && ragged)) {
       for (size_t r = std::max(R0, c + 1); r < R1; ++r)
-        if (!computed(c, r)) store(c, r, one_pair(x, column(r)));
+        if (!computed(c, r)) store(c, r, pair_distance(c, r));
     }
   };
   auto task = [&](auto *matrix, size_t g) {
@@ -1132,10 +1178,10 @@ void Problem::fillDistanceMatrix_BruteForce()
     const size_t c = g - first_column[k];
     if (f32)
       fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
-                  dtw_block_fn_f32_, packed_fn_f32, slab_panels_ready ? panels_f32.data() : nullptr, *f32_function);
+                  dtw_block_fn_f32_, packed_fn_f32, slab_panels_ready ? panels_f32.data() : nullptr);
     else // Data's accessor, as above: GCC's inline-unit-growth cap leaves the Problem::series wrapper out of line here
       fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series(i); }, dtw_block_fn_,
-                  packed_fn_f64, slab_panels_ready ? panels_f64.data() : nullptr, dtw_fn_);
+                  packed_fn_f64, slab_panels_ready ? panels_f64.data() : nullptr);
   };
 
   std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
@@ -1399,16 +1445,16 @@ void Problem::fill_distance_matrix()
   validate_checkpoint_settings();
   sync_band();
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
-  // negative distance no variant but Soft-DTW gives, and a matrix they made complete needs no pair.
+  // negative distance, which no variant gives, and a matrix they made complete needs no pair.
   if (written_ && !filled_ && data_.size() > 0 && distMat.size() == data_.size()) {
-    filled_ = distMat.all_computed("Problem::fill_distance_matrix",
-                                   distance_.variant.variant == core::DTWVariant::SoftDTW,
+    filled_ = distMat.all_computed("Problem::fill_distance_matrix", false,
                                    "Leave a pair still to compute NaN, as resize() leaves every pair.");
     written_ = false;
   }
   if (filled_) return;
   fill_split_.reset(); // set again by a cpu+gpu fill; a refused fill leaves none
   validate_fill_request("Problem::fill_distance_matrix");
+  fill_self_terms(); // Soft-DTW's, which the CPU's pairs read (a GPU refused Soft-DTW in the check)
 
   // Each fill below sizes the matrix (deferred from set_data /
   // refresh_distance_matrix) only after its own refusals; a mapped matrix is
@@ -1780,7 +1826,7 @@ double Problem::find_total_cost()
 {
   require_clustered("find_total_cost");
   // A matrix-free clustering (TADPole) leaves the matrix unfilled: the N
-  // point-to-medoid distances are then computed with the bound function, which
+  // point-to-medoid distances are then computed by pair_distance, which
   // is what a fill would store, instead of filling N(N-1)/2 pairs.
   std::vector<double> distances(size());
   if (filled_) {
@@ -1788,11 +1834,10 @@ double Problem::find_total_cost()
       distances[i] = dist_by_ind(static_cast<index_t>(i), centroid_of(static_cast<index_t>(i)));
   } else {
     validate_fill_request("Problem::find_total_cost");
+    fill_self_terms();
     auto point_distance = [&](std::size_t i) {
       const auto medoid = static_cast<std::size_t>(centroid_of(static_cast<index_t>(i)));
-      distances[i] = i == medoid ? 0.0
-                   : data_.is_f32() ? dtw_fn_f32_(data_.series_f32(i), data_.series_f32(medoid))
-                                    : dtw_fn_(series(i), series(medoid));
+      distances[i] = i == medoid ? 0.0 : pair_distance(i, medoid);
     };
     run_openmp(point_distance, size());
   }

@@ -228,12 +228,12 @@ TEST_CASE("Every matrix intake refuses a distance that is not finite, naming the
   }
 }
 
-TEST_CASE("Every matrix intake refuses a negative distance, unless the variant is Soft-DTW",
+TEST_CASE("Every matrix intake refuses a negative distance, under Soft-DTW too",
           "[medoid-assignment][intake][not-computed]")
 {
-  // v1.0.0 marked a pair it never computed -1. Where a distance cannot be negative
-  // (every variant but Soft-DTW) the scan at each intake refuses such an entry,
-  // naming the pair; under Soft-DTW every route reads it as the distance it is.
+  // v1.0.0 marked a pair it never computed -1. No distance is negative (Soft-DTW's
+  // is the divergence), so the scan at each intake refuses such an entry, naming
+  // the pair, under every variant.
   using dtwc::core::DTWVariant;
   const auto write_negative = [](dtwc::core::DistanceMatrix &matrix) {
     matrix.set(0, 0, 0.0);
@@ -242,7 +242,8 @@ TEST_CASE("Every matrix intake refuses a negative distance, unless the variant i
     matrix.set(0, 2, 2.0);
     matrix.set(1, 2, -1.0);
   };
-  const std::string negative = ": the distance between series 1 and 2 is -1; only a Soft-DTW distance can be negative.";
+  const std::string negative = ": the distance between series 1 and 2 is -1; no distance is negative (a Problem's "
+                               "Soft-DTW distance is the divergence, sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2).";
   const dtwc::test_support::ScratchDirectory scratch("medoid_intake_negative");
   const auto three = [](DTWVariant variant) {
     auto problem = scalar_problem<double>({ 0.0, 1.0, 2.0 }, "intake");
@@ -257,7 +258,7 @@ TEST_CASE("Every matrix intake refuses a negative distance, unless the variant i
 
   struct Row
   {
-    std::string expected; // under DTWVariant::Standard
+    std::string expected; // its variant's name where it says "%"
     std::function<void(Problem &, DTWVariant)> install;
   };
   const std::vector<Row> rows{
@@ -271,7 +272,7 @@ TEST_CASE("Every matrix intake refuses a negative distance, unless the variant i
     { "Problem::read_distance_matrix" + negative
         + " A v1.0.0 distance-matrix file marks a pair it never computed with -1: read it with --not-computed "
           "negative (C++ NotComputed::Negative, Python not_computed=\"negative\", MATLAB 'NotComputed','negative'); "
-          "otherwise this is not a standard distance matrix.",
+          "otherwise this is not a % distance matrix.",
       [&](Problem &problem, DTWVariant variant) {
         const auto path = directory(variant) / "negative.csv";
         std::ofstream(path) << "0,,2\n,0,-1\n2,-1,0\n";
@@ -299,16 +300,16 @@ TEST_CASE("Every matrix intake refuses a negative distance, unless the variant i
       } },
 #endif
   };
-  for (const auto &row : rows) {
-    CAPTURE(row.expected);
-    auto standard = three(DTWVariant::Standard);
-    require_invalid_input([&] { row.install(standard, DTWVariant::Standard); }, row.expected);
-    CHECK_FALSE(standard.is_distance_matrix_filled());
-
-    auto soft = three(DTWVariant::SoftDTW);
-    REQUIRE_NOTHROW(row.install(soft, DTWVariant::SoftDTW));
-    CHECK(soft.distance_matrix().get(1, 2) == -1.0);
-  }
+  for (const auto variant : { DTWVariant::Standard, DTWVariant::SoftDTW })
+    for (const auto &row : rows) {
+      std::string expected = row.expected;
+      if (const auto at = expected.find('%'); at != std::string::npos)
+        expected.replace(at, 1, dtwc::name_of(dtwc::core::variant_names, variant));
+      CAPTURE(expected);
+      auto problem = three(variant);
+      require_invalid_input([&] { row.install(problem, variant); }, expected);
+      CHECK_FALSE(problem.is_distance_matrix_filled());
+    }
 }
 
 TEST_CASE("F13 FastCLARA's assignment, which calls the DTW function, rejects a non-winning infinity",

@@ -148,8 +148,7 @@ void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb:
       if (!std::isnan(data[i * n + j])) // resize() left every pair to compute; a NaN entry keeps it so
         mat.set(i, j, data[i * n + j]);
   // A complete matrix is filled; NaN entries are computed on first use.
-  if (mat.all_computed("Problem.set_distance_matrix",
-                       p.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,
+  if (mat.all_computed("Problem.set_distance_matrix", false,
                        "Mark a pair still to compute with NaN: D[D < 0] = np.nan."))
     p.fill_distance_matrix();
 }
@@ -1169,8 +1168,7 @@ NB_MODULE(_dtwcpp_core, m)
     .def("set_distance_matrix", set_distance_matrix<double>, "dm"_a,
          "Load a precomputed NxN distance matrix (e.g. from a GPU compute), float64 or\n"
          "float32, stored at the matrix's width (matrix_dtype). NaN marks a pair to\n"
-         "compute; a ±inf entry, and a negative one under any variant but Soft-DTW,\n"
-         "raises InvalidInput naming the pair.")
+         "compute; a ±inf or negative entry raises InvalidInput naming the pair.")
     .def("set_distance_matrix", set_distance_matrix<float>, "dm"_a)
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
     .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path, const std::string &not_computed) {

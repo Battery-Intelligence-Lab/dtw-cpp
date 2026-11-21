@@ -256,7 +256,9 @@ bool all_computed_in(const T *values, size_t n, size_t rows, Precision width, st
       else if (d < 0 && !negative_is_distance) {
         std::array<char, 32> text{}; // the shortest round-trip form of a double is at most 24 characters
         char *const end = std::to_chars(text.data(), text.data() + text.size(), d).ptr;
-        throw InvalidInput(pair(i, j) + std::string(text.data(), end) + "; only a Soft-DTW distance can be negative."
+        throw InvalidInput(pair(i, j) + std::string(text.data(), end)
+                           + "; no distance is negative (a Problem's Soft-DTW distance is the divergence, "
+                             "sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2)."
                            + (negative_way_out.empty() ? "" : " ") + std::string(negative_way_out));
       }
     }

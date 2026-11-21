@@ -152,6 +152,16 @@ function test_clustering_variant_ddtw(testCase)
     verifyGreaterThan(testCase, c.Inertia, 0);
 end
 
+function test_softdtw_predict_reads_the_divergence_of_the_fit(testCase)
+%   The flat medoid's sdtw(m, m) is far below the rough one's: raw Soft-DTW would put
+%   the last series with the flat group, the divergence the fit clusters on with the rough.
+    X = [zeros(1, 6); 0.05 zeros(1, 5); 0 0.05 zeros(1, 4); repmat([0 3], 1, 3); ...
+         0.05 3 repmat([0 3], 1, 2); 0 2.95 repmat([0 3], 1, 2); repmat([0 2], 1, 3)];
+    c = dtwc.DTWClustering('NClusters', 2, 'Variant', 'softdtw').fit(X);
+    verifyEqual(testCase, double(c.predict(X)), double(c.Labels));
+    verifyEqual(testCase, c.Labels(7), c.Labels(4));
+end
+
 function test_problem_config_reaches_the_native_problem(testCase)
 %TEST_PROBLEM_CONFIG_REACHES_THE_NATIVE_PROBLEM The setters write C++; Band, Verbose,
 %   MaxIter and NRepetitions, and disp, read it back.
@@ -199,8 +209,8 @@ function test_a_float32_matrix_comes_back_single(testCase)
 end
 
 function test_a_negative_entry_is_refused_and_a_nan_one_computed(testCase)
-%   v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. Under every
-%   variant but Soft-DTW a negative entry is refused with the way to mark the pair.
+%   v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. A negative
+%   entry is refused with the way to mark the pair: no distance is negative.
 %   The oracle of a computed pair is dtwc.distance.dtw, the per-pair route.
     X = [0 1 3 2; 1 2 0 1; 4 0 2 2];
     D = dtwc.compute_distance_matrix(X);
@@ -212,7 +222,7 @@ function test_a_negative_entry_is_refused_and_a_nan_one_computed(testCase)
         verifyFail(testCase, 'a -1 entry was read as a distance');
     catch err
         verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
-        verifySubstring(testCase, err.message, 'is -1; only a Soft-DTW distance can be negative');
+        verifySubstring(testCase, err.message, 'is -1; no distance is negative');
         verifySubstring(testCase, err.message, 'D(D < 0) = NaN');
     end
     D(D < 0) = NaN;

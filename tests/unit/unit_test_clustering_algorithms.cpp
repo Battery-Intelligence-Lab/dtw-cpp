@@ -272,34 +272,6 @@ TEST_CASE("init::Kmeanspp selects distinct medoids when all weights are zero",
   CHECK(unique.size() == 3);
 }
 
-TEST_CASE("init::Kmeanspp translates negative Soft-DTW sampling weights",
-          "[Phase1][clustering][init][softdtw]")
-{
-  // Exercises dtwc::init::Kmeanspp on the signed branch of
-  // core::distance_sampling_weights, which core::kmedoids_pp applies. The FastPAM
-  // sibling of this case lives in tests/unit/algorithms/unit_test_fast_pam.cpp.
-  Problem prob("kmeanspp_softdtw_sampling");
-  prob.set_data(Data(
-    std::vector<std::vector<data_t>>{
-      {0.0, 0.1, 0.0, 0.2}, {0.2, 0.1, 0.3, 0.2},
-      {10.0, 10.2, 9.9, 10.1}, {9.8, 10.0, 10.1, 9.9}},
-    std::vector<std::string>{"a", "b", "c", "d"}));
-  core::DTWVariantParams params;
-  params.variant = core::DTWVariant::SoftDTW;
-  params.sdtw_gamma = 0.7;
-  prob.set_variant(params);
-  prob.set_n_clusters(2);
-
-  // Raw Soft-DTW may be negative off diagonal. That is valid objective input,
-  // but cannot be passed directly to a weighted random sampler.
-  prob.fill_distance_matrix();
-  REQUIRE(prob.dist_by_ind(0, 1) < 0.0);
-
-  REQUIRE_NOTHROW(init::Kmeanspp(prob));
-  REQUIRE(prob.centroids_ind.size() == 2);
-  CHECK(prob.centroids_ind[0] != prob.centroids_ind[1]);
-}
-
 // ---------------------------------------------------------------------------
 // assign_clusters puts each medoid into its own cluster
 // ---------------------------------------------------------------------------

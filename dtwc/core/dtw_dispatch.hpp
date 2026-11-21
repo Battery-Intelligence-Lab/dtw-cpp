@@ -47,6 +47,16 @@ template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const DistanceConfig &config, const Data &data, const Data *other = nullptr);
 
+/// The Soft-DTW divergence D(x, y) = sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2 (Blondel, Mensch & Vert, AISTATS
+/// 2021) from the raw values resolve_dtw_fn's Soft-DTW function gives: what a Problem clusters on under Soft-DTW. For
+/// this library's Soft-DTW (univariate, L1 cost) D >= 0, and D = 0 only for identical series, at every gamma > 0; a
+/// value below 0 is rounding and reads 0. NaN stays NaN, which std::max(0.0, diff) would read as 0.
+inline double soft_dtw_divergence(double xy, double xx, double yy) noexcept
+{
+  const double diff = xy - (xx + yy) / 2;
+  return diff < 0 ? 0.0 : diff;
+}
+
 /// The brute-force fill's block function: x and W = core::dtw_lanes<T> series in
 /// `ys`, none empty, of any lengths (both unconstrained and Sakoe-Chiba banded);
 /// their W distances out, each agreeing with resolve_dtw_fn's function within the

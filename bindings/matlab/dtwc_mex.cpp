@@ -1172,7 +1172,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   else
     copy(mxGetDoubles(prhs[2]));
   // A complete matrix is filled; NaN entries are computed on first use.
-  if (dm.all_computed("Problem.set_distance_matrix", prob.variant_params().variant == dtwc::core::DTWVariant::SoftDTW, "Mark a pair still to compute with NaN: D(D < 0) = NaN."))
+  if (dm.all_computed("Problem.set_distance_matrix", false, "Mark a pair still to compute with NaN: D(D < 0) = NaN."))
     prob.fill_distance_matrix();
 }
 

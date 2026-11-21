@@ -122,7 +122,8 @@ classdef DTWClustering
 
         function D = transform(obj, X)
         %TRANSFORM The DTW distance of each series of X to each medoid (M x k),
-        %   under the distance settings the medoids were fitted with.
+        %   under the distance settings the medoids were fitted with: under
+        %   Soft-DTW the divergence the fit clustered on, not cdist's raw value.
             if isempty(obj.ClusterCenters)
                 error('dtwc:notFitted', 'DTWClustering is not fitted; call fit first.');
             end
@@ -130,6 +131,15 @@ classdef DTWClustering
             cleaner = onCleanup(@() delete(prob));
             prob.set_data(X);   % the one conversion: refuses what fit refuses
             D = dtwc.distance.cdist(X, obj.ClusterCenters, 'Device', 'cpu', obj.FitDistance{:});
+            if obj.soft_dtw()
+                % A Problem clusters Soft-DTW's divergence, sdtw(x, m) - (sdtw(x, x) + sdtw(m, m)) / 2,
+                % never negative; cdist returns sdtw(x, m).
+                rows = X;
+                if ~iscell(rows), rows = num2cell(rows, 2); end
+                self_term = @(s) dtwc.distance.dtw(s, s, obj.FitDistance{:});
+                D = D - (cellfun(self_term, rows(:)) + cellfun(self_term, obj.ClusterCenters(:)).') / 2;
+                D(D < 0) = 0; % rounding; a NaN stays NaN, which max(D, 0) would drop
+            end
         end
 
         function labels = predict(obj, X)
@@ -154,6 +164,13 @@ classdef DTWClustering
                     pairs(end + 1:end + 2) = {names{i}, obj.(names{i})};
                 end
             end
+        end
+
+        function soft = soft_dtw(obj)
+        %SOFT_DTW Whether the medoids were fitted under Soft-DTW: Variant
+        %   'softdtw' or 'soft-dtw' in any case, as C++ reads the name.
+            at = find(strcmp(obj.FitDistance(1:2:end), 'Variant'), 1);
+            soft = ~isempty(at) && any(strcmpi(char(obj.FitDistance{2 * at}), {'softdtw', 'soft-dtw'}));
         end
     end
 end

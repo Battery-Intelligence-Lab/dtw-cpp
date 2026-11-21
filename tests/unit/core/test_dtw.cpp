@@ -494,9 +494,14 @@ TEMPLATE_TEST_CASE("Problem::fill_distance_matrix stores what the oracle compute
       problem.set_distance(distance_config(config, band));
       problem.fill_distance_matrix();
 
+      const auto oracle = [&](std::size_t i, std::size_t j) {
+        return ts::dtw_oracle(oracle_spec(config, band), widen(held[i]), widen(held[j]));
+      };
       for (std::size_t i = 0; i < held.size(); ++i)
         for (std::size_t j = i + 1; j < held.size(); ++j) {
-          const double want = ts::dtw_oracle(oracle_spec(config, band), widen(held[i]), widen(held[j]));
+          double want = oracle(i, j);
+          // Under Soft-DTW a Problem holds the divergence sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2.
+          if (config.params.variant == DTWVariant::SoftDTW) want -= (oracle(i, i) + oracle(j, j)) / 2;
           const double got = problem.dist_by_ind(static_cast<dtwc::index_t>(i), static_cast<dtwc::index_t>(j));
           ++pairs;
           INFO(label(config) << ", band " << band << ", pair " << i << "," << j << ": got " << got

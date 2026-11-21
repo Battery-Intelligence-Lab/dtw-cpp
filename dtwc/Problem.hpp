@@ -174,8 +174,15 @@ private:
   /// Bound from distance_ (and, for WDTW, the series lengths) whenever either
   /// changes; each holds copies of the settings it reads. The float32 one is
   /// bound then for float32 series, else by dtw_function_f32() (rebind_dtw_fn).
+  /// Under Soft-DTW each is the divergence (core::soft_dtw_divergence) of three raw values a pair.
   dtw_fn_t dtw_fn_;
   dtw_fn_f32_t dtw_fn_f32_;
+  /// Under Soft-DTW only: the raw functions (the float32 one for float32 series) and every series' self term
+  /// sdtw(x_i, x_i) in the series' precision (fill_self_terms), from which the fill and pair_distance make the
+  /// divergence with one raw value a pair. Empty under every other variant; the self terms go with the matrix.
+  dtw_fn_t raw_fn_;
+  dtw_fn_f32_t raw_fn_f32_;
+  std::vector<double> self_terms_;
   /// The fill's lane functions (core::resolve_dtw_block_fn); empty where none applies.
   std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
                      std::span<double>)> dtw_block_fn_;
@@ -226,6 +233,8 @@ private:
   /// cannot take — before any pair is computed: a SeriesCheck over every
   /// series. O(N·L): run once per fill and per dtw_function() call, never per pair.
   void validate_fill_request(std::string_view where) const;
+  /// Under Soft-DTW, self_terms_ of every series, in parallel, unless they are there: after a check of every series.
+  void fill_self_terms();
   class SeriesCheck;
   /// The check of a distance request in parts (SeriesCheck), for a pass that checks the series as it reads them: a
   /// direct write to `band` taken (sync_band), with `f32` float32's hold on the variant's parameters (core::validate),
@@ -563,7 +572,8 @@ public:
   /// series (the fill's check, a SeriesCheck of every series, O(N·L)), so call it once, serially, before a
   /// parallel loop; the function itself only reads what it holds and checks
   /// nothing, so a caller passing spans other than the Problem's own owns their
-  /// validity.
+  /// validity. Under Soft-DTW it gives the divergence the matrix holds (core::soft_dtw_divergence), three Soft-DTW
+  /// evaluations a pair; the call also computes the series' self terms, so pair_distance takes one.
   /// @throws InvalidInput for an empty series, a band no pair's warping path
   ///         fits, a ±inf series value, or a NaN under MissingStrategy::Error;
   ///         DeviceError for a GPU device the kernels cannot honour.
@@ -571,6 +581,11 @@ public:
   /// Float32 counterpart of dtw_function(), with the same checks.
   /// @throws InvalidInput also for an active variant parameter float32 cannot represent.
   const dtw_fn_f32_t &dtw_function_f32();
+  /// The distance between series i and j, i != j, computed as fill_distance_matrix() computes it, the matrix not read:
+  /// one evaluation of the bound function, or under Soft-DTW of the raw one with the self terms dtw_function() computed.
+  /// Unchecked like dist_by_ind: call dtw_function(), or dtw_function_f32() for Float32 series, once, serially, first;
+  /// parallel loops then call it freely, as it only reads.
+  double pair_distance(std::size_t i, std::size_t j) const;
 
   /// True when the matrix holds every pair under the current settings: after a
   /// fill, a complete read or load, or binding a complete mapped file. O(1).

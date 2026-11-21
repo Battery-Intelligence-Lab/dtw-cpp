@@ -153,16 +153,27 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
   const auto block = core::resolve_dtw_block_fn<T>(distance);
   const bool unbanded = distance.band < 0;
   if (!block || (!core::dtw_lanes_packed && unbanded)) {
+    // Under Soft-DTW (no lanes) `pair` is the divergence (Problem::dtw_function), three raw values a pair, two of them
+    // self terms: each medoid's is computed here, each point's once beside its row, so a pair takes one raw value.
+    const auto raw = distance.variant.variant == core::DTWVariant::SoftDTW ? core::resolve_dtw_fn<T>(distance, Data{})
+                                                                            : nullptr;
+    std::vector<double> medoid_self(raw ? slots : 0);
+    for (std::size_t j = 0; j < medoid_self.size(); ++j)
+      medoid_self[j] = first_slot[j] < j ? medoid_self[first_slot[j]]
+                                         : raw(medoid(static_cast<index_t>(j)), medoid(static_cast<index_t>(j)));
     assign_points(
       first, n, best, medoids, labels,
       [&](index_t p) {
         const auto x = point(p);
+        const double x_self = raw ? raw(x, x) : 0.0;
         std::vector<double> &table = assign_table();
         if (table.size() < slots) table.resize(slots);
         double *const t = table.data();
         for (std::size_t j = 0; j < slots; ++j) {
           if (first_slot[j] < j)
             t[j] = t[first_slot[j]];
+          else if (raw)
+            t[j] = core::soft_dtw_divergence(raw(x, medoid(static_cast<index_t>(j))), x_self, medoid_self[j]);
           else
             t[j] = pair(x, medoid(static_cast<index_t>(j)));
         }

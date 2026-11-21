@@ -10,6 +10,7 @@
  */
 
 #include <dtwc.hpp>
+#include <mip/mip.hpp> // highs_solver_available
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -200,28 +201,50 @@ TEST_CASE("seeded FastPAM BUILD samples proportional to k-median distance",
   REQUIRE(far_fraction < 0.80);
 }
 
-TEST_CASE("seeded FastPAM translates negative Soft-DTW sampling weights",
-          "[fast_pam][seeded][softdtw]")
+TEST_CASE("A Soft-DTW Problem clusters on the divergence: the exact methods and FastPAM agree",
+          "[fast_pam][softdtw]")
 {
-  Problem prob("fast_pam_softdtw_sampling");
-  prob.set_data(Data(
-    std::vector<std::vector<data_t>>{
-      {0.0, 0.1, 0.0, 0.2}, {0.2, 0.1, 0.3, 0.2},
-      {10.0, 10.2, 9.9, 10.1}, {9.8, 10.0, 10.1, 9.9}},
-    std::vector<std::string>{"a", "b", "c", "d"}));
+  // The raw Soft-DTW of similar series is negative, sdtw(x, x) too; the divergence
+  // sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2 is >= 0 and 0 between equal series. Series 0, 1 and 3 are equal,
+  // 4 and 5 close. FastPAM reaches the optimum the exact methods prove here.
+  const std::vector<std::vector<data_t>> series{ { 3, 0 }, { 3, 0 }, { 0, 3 }, { 3, 0 }, { 0, 0 }, { 0.2, 0 }, { 1, 3 } };
+  const double gamma = 1.0;
+  Problem prob("softdtw_divergence");
+  prob.set_data(Data(std::vector<std::vector<data_t>>(series), { "a", "b", "c", "d", "e", "f", "g" }));
   core::DTWVariantParams params;
   params.variant = core::DTWVariant::SoftDTW;
-  params.sdtw_gamma = 0.7;
+  params.sdtw_gamma = gamma;
   prob.set_variant(params);
-
-  // Raw Soft-DTW may be negative off diagonal. That is valid objective input,
-  // but cannot be passed directly to a weighted random sampler.
   prob.fill_distance_matrix();
-  REQUIRE(prob.dist_by_ind(0, 1) < 0.0);
-  const auto result = fast_pam(prob, 2, 20, 42);
-  CHECK(result.labels.size() == 4);
-  CHECK(result.medoid_indices.size() == 2);
-  CHECK(std::isfinite(result.total_cost));
+  const auto sdtw = [&](std::size_t i, std::size_t j) {
+    return distance::soft_dtw<data_t>(std::span<const data_t>(series[i]), std::span<const data_t>(series[j]), gamma);
+  };
+  for (std::size_t i = 0; i < series.size(); ++i)
+    for (std::size_t j = 0; j < series.size(); ++j) {
+      CAPTURE(i, j);
+      const double d = prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j));
+      CHECK(d >= 0.0);
+      if (i == j)
+        CHECK(d == 0.0);
+      else
+        CHECK_THAT(d, WithinAbs(std::max(0.0, sdtw(i, j) - (sdtw(i, i) + sdtw(j, j)) / 2), 1e-12));
+    }
+  CHECK(prob.dist_by_ind(0, 1) == 0.0);
+
+  std::vector<Method> methods{ Method::LRCore, Method::PAM };
+  if (highs_solver_available()) methods.push_back(Method::MIP);
+  prob.set_n_clusters(3);
+  double optimum = 0.0;
+  for (const Method method : methods) {
+    CAPTURE(name_of(method_names, method));
+    prob.set_method(method);
+    const auto result = prob.cluster();
+    for (std::size_t c = 0; c < result.medoid_indices.size(); ++c)
+      CHECK(result.labels[static_cast<std::size_t>(result.medoid_indices[c])] == static_cast<index_t>(c));
+    if (method == Method::LRCore) optimum = result.total_cost;
+    CHECK(result.total_cost > 0.0);
+    CHECK_THAT(result.total_cost, WithinAbs(optimum, 1e-12));
+  }
 }
 
 TEST_CASE("seeded FastPAM completes the medoid set when all weights are zero",

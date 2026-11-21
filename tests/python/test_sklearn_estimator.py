@@ -146,6 +146,7 @@ def _configured_problem(estimator, series):
         "ddtw": dtwcpp.DTWVariant.DDTW,
         "wdtw": dtwcpp.DTWVariant.WDTW,
         "adtw": dtwcpp.DTWVariant.ADTW,
+        "softdtw": dtwcpp.DTWVariant.SoftDTW,
         "msm": dtwcpp.DTWVariant.MSM,
         "twe": dtwcpp.DTWVariant.TWE,
     }[estimator.variant]
@@ -277,6 +278,13 @@ def test_predict_uses_configured_missing_strategy(missing_strategy):
             {"mv_mode": "independent"},
             [[0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 1, 1],
              [10, 10, 10, 10], [10, 10, 10, 11], [10, 10, 11, 11]],
+        ),
+        (
+            # The flat medoid's sdtw(m, m) is far below the rough one's: the raw value
+            # would put the last series with the flat group, the divergence with the rough.
+            {"variant": "softdtw"},
+            [[0] * 6, [0.05] + [0] * 5, [0, 0.05] + [0] * 4,
+             [0, 3] * 3, [0.05, 3] + [0, 3] * 2, [0, 2.95] + [0, 3] * 2, [0, 2] * 3],
         ),
         (
             {"variant": "msm", "msm_c": 0.7},

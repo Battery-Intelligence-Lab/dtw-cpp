@@ -175,6 +175,21 @@ As $$\gamma \to 0$$, Soft-DTW converges to standard DTW.
 Soft-DTW is univariate and unbanded: a `Problem`'s band is ignored, and multivariate
 input is refused with `InvalidInput`.
 
+**What clustering uses.** The raw value of similar series is negative, below the 0 between a series
+and itself that clustering needs: a medoid would be nearer to another series than to itself. Clustering
+under `softdtw` therefore uses the Soft-DTW divergence (Blondel, Mensch & Vert, "Differentiable
+Divergences Between Time Series," AISTATS, 2021):
+
+$$D_\gamma(x, y) = \text{sdtw}_\gamma(x, y) - \tfrac{1}{2}\big(\text{sdtw}_\gamma(x, x) + \text{sdtw}_\gamma(y, y)\big)$$
+
+For this Soft-DTW, univariate with the absolute-value cost, the paper proves $$D_\gamma \ge 0$$, with
+$$D_\gamma(x, y) = 0$$ only for identical series, at every $$\gamma > 0$$. A `Problem`'s matrix holds
+it, as do a result's `distance_matrix` and `<name>_distance_matrix.csv`, its zero diagonal exact;
+every clustering method and score reads it, and `DTWClustering`'s `transform`, `predict` and `score`
+compute it. The distance functions (`soft_dtw`, `distance.dtw`, `cdist`), `soft_dtw_gradient` and the
+Soft-DTW barycentre keep the raw value. A computed divergence below 0 is rounding and reads 0; as a
+small difference of larger raw values, in float32 it can read 0 for two distinct but very close series too.
+
 ### C++ API
 
 ```cpp
