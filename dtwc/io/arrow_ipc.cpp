@@ -739,9 +739,11 @@ std::int64_t longest_span(const ArrowArrayView *column, std::int64_t bound)
     column->storage_type == NANOARROW_TYPE_LARGE_STRING || column->storage_type == NANOARROW_TYPE_LARGE_LIST;
   const ArrowBufferView &offsets = column->buffer_views[1];
   std::int64_t longest = 0;
-  for (std::int64_t i = column->offset; i < column->offset + column->length; ++i)
-    longest = std::max(longest, large ? offsets.data.as_int64[i + 1] - offsets.data.as_int64[i]
-                                      : std::int64_t{ offsets.data.as_int32[i + 1] } - offsets.data.as_int32[i]);
+  for (std::int64_t i = column->offset; i < column->offset + column->length; ++i) {
+    const std::int64_t start = large ? offsets.data.as_int64[i] : offsets.data.as_int32[i];
+    const std::int64_t end = large ? offsets.data.as_int64[i + 1] : offsets.data.as_int32[i + 1];
+    if (start >= 0 && end >= start) longest = std::max(longest, end - start); // in order: the difference fits
+  }
   return std::min(longest, bound);
 }
 
