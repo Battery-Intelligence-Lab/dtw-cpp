@@ -152,7 +152,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   being also the checkpoint (`--checkpoint`, `--checkpoint-interval`: a fill resumes). Without
   `--checkpoint-interval` the checkpoint is saved once, after the method has finished (a method that computes no
   distance matrix writes no checkpoint; TADPole, which keeps the pairs it computes in a cache of its own, refuses
-  `--checkpoint` and never maps its matrix: give it a complete one with `--dist-matrix`); with it, also during the fill,
+  `--checkpoint` and never maps its matrix: give it a complete one with `--dist-matrix`, as it refuses one with pairs
+  not computed); with it, also during the fill,
   every that many rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes), each save
   writing only the rows filled since the last one, in place, the first the whole matrix: a fill writes at most twice
   the matrix's bytes. A `.dtwm` file is a 64-byte header (version 5; among its fields the bytes of a value, 8 or 4 for

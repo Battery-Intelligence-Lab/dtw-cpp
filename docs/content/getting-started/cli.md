@@ -308,6 +308,8 @@ A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not sq
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still goes into its packed cache, which it keeps in RAM:
 the memory plan counts the cache there, and TADPole's matrix is never mapped.
+TADPole reads a `--dist-matrix` only when it is complete: on one with pairs not
+computed it exits 1, as it would read none of it and compute every pair again.
 OneBatchPAM is the exception:
 its fixed O(Nm) table never allocates the Problem distance matrix, so it refuses
 `--dist-matrix` and neither reads nor writes a `--checkpoint`. If the

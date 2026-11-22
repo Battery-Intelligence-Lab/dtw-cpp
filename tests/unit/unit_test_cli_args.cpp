@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <regex>
 #include <string>
@@ -259,6 +260,28 @@ TEST_CASE("run's TADPole at its memory limit keeps its cache in RAM and maps no 
   CHECK_FALSE(cache_exists(scratch, "tadpole"));
   CHECK(dtwc::run(at_least_limit(config), tiny_series()).labels().size() == 3);
   CHECK_FALSE(cache_exists(scratch, "tadpole"));
+}
+
+TEST_CASE("run's TADPole reads a complete --dist-matrix and refuses one with pairs not computed",
+          "[cli][storage][tadpole][dist-matrix]")
+{
+  // Of an incomplete matrix TADPole would read none: it would compute every pair from the series into a cache beside
+  // the file's matrix. The holes are v1.0.0's -1, read as pairs to compute under --not-computed negative.
+  const ScratchDirectory scratch{ "cli_tadpole_dist_matrix" };
+  const auto complete = scratch.path / "complete.csv";
+  const auto holes = scratch.path / "holes.csv";
+  std::ofstream(complete) << "0,1,2\n1,0,1\n2,1,0\n";
+  std::ofstream(holes) << "0,-1,2\n-1,0,1\n2,1,0\n";
+  auto config = quiet_config(2, Method::TADPole);
+  config.tadpole_dc = 3.0;
+  config.not_computed = dtwc::core::NotComputed::Negative;
+  config.dist_matrix = complete.string();
+  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
+  config.dist_matrix = holes.string();
+  CHECK_THROWS_MATCHES(dtwc::run(config, tiny_series()), dtwc::InvalidInput,
+                       Catch::Matchers::MessageMatches(
+                         ContainsSubstring("tadpole reads a --dist-matrix only when it is complete")
+                         && ContainsSubstring("holes.csv")));
 }
 
 TEST_CASE("run's OneBatch keeps its own O(Nm) storage over the memory limit", "[cli][storage][onebatch]")

@@ -405,8 +405,9 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
 /// decided it (`mapped`). Returns the mapped file, or nullopt when the method keeps its own storage or the matrix
 /// stays in RAM. A mapped matrix costs one sequential pass and keeps the run out of swap. A method that reads no parent
 /// matrix (holds_matrix) maps none and refuses a --dist-matrix, which it would load and never read; non-full FastCLARA
-/// refuses a --checkpoint too. TADPole reads the matrix when a complete one is given (--dist-matrix) and otherwise
-/// computes the pairs it needs into a cache of its own, so its matrix is never mapped and --checkpoint is refused.
+/// refuses a --checkpoint too. TADPole reads a complete --dist-matrix (an incomplete one is refused once read: it would
+/// read none of it) and otherwise computes the pairs it needs into a cache of its own, so its matrix is never mapped
+/// and --checkpoint is refused.
 std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, Method method,
                                                    bool clara_uses_full_sample, bool mapped, const fs::path &cache_path)
 {
@@ -907,6 +908,12 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
                     + "' cannot be loaded; fix the file, or omit --dist-matrix to compute the distances. Cause: "
                     + e.what());
     }
+    // TADPole reads a matrix only where every pair is in it: of an incomplete one it would read none, computing every
+    // pair from the series into a cache beside it, a second matrix the memory plan does not hold.
+    if (method == Method::TADPole && !prob.is_distance_matrix_filled())
+      throw InvalidInput("tadpole reads a --dist-matrix only when it is complete, and '" + config.dist_matrix
+                         + "' leaves pairs not computed: tadpole would read none of it and compute every pair again "
+                           "beside it. Give a complete matrix (a pam run with -o writes one), or omit --dist-matrix.");
     if (config.verbose) std::cout << "Loaded distance matrix from " << config.dist_matrix << "\n";
   }
   if (config.checkpoint_interval != 0) { // 0: saved once, at the end
