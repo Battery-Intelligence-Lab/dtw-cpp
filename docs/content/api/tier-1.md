@@ -149,7 +149,7 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 (MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'GpuShare'`, `'MatrixDtype'`, `'RamLimit'`, ...), and
 `no_report` (MATLAB `'NoReport'`; `--no-report`: no run report). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
-refuses it beside a `Dataset`, which keeps its own. The others (`input`, `output`,
+beside a `Dataset`, which keeps its own, refuses one that differs. The others (`input`, `output`,
 `checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys here.
 `ram_limit` is the run's soft memory budget, a byte count or a size such as `"8G"`, as
 `--ram-limit` is: a reserve for the threads, then where the series and the matrix go (`0`, the
@@ -276,12 +276,15 @@ empty `output=""` (`'Output', ''` in MATLAB) to run purely in memory and call
 
 A `Dataset` is read with the reader options it was made with: `skip_cols`, `skip_rows`,
 `delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Beside a `Dataset`, `do_clustering`
-and, in Python and MATLAB, `load_data` refuse one of them that differs from the Dataset's
-own: one given to the call itself (a keyword or override in Python, a name-value pair in
-MATLAB, an override in C++) whenever it differs, its default value included, and one the
-settings give only when it is not at its default. That is `InvalidInput` (MATLAB
-`dtwc:invalidArgument`) naming the option and both values: pass it to `load_data`, or leave
-it out. One equal to the Dataset's own runs, and one not given is never refused. Once the
+and, in Python and MATLAB, `load_data`, `load` and `cluster` refuse one of them that differs
+from the Dataset's own: one given to the call itself (a keyword or override in Python, a
+name-value pair in MATLAB, an override in C++) whenever it differs, its default value
+included, and one the settings give only when it is not at its default. (`load` takes no
+`ndim` and `cluster` only `dtype`; Python's `load` cannot tell a keyword left at its default
+from one not given, so it refuses a keyword only when it is not at its default.) That is
+`InvalidInput` (MATLAB `dtwc:invalidArgument`) naming the option and both values: pass it to
+`load_data`, or leave it out. One equal to the Dataset's own runs, and one not given is never
+refused. Once the
 `Dataset` has read an Arrow IPC file, the `ndim` compared is the file's; Python's
 `load_data` also refuses an `ndim` other than a `Data`'s own. The same settings given to
 `load_data` and `do_clustering` agree. `cdist` checks each `Dataset` by the settings' rule:

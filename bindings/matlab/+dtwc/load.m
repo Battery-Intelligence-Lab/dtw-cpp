@@ -26,22 +26,17 @@ function ds = load(source, varargin)
 %   which dtwc.cluster takes for Parquet; dtwc.cluster hands any other path to C++
 %   dtwc::run, which reads it at every call (and may stream an Arrow IPC file
 %   under RamLimit); to read it once, cluster its series: dtwc.cluster(ds.as_series(), k).
-%   A Dataset passes through unchanged; it keeps the options it was made with.
+%   A Dataset passes through with the options it was made with, as dtwc.load_data
+%   takes it: a SkipCols, SkipRows, Delimiter or Dtype given here that differs from
+%   the Dataset's, at its default too, is refused, naming both values; one equal
+%   to it runs, and a Name is refused.
 %
-%   See also dtwc.Dataset, dtwc.cluster
+%   See also dtwc.Dataset, dtwc.load_data, dtwc.cluster
 
 %> @file load.m
 %> @brief Lazy dataset loader.
 %> @author Volkan Kumtepeli
 
-    if isa(source, 'dtwc.Dataset')
-        if ~isempty(varargin)
-            error('dtwc:invalidArgument', ['load: a dtwc.Dataset keeps the options it was ' ...
-                  'made with; load its Source with the options instead.']);
-        end
-        ds = source;
-        return
-    end
     p = inputParser;
     addParameter(p, 'SkipCols', 0);
     addParameter(p, 'SkipRows', 0);
@@ -49,6 +44,13 @@ function ds = load(source, varargin)
     addParameter(p, 'Name', '');
     addParameter(p, 'Dtype', 'float64');
     parse(p, varargin{:});
+    if isa(source, 'dtwc.Dataset')
+        if ~ismember('Name', p.UsingDefaults)
+            error('dtwc:invalidArgument', 'load_data: Dataset keeps the options it was made with; unexpected Name.');
+        end
+        ds = dtwc.load_data(source, varargin{:});
+        return
+    end
     ds = dtwc.Dataset(source, p.Results.SkipCols, p.Results.SkipRows, ...
                       char(p.Results.Delimiter), char(p.Results.Name), char(p.Results.Dtype));
 end
