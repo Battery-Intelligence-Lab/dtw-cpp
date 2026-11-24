@@ -662,8 +662,8 @@ std::size_t scratch_bytes()
 
 } // namespace
 
-TEST_CASE("detail::run hands MIP on HiGHS and LR-core's Kelley root to the solver it is given, with the run's own "
-          "Problem, and the solver's clustering is the run's",
+TEST_CASE("detail::run hands MIP on HiGHS to the solver it is given, with the run's own Problem, and the solver's "
+          "clustering is the run's",
           "[api][run][seam]")
 {
   int calls = 0;
@@ -678,33 +678,27 @@ TEST_CASE("detail::run hands MIP on HiGHS and LR-core's Kelley root to the solve
   config.output.clear();
   config.name = "seam";
   config.solver = dtwc::Solver::HiGHS;
-  config.mip.lr_root = dtwc::LRRoot::Kelley;
+  config.method = dtwc::Method::MIP;
   const auto expected = fake_clustering();
-  for (const dtwc::Method method : { dtwc::Method::MIP, dtwc::Method::LRCore }) {
-    INFO(dtwc::name_of(dtwc::method_names, method));
-    config.method = method;
-    calls = 0;
-    const auto result = dtwc::detail::run(config, seam_series(), fake);
-    REQUIRE(calls == 1);
-    // The Problem the run builds, its own way: the configuration applied, the series set.
-    dtwc::Problem built{ "seam" };
-    dtwc::apply(config, built);
-    built.set_data(seam_series());
-    CHECK(given->name() == built.name());
-    CHECK(given->size() == 10);
-    CHECK(given->n_clusters() == 2);
-    CHECK(given->method() == method);
-    CHECK(given->solver() == dtwc::Solver::HiGHS);
-    CHECK(given->mip_settings.lr_root == dtwc::LRRoot::Kelley);
-    CHECK(given->distance_checkpoint_identity() == built.distance_checkpoint_identity());
-    CHECK(&given->labels() == &result.labels()); // the Result holds the Problem the solver was given
-    CHECK(result.labels() == expected.labels);
-    CHECK(result.medoids() == expected.medoid_indices);
-    CHECK(result.cost() == 1234.5);
-    CHECK(result.iterations() == 0);
-    CHECK(result.converged());
-    CHECK(result.method() == method);
-  }
+  const auto result = dtwc::detail::run(config, seam_series(), fake);
+  REQUIRE(calls == 1);
+  // The Problem the run builds, its own way: the configuration applied, the series set.
+  dtwc::Problem built{ "seam" };
+  dtwc::apply(config, built);
+  built.set_data(seam_series());
+  CHECK(given->name() == built.name());
+  CHECK(given->size() == 10);
+  CHECK(given->n_clusters() == 2);
+  CHECK(given->method() == dtwc::Method::MIP);
+  CHECK(given->solver() == dtwc::Solver::HiGHS);
+  CHECK(given->distance_checkpoint_identity() == built.distance_checkpoint_identity());
+  CHECK(&given->labels() == &result.labels()); // the Result holds the Problem the solver was given
+  CHECK(result.labels() == expected.labels);
+  CHECK(result.medoids() == expected.medoid_indices);
+  CHECK(result.cost() == 1234.5);
+  CHECK(result.iterations() == 0);
+  CHECK(result.converged());
+  CHECK(result.method() == dtwc::Method::MIP);
 }
 
 TEST_CASE("detail::run clusters every other method as run(config, data) does, never calling the solver",
@@ -720,14 +714,11 @@ TEST_CASE("detail::run clusters every other method as run(config, data) does, ne
   config.output.clear();
   config.sample_size = 6; // CLARA's: a sample of 6 of the 10 series
 
-  SECTION("PAM, CLARA and LR-core's subgradient root, the Kelley setting beside the first two")
+  SECTION("PAM, CLARA and LR-core")
   {
-    for (const auto &[method, root] : { std::pair{ dtwc::Method::PAM, dtwc::LRRoot::Kelley },
-                                        std::pair{ dtwc::Method::CLARA, dtwc::LRRoot::Kelley },
-                                        std::pair{ dtwc::Method::LRCore, dtwc::LRRoot::Subgradient } }) {
+    for (const dtwc::Method method : { dtwc::Method::PAM, dtwc::Method::CLARA, dtwc::Method::LRCore }) {
       INFO(dtwc::name_of(dtwc::method_names, method));
       config.method = method;
-      config.mip.lr_root = root;
       const auto expected = dtwc::run(config, seam_series());
       const auto result = dtwc::detail::run(config, seam_series(), fake);
       CHECK(result.labels() == expected.labels());

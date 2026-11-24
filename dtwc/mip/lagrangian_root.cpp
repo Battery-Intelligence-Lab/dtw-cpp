@@ -33,10 +33,6 @@
 #include "../Problem.hpp"
 #include "../algorithms/fast_pam.hpp"
 
-#ifdef DTWC_ENABLE_HIGHS
-#include <Highs.h>
-#endif
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -44,7 +40,6 @@
 #include <cstdio>
 #include <iostream>
 #include <limits>
-#include <memory>
 #include <numeric>
 #include <string>
 #include <type_traits>
@@ -72,7 +67,7 @@ namespace {
   /// Maximum `(C + 1) * N` doubles (~32 MiB) for precomputing B&B candidate suffix minima.
   constexpr std::size_t kMaxSuffixMinCells = 4194304;
 
-  /// Subgradient and Kelley tuning (safe defaults).
+  /// Subgradient tuning (safe defaults).
   struct LagrangianParams
   {
     int max_iters = 4000;       ///< Subgradient iteration cap.
@@ -82,7 +77,6 @@ namespace {
     double lambda_min = 1e-4;   ///< Floor for λ — CLAMPED here (never frozen), so diminishing steps keep converging.
     double deflect = 1.5;       ///< CFM subgradient deflection γ ∈ [0,2) — steers the step off the previous direction to kill zig-zag (0 = plain subgradient).
     int polish_period = 16;     ///< Run the O(Σ|C_c|²) medoid polish every this many iters (a cheap O(Nk) assignment repair still runs EVERY iter).
-    int kelley_max_major = 500; ///< Kelley only: cap on major iterations (each adds one cut + re-solves the small master LP).
   };
   constexpr LagrangianParams params{};
 
@@ -109,17 +103,15 @@ namespace {
       return D[static_cast<std::size_t>(i) * Nz + static_cast<std::size_t>(j)];
     }
 
-    std::pair<double, double> minmax() const noexcept
+    double min_distance() const noexcept
     {
       double mn = std::numeric_limits<double>::infinity();
-      double mx = -std::numeric_limits<double>::infinity();
       const std::size_t total = Nz * Nz;
       for (std::size_t t = 0; t < total; ++t) {
         const double v = D[t];
         if (v < mn) mn = v;
-        if (v > mx) mx = v;
       }
-      return { mn, mx };
+      return mn;
     }
 
     void compute_initial_mu(index_t k, std::vector<double> &mu) const
@@ -175,19 +167,6 @@ namespace {
     double operator()(index_t i, index_t j) const noexcept
     {
       return packed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))];
-    }
-
-    std::pair<double, double> minmax() const noexcept
-    {
-      double mn = std::numeric_limits<double>::infinity();
-      double mx = -std::numeric_limits<double>::infinity();
-      const std::size_t total = core::packed_size(Nz);
-      for (std::size_t t = 0; t < total; ++t) {
-        const double v = packed[t];
-        if (v < mn) mn = v;
-        if (v > mx) mx = v;
-      }
-      return { mn, mx };
     }
 
     void compute_initial_mu(index_t k, std::vector<double> &mu) const
@@ -560,7 +539,7 @@ namespace {
     }
   }
 
-  /// Shared tail for both root solvers: final polish, Beasley reduced-cost fixing, and result assembly.
+  /// Tail of the subgradient root: final polish, Beasley reduced-cost fixing, and result assembly.
   template <typename Mat>
   LagrangianResult finalize(const Mat &mat, index_t N, index_t k, double best_lb,
                             double best_primal, double seed_ub,
@@ -709,134 +688,11 @@ namespace {
   }
 
   template <typename Mat>
-  LagrangianResult lagrangian_root_kelley_impl(const Mat &mat, index_t N, index_t k,
-                                               const SeedIncumbent &seed, KelleyMaster &master)
-  {
-    const std::size_t Nz = static_cast<std::size_t>(N);
-    const double inf = std::numeric_limits<double>::infinity();
-
-    const auto [minD_raw, maxD_raw] = mat.minmax();
-    const double min_mu = std::min(0.0, minD_raw);
-    const double max_mu = (maxD_raw > min_mu) ? maxD_raw : (min_mu + 1.0);
-    const double box_span = max_mu - min_mu;
-
-    std::vector<double> mu(Nz, 0.0), rho(Nz, 0.0), g(Nz, 0.0);
-    std::vector<index_t> idx(Nz), cheap_lab(Nz, 0);
-    double best_lb = -inf, best_primal = inf;
-    const double seed_ub = seed.has_ub ? seed.ub : inf;
-    std::vector<index_t> best_medoids, best_labels;
-    apply_seed_medoids(mat, N, k, seed, best_primal, best_medoids, best_labels, cheap_lab);
-    std::vector<double> rho_at_best(Nz, 0.0);
-
-    warn_if_single_threaded();
-
-    const std::size_t ncol = Nz + 1;
-    std::vector<double> col_cost(ncol, 0.0), col_lower(ncol, min_mu), col_upper(ncol, max_mu), sol(ncol, 0.0);
-    col_cost[Nz] = 1.0;
-    col_lower[Nz] = -inf;
-    col_upper[Nz] = std::min(best_primal, seed_ub);
-    if (!master.pass_model(N + 1, col_cost.data(), col_lower.data(), col_upper.data()))
-      throw SolverError("lagrangian_root_kelley: the LP solver rejected the master LP model.");
-
-    int major = 0;
-    std::vector<index_t> ridx;
-    std::vector<double> rval;
-
-    auto add_cut = [&](double L) {
-      ridx.clear();
-      rval.clear();
-      ridx.push_back(N);
-      rval.push_back(1.0);
-      double gdotmu = 0.0;
-      for (index_t j = 0; j < N; ++j) {
-        const double gj = g[static_cast<std::size_t>(j)];
-        gdotmu += gj * mu[static_cast<std::size_t>(j)];
-        if (gj != 0.0) {
-          ridx.push_back(j);
-          rval.push_back(-gj);
-        }
-      }
-      master.add_row(-inf, L - gdotmu, static_cast<index_t>(ridx.size()), ridx.data(), rval.data());
-    };
-    const double theta_lower = -inf;
-
-    // Seed cuts at μ = 0 (clamped to box) and at Erlenkotter d_(2) warm start.
-    for (std::size_t j = 0; j < Nz; ++j) mu[j] = std::clamp(0.0, min_mu, max_mu);
-    best_lb = evaluate_dual(mat, N, k, mu, rho, g, idx);
-    rho_at_best = rho;
-    try_primal(mat, N, k, idx.data(), /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
-    add_cut(best_lb);
-
-    std::vector<double> mu_hat = mu;
-    double L_hat = best_lb;
-
-    std::vector<double> mu_d2;
-    mat.compute_initial_mu(k, mu_d2);
-    for (std::size_t j = 0; j < Nz; ++j) mu[j] = std::clamp(mu_d2[j], min_mu, max_mu);
-    if (mu != mu_hat) {
-      const double L_d2 = evaluate_dual(mat, N, k, mu, rho, g, idx);
-      try_primal(mat, N, k, idx.data(), /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
-      add_cut(L_d2);
-      if (L_d2 > best_lb) {
-        best_lb = L_d2;
-        rho_at_best = rho;
-        mu_hat = mu;
-        L_hat = L_d2;
-      }
-    }
-
-    double theta_upper = std::min(best_primal, seed_ub);
-    master.change_col_bounds(N, 1, &theta_lower, &theta_upper);
-    double delta = box_span;
-    double prev_ub = theta_upper;
-
-    for (major = 1; major <= params.kelley_max_major; ++major) {
-      for (index_t j = 0; j < N; ++j) {
-        col_lower[static_cast<std::size_t>(j)] = std::max(min_mu, mu_hat[static_cast<std::size_t>(j)] - delta);
-        col_upper[static_cast<std::size_t>(j)] = std::min(max_mu, mu_hat[static_cast<std::size_t>(j)] + delta);
-      }
-      master.change_col_bounds(0, N, col_lower.data(), col_upper.data());
-      if (!master.run(sol.data())) break;
-      const double theta_master = sol[Nz];
-      for (index_t j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] = sol[static_cast<std::size_t>(j)];
-
-      const double L_new = evaluate_dual(mat, N, k, mu, rho, g, idx);
-      try_primal(mat, N, k, idx.data(), /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
-      const double cur_ub = std::min(best_primal, seed_ub);
-      if (cur_ub < prev_ub) {
-        master.change_col_bounds(N, 1, &theta_lower, &cur_ub);
-        prev_ub = cur_ub;
-      }
-      add_cut(L_new);
-
-      if (L_new > best_lb) {
-        best_lb = L_new;
-        rho_at_best = rho;
-      }
-      if (L_new > L_hat + 1e-12 * std::abs(L_hat)) {
-        mu_hat = mu;
-        L_hat = L_new;
-        delta = std::min(delta * 2.0, box_span);
-      } else {
-        delta *= 0.5;
-      }
-
-      if (best_primal - best_lb <= params.rel_gap_tol * std::abs(best_primal)) break;
-      if (delta >= box_span && theta_master - best_lb <= params.rel_gap_tol * std::abs(theta_master)) break;
-      if (delta < box_span * 1e-12) break;
-    }
-
-    return finalize(mat, N, k, best_lb, best_primal, seed_ub, std::move(best_medoids), std::move(best_labels), std::move(mu_hat), rho_at_best, major, params.rel_gap_tol);
-  }
-
-  template <typename Mat>
   LagrangianResult lagrangian_root_exact_impl(const Mat &mat, index_t N, index_t k,
                                               const SeedIncumbent &seed,
-                                              std::int64_t max_nodes, KelleyMaster *kelley)
+                                              std::int64_t max_nodes)
   {
-    LagrangianResult root = kelley != nullptr
-                              ? lagrangian_root_kelley_impl(mat, N, k, seed, *kelley)
-                              : lagrangian_root_subgrad_impl(mat, N, k, seed);
+    LagrangianResult root = lagrangian_root_subgrad_impl(mat, N, k, seed);
     if (root.certified_optimal) {
       root.nodes = 0;
       return root;
@@ -1036,55 +892,6 @@ namespace {
     return r;
   }
 
-#ifdef DTWC_ENABLE_HIGHS
-  /// KelleyMaster on linked HiGHS: one Highs instance, warm-started across the re-solves.
-  class HighsMaster final : public KelleyMaster
-  {
-  public:
-    HighsMaster() { highs_.setOptionValue("output_flag", false); }
-
-    bool pass_model(index_t ncol, const double *cost, const double *lower, const double *upper) override
-    {
-      HighsModel model;
-      model.lp_.num_col_ = static_cast<HighsInt>(ncol);
-      model.lp_.num_row_ = 0;
-      model.lp_.sense_ = ObjSense::kMaximize;
-      model.lp_.col_cost_.assign(cost, cost + ncol);
-      model.lp_.col_lower_.assign(lower, lower + ncol);
-      model.lp_.col_upper_.assign(upper, upper + ncol);
-      model.lp_.a_matrix_.format_ = MatrixFormat::kColwise;
-      model.lp_.a_matrix_.num_col_ = static_cast<HighsInt>(ncol);
-      model.lp_.a_matrix_.num_row_ = 0;
-      model.lp_.a_matrix_.start_.assign(static_cast<std::size_t>(ncol) + 1, 0);
-      return highs_.passModel(model) == HighsStatus::kOk;
-    }
-
-    void add_row(double lower, double upper, index_t nnz, const index_t *index, const double *value) override
-    {
-      index_.resize(static_cast<std::size_t>(nnz));
-      std::transform(index, index + nnz, index_.begin(), [](index_t i) { return static_cast<HighsInt>(i); });
-      highs_.addRow(lower, upper, static_cast<HighsInt>(nnz), index_.data(), value);
-    }
-
-    void change_col_bounds(index_t first, index_t count, const double *lower, const double *upper) override
-    {
-      highs_.changeColsBounds(static_cast<HighsInt>(first), static_cast<HighsInt>(first + count - 1), lower, upper);
-    }
-
-    bool run(double *x) override
-    {
-      if (highs_.run() != HighsStatus::kOk || highs_.getModelStatus() != HighsModelStatus::kOptimal) return false;
-      const std::vector<double> &col_value = highs_.getSolution().col_value;
-      std::copy(col_value.begin(), col_value.end(), x);
-      return true;
-    }
-
-  private:
-    Highs highs_;
-    std::vector<HighsInt> index_;
-  };
-#endif
-
 } // namespace
 
 LagrangianResult lagrangian_root(const double *D, index_t N, index_t k, double initial_ub)
@@ -1094,61 +901,30 @@ LagrangianResult lagrangian_root(const double *D, index_t N, index_t k, double i
     throw InvalidInput("lagrangian_root: require 1 <= k <= N (k=" + std::to_string(k)
                        + ", N=" + std::to_string(N) + ")");
   const DenseMatrixView mat(D, N);
-  return lagrangian_root_subgrad_impl(mat, N, k, resolve_public_seed(initial_ub, mat.minmax().first));
-}
-
-std::unique_ptr<KelleyMaster> highs_kelley_master()
-{
-#ifdef DTWC_ENABLE_HIGHS
-  return std::make_unique<HighsMaster>();
-#else
-  throw SolverError(
-    "LR-core's kelley root solves its master LP with HiGHS, which this build does not link: use a "
-    "build with HiGHS (-DDTWC_ENABLE_HIGHS=ON), or the subgradient root (--lr-root subgradient, "
-    "the default).");
-#endif
-}
-
-LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, double initial_ub,
-                                        KelleyMaster &master)
-{
-  if (N <= 0) throw InvalidInput("lagrangian_root_kelley: N must be positive");
-  if (k < 1 || k > N)
-    throw InvalidInput("lagrangian_root_kelley: require 1 <= k <= N (k=" + std::to_string(k)
-                       + ", N=" + std::to_string(N) + ")");
-  const DenseMatrixView mat(D, N);
-  return lagrangian_root_kelley_impl(mat, N, k, resolve_public_seed(initial_ub, mat.minmax().first), master);
+  return lagrangian_root_subgrad_impl(mat, N, k, resolve_public_seed(initial_ub, mat.min_distance()));
 }
 
 LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
-                                       double initial_ub, std::int64_t max_nodes, KelleyMaster *kelley)
+                                       double initial_ub, std::int64_t max_nodes)
 {
   if (N <= 0) throw InvalidInput("lagrangian_root_exact: N must be positive");
   if (k < 1 || k > N)
     throw InvalidInput("lagrangian_root_exact: require 1 <= k <= N (k=" + std::to_string(k)
                        + ", N=" + std::to_string(N) + ")");
   const DenseMatrixView mat(D, N);
-  return lagrangian_root_exact_impl(mat, N, k, resolve_public_seed(initial_ub, mat.minmax().first), max_nodes, kelley);
+  return lagrangian_root_exact_impl(mat, N, k, resolve_public_seed(initial_ub, mat.min_distance()), max_nodes);
 }
 
 } // namespace dtwc::mip
 
 namespace dtwc {
 
-void LR_core_clustering(Problem &prob, mip::KelleyMaster *kelley)
+void LR_core_clustering(Problem &prob)
 {
   validate_mip_settings(prob.mip_settings);
   const index_t N = prob.size();
   const index_t k = prob.n_clusters();
   if (N <= 0) throw InvalidInput("LR-core: the Problem has no data.");
-
-  std::unique_ptr<mip::KelleyMaster> highs;
-  if (prob.mip_settings.lr_root == LRRoot::Subgradient) {
-    kelley = nullptr;
-  } else if (kelley == nullptr) {
-    highs = mip::highs_kelley_master();
-    kelley = highs.get();
-  }
 
   // Run FasterPAM without mutating `prob` (transactional: if LR-core throws SolverError,
   // `prob`'s prior clustering state remains untouched), and feed both its cost and medoids
@@ -1158,12 +934,10 @@ void LR_core_clustering(Problem &prob, mip::KelleyMaster *kelley)
 
   const mip::LagrangianResult r = prob.distance_matrix().visit([&](const auto *packed) {
     const mip::PackedMatrixView<std::remove_cv_t<std::remove_pointer_t<decltype(packed)>>> mat(packed, N);
-    return mip::lagrangian_root_exact_impl(mat, N, k, seed, prob.mip_settings.lr_max_nodes, kelley);
+    return mip::lagrangian_root_exact_impl(mat, N, k, seed, prob.mip_settings.lr_max_nodes);
   });
 
-  if (prob.verbose())
-    std::cout << "LR-core: " << name_of(lr_root_names, kelley != nullptr ? LRRoot::Kelley : LRRoot::Subgradient)
-              << " root, " << r.nodes << " branch-and-bound nodes\n";
+  if (prob.verbose()) std::cout << "LR-core: subgradient root, " << r.nodes << " branch-and-bound nodes\n";
 
   if (!r.certified_optimal)
     throw SolverError("LR-core did not prove optimality (gap "

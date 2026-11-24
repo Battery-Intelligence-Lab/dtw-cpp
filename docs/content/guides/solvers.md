@@ -44,16 +44,7 @@ instead of publishing the uncertified incumbent. Raise the cap with
 `Method::Kmedoids` when a heuristic answer is what you want.
 
 The root bound is the subgradient root in every language and build; it needs no
-solver. `--lr-root kelley` (Python `lr_root="kelley"`, MATLAB `'LrRoot', 'kelley'`)
-runs Kelley's cutting planes instead, whose master LP solves on linked HiGHS in
-`dtwc_cl`, C++ and the MATLAB MEX, and on highspy in Python, which dtwcpp requires.
-Without either, asking for it raises `SolverError`
-naming the fix before any distance is computed; it never falls back to the subgradient
-root. Both roots reach the same optimum, at different costs: on some synthetic noisy
-series the subgradient root certified at the root, with no branching, where Kelley's
-needed up to 487,365 branch-and-bound nodes; on constant, level-shifted series (a
-line metric) Kelley's certified in 8–13 iterations, where the subgradient root took
-far longer.
+solver.
 
 What the route does and does not establish:
 

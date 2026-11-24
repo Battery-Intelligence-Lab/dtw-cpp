@@ -145,7 +145,7 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `twe_lambda`), `mv_mode`, `missing_strategy`, `max_iter`, `n_init`, `seed`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
-`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `gpu_share`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
+`lr_max_nodes`, `device`, `gpu_precision`, `gpu_share`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
 (MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'GpuShare'`, `'MatrixDtype'`, `'RamLimit'`, ...), and
 `no_report` (MATLAB `'NoReport'`; `--no-report`: no run report). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and

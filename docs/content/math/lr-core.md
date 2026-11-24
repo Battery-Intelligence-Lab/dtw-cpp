@@ -8,7 +8,7 @@ description: "Total unimodularity characterization, Geoffrion's theorem, Lagrang
 
 DTWC++ provides two exact $k$-medoids clustering paths:
 
-1. **`Method::LRCore` (`--method lrcore`)** — a solver-free Lagrangian relaxation, subgradient dual-ascent engine, Beasley reduced-cost variable fixer, and core-restricted $y$-space branch-and-bound solver. By default (`--lr-root subgradient`), `LRCore` requires zero external LP/MIP libraries; optionally (`--lr-root kelley`), a boxstep-stabilized Kelley cutting-plane root can run via HiGHS (`highspy` in Python).
+1. **`Method::LRCore` (`--method lrcore`)** — a solver-free Lagrangian relaxation, subgradient dual-ascent engine, Beasley reduced-cost variable fixer, and core-restricted $y$-space branch-and-bound solver. `LRCore` requires zero external LP/MIP libraries.
 2. **`Method::MIP` (`--method mip`)** — solves the compact integer linear program directly with HiGHS or Gurobi, warm-started from FasterPAM.
 
 ---
