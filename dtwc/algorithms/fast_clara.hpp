@@ -24,7 +24,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <string>
 
 namespace dtwc {
@@ -49,15 +48,10 @@ namespace algorithms {
     /// rates are the result's `hybrid`); a value in [0, 1] forces it, so a run repeats exactly. Another device refuses
     /// any value but -1.
     double gpu_share = -1.0;
-
-    // Streaming from Parquet: fast_clara_parquet's (dtwc_io); fast_clara refuses it.
-    size_t ram_limit_bytes = 0;         ///< Series-data cap; 0 = no limit.
-    std::filesystem::path parquet_path; ///< Parquet file to stream (empty = the Problem's series).
-    std::string parquet_column;         ///< Column name for the Parquet reader.
-    index_t parquet_skip_cols = 0;      ///< Leading Parquet columns dropped (--skip-cols).
-    index_t parquet_skip_rows = 0;      ///< Leading Parquet rows dropped (--skip-rows).
-    bool use_float32 = false;           ///< Read chunks as float32 (half the memory).
-    bool force_parquet_streaming = false; ///< Stream even if the series fit (dtwc_cl's planner decided).
+    /// The series-data cap, in bytes, of a FastCLARA that reads its series from a file a piece at a time
+    /// (detail::fast_clara_chunked: Arrow IPC's record batches, Parquet's row groups); dtwc_cl's memory plan sets it.
+    /// fast_clara, whose series are in RAM, does not read it.
+    size_t ram_limit_bytes = 0;
   };
 
   /**
@@ -80,10 +74,7 @@ namespace algorithms {
    * and the assignment pass is split: the GPU takes the leading share of the
    * points (opts.gpu_share), the CPU's team the rest, in one parallel region;
    * under FP64 L1 the results equal both single-device runs whatever the split.
- * @throws InvalidInput for invalid dimensions/options, and for a Parquet
- *         stream (parquet_path with ram_limit_bytes), which is fast_clara_parquet's;
- *         IOError for force_parquet_streaming: the core's FastCLARA reads no
- *         Parquet (fast_clara_parquet streams it, in a build with Parquet);
+ * @throws InvalidInput for invalid dimensions/options;
  *         DeviceError for a request the GPU cannot honour (Float32 series, a
  *         variant or missing-data strategy its kernels lack).
  */
@@ -92,22 +83,6 @@ namespace algorithms {
   /// cpu+gpu's split of a pass over `n_points` series in words: the GPU's points and share (17 digits: forced again,
   /// it repeats the split), how the share was set and, where measured, both rates. dtwc_cl's -v and run report print it.
   std::string describe(const core::HybridSplit &split, std::size_t n_points);
-
-#ifdef DTWC_HAS_PARQUET
-  /**
-   * @brief fast_clara, with the series streamed from opts.parquet_path when
-   *        opts.ram_limit_bytes asks for it: forced, or because the file's
-   *        resident estimate exceeds the limit (the RAM-limited route of
-   *        dtwc_cl --ram-limit). Otherwise it is fast_clara itself.
-   *
-   * A streamed run needs a settings-only `prob` (no hidden resident-plus-chunk
-   * memory peak) and list-per-row Parquet; a stream whose sample_size resolves
-   * to N is refused rather than loading all rows or repeating identical full
-   * runs. It is dtwc_io's (algorithms/fast_clara_parquet.cpp), which a build
-   * with Parquet links: the core reads no Parquet.
-   */
-  core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opts);
-#endif
 
 } // namespace algorithms
 } // namespace dtwc

@@ -16,7 +16,3 @@ target_sources(dtwc_core
     hierarchical.hpp
     tadpole.hpp
   )
-# FastCLARA streaming its series from Parquet needs the Parquet reader: dtwc_io's.
-if(TARGET dtwc_io)
-  target_sources(dtwc_io PRIVATE fast_clara_parquet.cpp)
-endif()
