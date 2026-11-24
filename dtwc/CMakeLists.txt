@@ -114,9 +114,6 @@ target_sources(dtwc_core
   enums/Method.hpp
   enums/Solver.hpp
   enums/enums.hpp
-  types/Index.hpp
-  types/Range.hpp
-  types/types.hpp
 )
 # The facade the command line runs.
 target_sources(dtwc_cli PRIVATE api.cpp PUBLIC FILE_SET HEADERS FILES api.hpp)

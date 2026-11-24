@@ -129,22 +129,12 @@ TEST_CASE("FastCLARA is reproducible with same seed", "[fast_clara][reproducibil
   opts.n_samples = 3;
   opts.random_seed = 123;
 
-  // CLARA owns a complete invocation-local seed schedule. Deliberately give the
-  // legacy Tier-2 engine different states: neither run may consume it, and the
-  // results must still agree.
-  const auto legacy_rng_original = dtwc::randGenerator;
-  dtwc::randGenerator.seed(17);
-  const auto legacy_rng_before_1 = dtwc::randGenerator;
+  // CLARA owns a complete invocation-local seed schedule: one seed, one result.
   Problem prob1 = make_clara_problem(N);
   auto result1 = algorithms::fast_clara(prob1, opts);
-  CHECK(dtwc::randGenerator == legacy_rng_before_1);
 
-  dtwc::randGenerator.seed(8675309);
-  const auto legacy_rng_before_2 = dtwc::randGenerator;
   Problem prob2 = make_clara_problem(N);
   auto result2 = algorithms::fast_clara(prob2, opts);
-  CHECK(dtwc::randGenerator == legacy_rng_before_2);
-  dtwc::randGenerator = legacy_rng_original;
 
   REQUIRE(result1.labels == result2.labels);
   REQUIRE(result1.medoid_indices == result2.medoid_indices);
@@ -169,12 +159,7 @@ TEST_CASE("FastCLARA falls back to FastPAM when sample_size >= N", "[fast_clara]
   opts.n_samples = 3;
   opts.random_seed = 42;
 
-  const auto legacy_rng_original = dtwc::randGenerator;
-  dtwc::randGenerator.seed(314159);
-  const auto legacy_rng_before = dtwc::randGenerator;
   auto clara_result = algorithms::fast_clara(prob_clara, opts);
-  CHECK(dtwc::randGenerator == legacy_rng_before);
-  dtwc::randGenerator = legacy_rng_original;
 
   // Run the exact invocation-local FastPAM fallback oracle directly.
   Problem prob_pam = make_clara_problem(N);
@@ -621,7 +606,6 @@ TEST_CASE("FastCLARA in-RAM uses the portable seeded sample contract",
     opts.n_samples = 1;
     opts.random_seed = seed;
 
-    dtwc::randGenerator.seed(42); // k=1 is init-independent; reseed for hygiene
     auto result = algorithms::fast_clara(prob, opts);
 
     REQUIRE(result.medoid_indices.size() == 1);
@@ -653,11 +637,9 @@ TEST_CASE("FastCLARA parallel in-RAM assignment is deterministic and consistent"
   opts.sample_size = 60; // < N -> CLARA path, so assign_all_points runs
   opts.random_seed = 7;
 
-  dtwc::randGenerator.seed(42);
   Problem prob1 = make_clara_problem(N);
   auto r1 = algorithms::fast_clara(prob1, opts);
 
-  dtwc::randGenerator.seed(42);
   Problem prob2 = make_clara_problem(N);
   auto r2 = algorithms::fast_clara(prob2, opts);
 

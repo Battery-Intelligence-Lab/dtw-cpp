@@ -28,7 +28,6 @@
 #endif
 #include "warping.hpp"         // for detail::all_usable, refuse_unusable
 #include "core/dtw_kernel.hpp" // for dtw_lanes
-#include "types/Range.hpp"     // for Range
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "base/missing_utils.hpp"               // for all_missing
@@ -1628,10 +1627,11 @@ void Problem::calculate_medoids()
       // Keep sequential accumulation order across compilers so equal-cost medoid ties are deterministic.
       const auto *const *const values = &matrix;
       double sum{ 0 };
+      const auto n_series = static_cast<std::size_t>(size());
 #if defined(__clang__)
 #pragma clang loop vectorize(disable)
 #endif
-      for (const auto i : Range(size()))
+      for (std::size_t i = 0; i < n_series; ++i)
         if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
           sum += (*values)[core::tri_index(i_p, i)];
 
@@ -1641,7 +1641,7 @@ void Problem::calculate_medoids()
   });
 
   std::vector<double> clusterCosts(n_clusters(), std::numeric_limits<double>::max());
-  for (const auto i : Range(size()))
+  for (std::size_t i = 0; i < pointCosts.size(); ++i)
     if (pointCosts[i] < clusterCosts[clusters_ind[i]]) {
       clusterCosts[clusters_ind[i]] = pointCosts[i];
       centroids_ind[clusters_ind[i]] = static_cast<index_t>(i);
@@ -1674,7 +1674,7 @@ void Problem::cluster_by_kmedoids_lloyd()
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
     if (verbose_) std::cout << "Medoid initialisation is started.\n";
     // Unsigned: a seed near 2^64 wraps to another valid seed.
-    init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
+    init_fun(*this, random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     if (verbose_)
       std::cout << "Medoid initialisation is finished. "
@@ -1683,7 +1683,7 @@ void Problem::cluster_by_kmedoids_lloyd()
 
     // A caller's init_fun may leave the medoids unset; it is then called a second time.
     if (centroids_ind.empty())
-      init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
+      init_fun(*this, random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     auto oldmedoids = centroids_ind;
     bool converged = false;

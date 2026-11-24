@@ -17,7 +17,6 @@
 #include "detail/result_files.hpp" // WriteTimes
 #include "fileOperations.hpp" // for open_output, close_output
 #include "scores.hpp"      // for silhouette
-#include "types/Range.hpp" // for Range
 
 #include <chrono>
 #include <filesystem>
@@ -56,10 +55,10 @@ void Problem::print_clusters() const
 
   std::cout << '\n';
 
-  for (const auto i_c : Range(Nc)) {
+  for (std::size_t i_c = 0, n_c = static_cast<std::size_t>(Nc); i_c < n_c; ++i_c) {
     std::cout << "The cluster with centroid " << series_name(centroids_ind[i_c]) << " has following members: ";
 
-    for (const auto i_p : Range(size()))
+    for (std::size_t i_p = 0, n_p = static_cast<std::size_t>(size()); i_p < n_p; ++i_p)
       if (clusters_ind[i_p] == i_c)
         std::cout << series_name(i_p) << " ";
 
@@ -83,7 +82,7 @@ void Problem::write_clusters()
 
   myFile << "\n\nData,its cluster\n";
 
-  for (const auto i : Range(size()))
+  for (std::size_t i = 0, n = static_cast<std::size_t>(size()); i < n; ++i)
     myFile << series_name(i) << ',' << series_name(centroid_of(static_cast<index_t>(i))) << '\n';
 
   myFile << "Procedure is completed with cost: " << find_total_cost() << '\n';
@@ -114,7 +113,7 @@ void Problem::write_silhouettes()
   std::ofstream myFile = open_output(path);
 
   myFile << "Silhouettes:\n";
-  for (auto i : Range(size()))
+  for (std::size_t i = 0, n = static_cast<std::size_t>(size()); i < n; ++i)
     myFile << series_name(i) << ',' << silhouettes[i] << '\n';
 
   close_output(myFile, path);
@@ -127,8 +126,8 @@ void Problem::write_medoid_members(int iter, int rep) const
     / utf8_to_path("medoidMembers_Nc_" + std::to_string(Nc) + "_rep_" + std::to_string(rep)
                    + "_iter_" + std::to_string(iter) + ".csv");
   std::ofstream medoidMembers = open_output(path);
-  for (const auto i_c : Range(Nc)) {
-    for (const auto i_p : Range(size()))
+  for (std::size_t i_c = 0, n_c = static_cast<std::size_t>(Nc); i_c < n_c; ++i_c) {
+    for (std::size_t i_p = 0, n_p = static_cast<std::size_t>(size()); i_p < n_p; ++i_p)
       if (clusters_ind[i_p] == i_c)
         medoidMembers << series_name(i_p) << ',';
 

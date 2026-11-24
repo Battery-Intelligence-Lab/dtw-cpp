@@ -30,9 +30,7 @@ as a checkpoint:
 Rows from R on were never written and hold no distance, whatever the file has
 there: a new mapped file is not filled with NaN (R = 0), and a fill records rows
 in R only once they are on the disk, so a run stopped mid-fill resumes from the
-rows it records. Version 4, a 48-byte header (bytes 0-47 above) and doubles with
-every row written, from 2.0 builds before `matrix_dtype`, is read and mapped as
-float64; a mapped one stays version 4, and every other save writes version 5.
+rows it records.
 
 The fingerprint covers the exact series bits, their order, lengths, dtype and
 `ndim`; the band and every variant and multivariate parameter; the missing-data
@@ -56,7 +54,7 @@ little-endian on every supported platform.
 |----------|-------------------|----------------------------|
 | absent | returns `false`; nothing changes | creates it, no row written |
 | for other series (another N), other settings (another fingerprint) or the other `matrix_dtype` | `InvalidInput` | `InvalidInput` |
-| short, not a `.dtwm` file, another version (1-3 are earlier cache layouts), or a length that does not fit its N | `IOError` | `IOError` |
+| short, not a `.dtwm` file, another version (1-4 are earlier layouts; the message names the file's), or a length that does not fit its N | `IOError` | `IOError` |
 | a match | the distances are loaded, bit for bit | the file is mapped with its distances |
 
 A rejected file is left as it is, and so is the `Problem`. Delete or rename such a

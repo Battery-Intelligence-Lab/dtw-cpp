@@ -14,11 +14,15 @@
 #include <vector>
 #include <string>
 #include <set>
+#include <iterator>
 #include <random>
 #include <filesystem>
 #include <iostream>
 
 namespace dtwc::test_util {
+
+/// The engine of the random test data below: a fixed seed, so that a failure repeats.
+inline std::mt19937 randGenerator(29); // NOLINT(cert-msc51-cpp): the fixed seed is the point.
 
 /// N_data series of random length in [min_length, L_data] with values in [0, L_data].
 template <typename data_t>

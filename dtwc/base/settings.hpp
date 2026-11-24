@@ -3,7 +3,7 @@
  * @brief This file contains settings and configurations for DTWC++ library.
  *
  * @details It includes settings for data types, the std::filesystem alias,
- * debugging options, and default algorithmic settings.
+ * and default algorithmic settings.
  *
  * @date 21 Jan 2022
  * @author Volkan Kumtepeli
@@ -43,10 +43,7 @@ namespace dtwc::settings {
 /// @brief Namespace alias for std::filesystem.
 namespace fs = std::filesystem;
 
-/// @brief Flag for debug mode for developers.
-constexpr bool isDebug = false;
-
-/// Invocation-local default seed for deterministic sampling algorithms (distinct from legacy `dtwc::randGenerator`).
+/// Default seed of the deterministic sampling algorithms: each takes its seed as an argument.
 inline constexpr std::uint64_t DEFAULT_RANDOM_SEED = 42;
 
 /// @brief Default Sakoe-Chiba band half-width (-1 = unconstrained).

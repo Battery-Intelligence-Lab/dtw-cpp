@@ -242,7 +242,7 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
     { "initialisation.cpp: more clusters than series", "InvalidInput",
       [] {
         dtwc::Problem empty("gt4_empty");
-        dtwc::init::random(empty);
+        dtwc::init::random(empty, dtwc::settings::DEFAULT_RANDOM_SEED);
       } },
     { "scores.cpp: label vectors of different length", "InvalidInput",
       [] { (void)dtwc::scores::adjusted_rand({ 0, 1 }, { 0 }); } },

@@ -9,7 +9,7 @@ function ok = load_checkpoint(prob, path, metric)
 %   series or another metric raises 'dtwc:invalidArgument', and a file that is not
 %   a whole checkpoint raises 'dtwc:ioError'.
 %
-%   metric is the pointwise metric THIS run computes with: 'l1' or
+%   metric is the pointwise metric THIS run computes with: 'l1', 'euclidean' or
 %   'squared_euclidean' ('sqeuclidean'). A checkpoint written under a different
 %   metric no longer matches the identity fingerprint. Omitted, it is the
 %   Problem's own metric, as C++ load_checkpoint(prob, path) and the CLI take

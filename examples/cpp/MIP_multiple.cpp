@@ -20,8 +20,7 @@ int main(int argc, char **argv)
 {
   dtwc::Clock clk; // Create a clock object
 
-  int Ndata_max = 100;         // Load 100 data maximum.
-  auto Nc = dtwc::Range(3, 6); // Clustering for Nc = 3,4,5. Range function like Python so 6 is not included.
+  int Ndata_max = 100; // Load 100 data maximum.
 
   // The data folder: the first argument, else ./data (run from the project root).
   const std::filesystem::path data_dir = argc > 1 ? argv[1] : "./data";
@@ -44,7 +43,7 @@ int main(int argc, char **argv)
   std::string reportName = "DTW_MILP_results";
 
   // Calculate for number of clusters Nc = 3,4,5;
-  for (auto nc : Nc) {
+  for (dtwc::index_t nc = 3; nc <= 5; ++nc) {
     std::cout << "\n\nClustering by MIP for Number of clusters : " << nc << '\n';
     prob.set_n_clusters(nc); // Nc = number of clusters.
     prob.cluster_by_mip();         // Uses MILP to do clustering.

@@ -10,7 +10,7 @@ function d = dtw(x, y, varargin)
 %   C++ default (Standard DTW, full band, L1, no missing values):
 %     Variant          'standard', 'ddtw', 'wdtw', 'adtw', 'softdtw', 'msm', 'twe'
 %     Band             -1 (full DTW) or a Sakoe-Chiba half-width >= 0
-%     Metric           'l1' or 'squared_euclidean' (Standard DTW and DDTW)
+%     Metric           'l1', 'euclidean' or 'squared_euclidean' (Standard DTW and DDTW)
 %     MissingStrategy  'error', 'zero_cost', 'arow' or 'interpolate' (Standard
 %                      DTW); NaN is a missing value under the last three
 %     WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda   the parameter of

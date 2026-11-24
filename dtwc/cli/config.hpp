@@ -48,7 +48,7 @@ std::string shortest_text(double value);
 /// Every key of `config`, one `key = value` line each in bind() order: enums by
 /// canonical name, doubles in shortest round-trip form. parse_config() and
 /// `--config` read it back to an equal Config.
-/// @throws InvalidInput when a field holds a value no name spells (MetricType::L2).
+/// @throws InvalidInput when a field holds a value no name spells (an integer cast outside its enum).
 std::string to_config_text(const Config &config);
 
 /// A Config from (key, value) pairs, as name-value pairs give them: `_` in a

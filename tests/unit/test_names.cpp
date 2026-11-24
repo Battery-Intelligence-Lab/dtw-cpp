@@ -107,7 +107,9 @@ TEST_CASE("Method and Solver tables", "[names]")
 TEST_CASE("distance tables: metric, variant, mv-mode, missing strategy", "[names]")
 {
   using namespace dtwc::core;
-  check_table(metric_names, { { "l1", MetricType::L1 }, { "squared_euclidean", MetricType::SquaredL2 } },
+  check_table(metric_names,
+              { { "l1", MetricType::L1 }, { "euclidean", MetricType::L2 },
+                { "squared_euclidean", MetricType::SquaredL2 } },
               { { "sqeuclidean", "squared_euclidean" }, { "l2sq", "squared_euclidean" } });
   check_table(variant_names,
               { { "standard", DTWVariant::Standard }, { "ddtw", DTWVariant::DDTW }, { "wdtw", DTWVariant::WDTW },
@@ -120,8 +122,8 @@ TEST_CASE("distance tables: metric, variant, mv-mode, missing strategy", "[names
                 { "arow", MissingStrategy::AROW }, { "interpolate", MissingStrategy::Interpolate } },
               { { "zero-cost", "zero_cost" }, { "zerocost", "zero_cost" } });
 
-  // L2 is a kernel metric that no front end spells: asking for its name is an error, not "".
-  CHECK_THROWS_AS(dtwc::name_of(metric_names, MetricType::L2), dtwc::InvalidInput);
+  // A value outside the enum (an integer cast) has no name: asking for it is an error, not "".
+  CHECK_THROWS_AS(dtwc::name_of(metric_names, static_cast<MetricType>(99)), dtwc::InvalidInput);
 }
 
 TEST_CASE("dtype, linkage and OneBatchPAM weighting tables", "[names]")

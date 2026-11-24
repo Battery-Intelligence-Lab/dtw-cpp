@@ -54,7 +54,7 @@ Settings are passed as CamelCase name-value pairs matching the `dtwc_cl` keys; C
 | `y` | numeric vector | required | Second time series |
 | `Variant` | char | `'standard'` | `'standard'`, `'ddtw'`, `'wdtw'`, `'adtw'`, `'softdtw'`, `'msm'`, `'twe'` |
 | `Band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
-| `Metric` | char | `'l1'` | `'l1'` or `'squared_euclidean'` (Standard DTW and DDTW) |
+| `Metric` | char | `'l1'` | `'l1'`, `'euclidean'` or `'squared_euclidean'` (Standard DTW and DDTW) |
 | `MissingStrategy` | char | `'error'` | `'error'`, `'zero_cost'`, `'arow'` or `'interpolate'` (Standard DTW; NaN is then a missing value) |
 | `WdtwG` | double | `0.05` | WDTW steepness |
 | `AdtwPenalty` | double | `1.0` | ADTW non-diagonal step penalty |

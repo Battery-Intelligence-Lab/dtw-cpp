@@ -83,7 +83,7 @@ Problem make_capped_lloyd_problem(
   problem.set_max_iter(max_iter);
   problem.set_n_repetitions(1);
   problem.set_output_folder(output);
-  problem.init_fun = [](Problem &candidate) {
+  problem.init_fun = [](Problem &candidate, std::uint64_t) {
     std::vector<index_t> initial_medoids{0, 8};
     candidate.set_clusters(initial_medoids);
   };
@@ -238,7 +238,7 @@ TEST_CASE("init::random does not throw for valid Nc", "[Phase1][clustering][init
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  REQUIRE_NOTHROW(init::random(prob));
+  REQUIRE_NOTHROW(init::random(prob, settings::DEFAULT_RANDOM_SEED));
 
   // After init, centroids_ind should have Nc entries.
   REQUIRE(prob.centroids_ind.size() == static_cast<size_t>(Nc));
@@ -250,7 +250,7 @@ TEST_CASE("init::Kmeanspp does not throw for valid Nc", "[Phase1][clustering][in
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  REQUIRE_NOTHROW(init::Kmeanspp(prob));
+  REQUIRE_NOTHROW(init::Kmeanspp(prob, settings::DEFAULT_RANDOM_SEED));
 
   REQUIRE(prob.centroids_ind.size() == static_cast<size_t>(Nc));
 }
@@ -266,7 +266,7 @@ TEST_CASE("init::Kmeanspp selects distinct medoids when all weights are zero",
     std::vector<std::string>{"a", "b", "c", "d"}));
   prob.set_n_clusters(3);
 
-  REQUIRE_NOTHROW(init::Kmeanspp(prob));
+  REQUIRE_NOTHROW(init::Kmeanspp(prob, settings::DEFAULT_RANDOM_SEED));
   REQUIRE(prob.centroids_ind.size() == 3);
   const std::set<index_t> unique(prob.centroids_ind.begin(),
                                  prob.centroids_ind.end());
@@ -283,7 +283,7 @@ TEST_CASE("After assign_clusters, each medoid belongs to its own cluster", "[Pha
 
   auto prob = make_dummy_problem(N_data, Nc);
   prob.fill_distance_matrix();
-  init::random(prob);
+  init::random(prob, settings::DEFAULT_RANDOM_SEED);
   prob.assign_clusters();
 
   // Each medoid should map to a distinct cluster label.

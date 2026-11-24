@@ -87,8 +87,8 @@ A distance setting is checked when it is set (`InvalidInput`, the setting left
 as it was) and drops the distance matrix and the clustering, which describe the
 old distances. The distance settings are the ones `cluster()` takes: `variant`
 (`standard`, `ddtw`, `wdtw`, `adtw`, `softdtw`, `msm`, `twe`) and its parameters,
-`band` (the Sakoe-Chiba half-width in steps, `-1` for none), `metric` (`l1` or
-`squared_euclidean`, for Standard DTW and DDTW), `missing_strategy` (`error`,
+`band` (the Sakoe-Chiba half-width in steps, `-1` for none), `metric` (`l1`,
+`euclidean` or `squared_euclidean`, for Standard DTW and DDTW), `missing_strategy` (`error`,
 `zero_cost`, `arow`, `interpolate`) and `mv_mode` (`dependent` or `independent`,
 for multivariate series; MATLAB's `set_distance` and `dtwc.distance.dtw` do not take
 `MvMode`, which `dtwc.cluster` and `DTWClustering` do). Multivariate series hold `ndim` values per time step,
@@ -115,7 +115,10 @@ GPU and on `cpu+gpu`, and on the CPU `pam` up to 5000 series and `clara` above.
 
 The C++ fields `band`, `maxIter`, `N_repetition`, `init_fun`, `clusters_ind` and
 `centroids_ind` stay public, as in v1.0.0, beside the new `mip_settings` and
-`checkpoint`; a direct write is not checked, where the setters are.
+`checkpoint`; a direct write is not checked, where the setters are. `init_fun` is
+a `std::function<void(Problem &, std::uint64_t)>`, `init::random` by default:
+Lloyd's k-medoids calls it with the `Problem` and the seed of the repetition it
+starts, `random_seed() + r`.
 
 ### The distance matrix
 
@@ -309,8 +312,7 @@ value type, NaN for a pair not yet computed. A new file is not filled with NaN:
 its rows from the rows written on hold no distance, and the fill records rows
 once they are on the disk. A direct `get` or `dist_by_ind` of such a row reads
 what the file holds there, 0, where every reader of the library takes it as not
-computed. A file of version 4 (2.0 builds before `matrix_dtype`) is read and
-mapped as float64. The same file is the memory-mapped cache and the checkpoint.
+computed. The same file is the memory-mapped cache and the checkpoint.
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|

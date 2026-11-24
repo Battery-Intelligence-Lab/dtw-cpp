@@ -72,12 +72,11 @@ struct DistanceMatrix::Mapping
   LLFIO_V2_NAMESPACE::mapped_file_handle file;
 #endif
   fs::path path;
-  size_t header_bytes; ///< 48 in a version-4 file, else 64
 };
 
 namespace {
 
-/// A version-5 header (distance_matrix.hpp); a version-4 file has its first 48 bytes.
+/// The file header (distance_matrix.hpp).
 struct Header
 {
   char magic[4];
@@ -89,7 +88,8 @@ struct Header
   std::uint64_t rows_written;
 };
 static_assert(sizeof(Header) == 64 && std::is_trivially_copyable_v<Header>);
-constexpr size_t v4_header_bytes = 48;
+/// The identity fields (magic, version, N, fingerprint): a file shorter than these holds no version to judge.
+constexpr size_t identity_bytes = offsetof(Header, value_bytes);
 constexpr size_t rows_written_at = 56; // the byte offset of rows_written
 
 constexpr char magic[4] = { 'D', 'T', 'W', 'M' };
@@ -113,41 +113,30 @@ std::string shown(const fs::path &path)
   return "'" + std::string(reinterpret_cast<const char *>(utf8.data()), utf8.size()) + "'";
 }
 
-/// Where a file's values start, and its rows written.
-struct Layout
-{
-  size_t header_bytes;
-  size_t rows;
-};
-
 /// The checks every open of a `.dtwm` file makes, before any distance is
-/// exposed. `bytes` holds the file's first min(length, 64) bytes.
-Layout check_header(const char *bytes, std::uint64_t length, size_t n, const DistanceMatrix::fingerprint_type &fingerprint,
+/// exposed. `bytes` holds the file's first min(length, 64) bytes. Returns the rows written.
+size_t check_header(const char *bytes, std::uint64_t length, size_t n, const DistanceMatrix::fingerprint_type &fingerprint,
                     Precision width, const fs::path &path)
 {
   const std::string fix = " Delete or rename it to compute the distances again.";
   const auto too_short = [&] {
     return IOError(shown(path) + " is " + std::to_string(length) + " bytes, too short for a .dtwm file." + fix);
   };
-  if (length < v4_header_bytes) throw too_short();
+  if (length < identity_bytes) throw too_short();
   Header header{};
   std::memcpy(&header, bytes, static_cast<size_t>(std::min<std::uint64_t>(length, sizeof header)));
   if (std::memcmp(header.magic, magic, sizeof magic) != 0)
     throw IOError(shown(path) + " is not a .dtwm distance matrix (no DTWM magic)." + fix);
-  if (header.version != 4 && header.version != version)
+  if (header.version != version)
     throw IOError(shown(path) + " is a .dtwm file of version " + std::to_string(header.version)
-                  + "; this build reads versions 4 and " + std::to_string(version) + "." + fix);
-  // Version 4: binary64 values after 48 bytes, every row written.
-  const bool v4 = header.version == 4;
-  if (!v4 && length < sizeof header) throw too_short();
-  const Layout layout{ v4 ? v4_header_bytes : sizeof header, v4 ? static_cast<size_t>(header.n) : header.rows_written };
-  const std::uint64_t bytes_per_value = v4 ? sizeof(double) : header.value_bytes;
-  const bool fields = v4 || ((bytes_per_value == sizeof(double) || bytes_per_value == sizeof(float)) && header.zero == 0
-                             && header.rows_written <= header.n);
+                  + "; this build reads version " + std::to_string(version) + "." + fix);
+  if (length < sizeof header) throw too_short();
+  const bool fields = (header.value_bytes == sizeof(double) || header.value_bytes == sizeof(float)) && header.zero == 0
+                      && header.rows_written <= header.n;
   // The N bound keeps packed_size exact in 64 bits; a file that large cannot exist.
-  const std::uint64_t payload = length - layout.header_bytes;
-  if (header.n >= (std::uint64_t{ 1 } << 32) || !fields || payload % bytes_per_value != 0
-      || payload / bytes_per_value != packed_size(static_cast<size_t>(header.n)))
+  const std::uint64_t payload = length - sizeof header;
+  if (header.n >= (std::uint64_t{ 1 } << 32) || !fields || payload % header.value_bytes != 0
+      || payload / header.value_bytes != packed_size(static_cast<size_t>(header.n)))
     throw IOError(shown(path) + " is " + std::to_string(length) + " bytes, which is not the size of the "
                   + std::to_string(header.n) + "-series matrix its header declares (truncated or corrupt)."
                   + fix);
@@ -160,13 +149,13 @@ Layout check_header(const char *bytes, std::uint64_t length, size_t n, const Dis
                        "(fingerprint mismatch): its distances are not this Problem's. Use the original "
                        "data, band, variant, missing-data strategy, metric and precision, or "
                        "another path.");
-  const Precision stored = bytes_per_value == sizeof(float) ? Precision::Float32 : Precision::Float64;
+  const Precision stored = header.value_bytes == sizeof(float) ? Precision::Float32 : Precision::Float64;
   if (stored != width)
     throw InvalidInput(shown(path) + " holds " + std::string(name_of(precision_names, stored))
                        + " distances, but this Problem stores " + std::string(name_of(precision_names, width))
                        + " (matrix_dtype): set matrix_dtype " + std::string(name_of(precision_names, stored))
                        + ", or use another path.");
-  return layout;
+  return static_cast<size_t>(header.rows_written);
 }
 
 /// Push a file's bytes to the device. A file renamed into place with its data
@@ -394,7 +383,7 @@ void DistanceMatrix::point_at(std::byte *values) noexcept
 
 size_t DistanceMatrix::row_offset(size_t r) const noexcept
 {
-  return (mapping_ ? mapping_->header_bytes : sizeof(Header)) + packed_size(r) * value_bytes(width_);
+  return sizeof(Header) + packed_size(r) * value_bytes(width_);
 }
 
 void DistanceMatrix::resize(size_t n) { *this = DistanceMatrix(n, width_); }
@@ -461,7 +450,7 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
   auto mapping = std::make_unique<Mapping>();
   mapping->path = path;
   std::byte *base = nullptr;
-  Layout layout{ sizeof(Header), 0 };
+  size_t rows = 0;
   if (exists) {
     mapping->file = checked(llfio::mapped_file_handle::mapped_file(
                               0, {}, path, llfio::file_handle::mode::write, llfio::file_handle::creation::open_existing,
@@ -470,12 +459,12 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
     const auto length = checked(mapping->file.maximum_extent(), "measure", path);
     // A short file may not map at all: judge the length before reading a byte.
     char header[sizeof(Header)]{};
-    if (length >= v4_header_bytes) {
+    if (length >= identity_bytes) {
       base = reinterpret_cast<std::byte *>(mapping->file.address());
       if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
       std::memcpy(header, base, static_cast<size_t>(std::min<std::uint64_t>(length, sizeof header)));
     }
-    layout = check_header(header, length, n, fingerprint, width, path);
+    rows = check_header(header, length, n, fingerprint, width, path);
   } else {
     // llfio makes a new file sparse on NTFS unless told otherwise, and random
     // reads from a filled sparse file measured 1.9x slower.
@@ -507,10 +496,9 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
 
   DistanceMatrix matrix;
   matrix.width_ = width;
-  matrix.point_at(base + layout.header_bytes);
+  matrix.point_at(base + sizeof(Header));
   matrix.n_ = n;
-  matrix.rows_ = layout.rows;
-  mapping->header_bytes = layout.header_bytes;
+  matrix.rows_ = rows;
   matrix.mapping_ = std::move(mapping);
   return matrix;
 #else
@@ -531,11 +519,11 @@ DistanceMatrix DistanceMatrix::read(const fs::path &path, size_t n, const finger
   if (!in) throw IOError("Cannot open " + shown(path) + " for reading.");
   char header[sizeof(Header)]{};
   in.read(header, static_cast<std::streamsize>(std::min<std::uintmax_t>(length, sizeof header)));
-  const Layout layout = check_header(header, length, n, fingerprint, width, path);
+  const size_t rows = check_header(header, length, n, fingerprint, width, path);
 
   DistanceMatrix matrix(n, width);
-  in.seekg(static_cast<std::streamoff>(layout.header_bytes));
-  const auto bytes = static_cast<std::streamsize>(packed_size(layout.rows) * value_bytes(width));
+  in.seekg(static_cast<std::streamoff>(sizeof(Header)));
+  const auto bytes = static_cast<std::streamsize>(packed_size(rows) * value_bytes(width));
   matrix.visit([&](auto *values) { in.read(reinterpret_cast<char *>(values), bytes); });
   if (in.gcount() != bytes) throw IOError("Cannot read the distances in " + shown(path) + ".");
   return matrix;

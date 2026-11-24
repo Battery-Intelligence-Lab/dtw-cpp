@@ -11,7 +11,6 @@
 #include "Problem.hpp"
 #include "base/error.hpp"
 #include "base/parallelisation.hpp"
-#include "types/Range.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -41,7 +40,7 @@ std::vector<index_t> cluster_counts_checked(const Problem &prob, const char *who
   const index_t Nc = prob.n_clusters();
 
   std::vector<index_t> counts(static_cast<std::size_t>(Nc), 0);
-  for (auto i : Range(N)) {
+  for (std::size_t i = 0, n = static_cast<std::size_t>(N); i < n; ++i) {
     const index_t c = prob.clusters_ind[i];
     if (c < 0 || c >= Nc)
       throw InvalidInput(std::string(who) + ": label " + std::to_string(c)
@@ -134,7 +133,7 @@ double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector
 
   // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
   std::vector<double> scatter(Nc, 0.0);
-  for (auto i : Range(prob.size())) {
+  for (std::size_t i = 0, n = static_cast<std::size_t>(prob.size()); i < n; ++i) {
     const index_t ci = prob.clusters_ind[i];
     scatter[ci] += matrix[core::tri_index(i, static_cast<std::size_t>(prob.centroids_ind[ci]))];
   }
@@ -219,7 +218,7 @@ template <typename T>
 double inertia_of(const T *matrix, const Problem &prob)
 {
   double total = 0.0;
-  for (auto i : Range(prob.size())) {
+  for (std::size_t i = 0, n = static_cast<std::size_t>(prob.size()); i < n; ++i) {
     const index_t medoid = prob.centroids_ind[prob.clusters_ind[i]];
     total += matrix[core::tri_index(i, static_cast<std::size_t>(medoid))];
   }

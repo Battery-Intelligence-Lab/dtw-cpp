@@ -241,7 +241,6 @@ private:
 
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
-  void init_with_seed(std::uint64_t seed); // in initialisation.cpp, beside what it seeds
 
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
@@ -267,7 +266,9 @@ public:
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
   CheckpointOptions checkpoint;              /*!< Automatic mid-fill checkpointing (see checkpoint.hpp). */
 
-  std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
+  /// Initialises the medoids of one Lloyd repetition, called with the repetition's seed (random_seed() + r for
+  /// repetition r); init::random by default, init::Kmeanspp starts from k-medoids++.
+  std::function<void(Problem &, std::uint64_t)> init_fun{ init::random };
 
   /// Empty until a clustering writes them (set_result, set_clusters for the
   /// medoids, the algorithms); set_n_clusters sizes neither, and set_data and
@@ -654,7 +655,8 @@ public:
   void writeSilhouettes() { write_silhouettes(); }
 
   // Initialisation of clusters:
-  void init() { init_fun(*this); }
+  /// Runs init_fun with random_seed().
+  void init() { init_fun(*this, random_seed_); }
 
   // Clustering functions:
   /// Cluster the series into n_clusters() by method() (`auto` resolved for this

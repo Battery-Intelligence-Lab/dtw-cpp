@@ -9,8 +9,8 @@ function save_checkpoint(prob, path, metric)
 %   a long distance-matrix build can be resumed later via dtwc.load_checkpoint.
 %
 %   metric is the pointwise metric the stored distances were computed with:
-%   'l1' or 'squared_euclidean' ('sqeuclidean'). It is part of the identity
-%   fingerprint, so a SquaredL2 matrix is not accepted by a later L1 load.
+%   'l1', 'euclidean' or 'squared_euclidean' ('sqeuclidean'). It is part of the
+%   identity fingerprint, so a SquaredL2 matrix is not accepted by a later L1 load.
 %   Omitted, it is the Problem's own metric, as C++ save_checkpoint(prob, path)
 %   and the CLI take it; name it only for a matrix filled outside the Problem.
 %

@@ -233,7 +233,7 @@ function test_dtwclustering_metric_validation_precedes_effects(testCase)
     unknown_error = capture_error(@() unknown.fit(zeros(0, 2)));
     assertEqual(testCase, unknown_error.identifier, 'dtwc:invalidArgument');
     assertEqual(testCase, unknown_error.message, ...
-        'unknown metric ''not_a_metric''. Valid: l1, squared_euclidean.');
+        'unknown metric ''not_a_metric''. Valid: l1, euclidean, squared_euclidean.');
     assertEqual(testCase, dtwc.device(), 'cpu');
 
     bad_variant = dtwc.DTWClustering( ...

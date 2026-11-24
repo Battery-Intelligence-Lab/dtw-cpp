@@ -111,8 +111,8 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         NaN handling: ``"error"``, ``"zero_cost"``, ``"arow"`` or
         ``"interpolate"``.
     metric : str, default="l1"
-        Pointwise cost, ``"l1"`` or ``"squared_euclidean"`` (Standard DTW and
-        DDTW), or ``"precomputed"``: X is a distance matrix.
+        Pointwise cost, ``"l1"``, ``"euclidean"`` or ``"squared_euclidean"``
+        (Standard DTW and DDTW), or ``"precomputed"``: X is a distance matrix.
     batch_size : int, default=-1
         OneBatchPAM's batch size (-1: automatic).
     random_state : int or None, default=None
