@@ -46,7 +46,7 @@ For cluster medoids $$c_i$$ and mean within-cluster scatter $$S_i$$,
 $$\mathrm{DBI} = \frac{1}{k}\sum_i
   \max_{j\ne i}\frac{S_i+S_j}{d(c_i,c_j)}.$$
 
-Requires at least two non-empty clusters (`InvalidInput` when `n_clusters() < 2`, `UndefinedScore` when fewer than two clusters are non-empty). A pair with
+Requires at least two non-empty clusters (`UndefinedScore` otherwise). A pair with
 zero medoid separation is not skipped: its ratio is infinity when the two
 clusters have any scatter and `0` when both have none,
 so the index is infinite when two medoids coincide with spread. Lower finite
@@ -96,7 +96,7 @@ overall medoid:
 
 $$\mathrm{CH} = \frac{B/(k-1)}{W/(N-k)}.$$
 
-It requires $$k>1$$ and $$N>k$$, with $$k$$ the number of non-empty clusters. If the within term $$W$$ is zero, the function
+It requires $$k>1$$ (`UndefinedScore` otherwise) and $$N>k$$ (`InvalidInput`), with $$k$$ the number of non-empty clusters. If the within term $$W$$ is zero, the function
 returns positive infinity.
 
 ## External metrics

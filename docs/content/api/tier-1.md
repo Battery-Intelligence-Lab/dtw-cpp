@@ -221,8 +221,7 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 `score(name)` takes `silhouette` (the mean over the series), `davies_bouldin`,
 `dunn`, `calinski_harabasz` or `inertia`, in any case; another name is
 `InvalidInput`. Where fewer than two clusters are non-empty, `silhouette`,
-`dunn` and `davies_bouldin` raise `UndefinedScore` and `calinski_harabasz` raises
-`InvalidInput`, as `davies_bouldin` does for one cluster. `onebatch`, `clara` and `tadpole` do not
+`dunn`, `davies_bouldin` and `calinski_harabasz` raise `UndefinedScore`. `onebatch`, `clara` and `tadpole` do not
 build the N×N matrix; `score`, `distance_matrix` and `save` fill it the first
 time they need it. Under `matrix_dtype` float32, `distance_matrix` is a NumPy
 `float32` array in Python and `single` in MATLAB; C++ returns doubles.
@@ -370,7 +369,7 @@ type.
 | C++ | Python | MATLAB identifier | raised for |
 |---|---|---|---|
 | `dtwc::InvalidInput` | `dtwcpp.InvalidInput` (a `ValueError`) | `dtwc:invalidArgument` | an argument or input the call cannot take: an unknown name, a value out of range, empty data, a NaN or ±inf a distance does not accept, a matrix or cache made for other data; also a `dtwc::run` whose memory the system refuses, naming its stage, its memory plan and the process's peak |
-| `dtwc::UndefinedScore` | `dtwcpp.UndefinedScore` (an `InvalidInput`) | `dtwc:invalidArgument` | a silhouette, Dunn or Davies–Bouldin score of a labelling with fewer than two non-empty clusters |
+| `dtwc::UndefinedScore` | `dtwcpp.UndefinedScore` (an `InvalidInput`) | `dtwc:invalidArgument` | a silhouette, Dunn, Davies–Bouldin or Calinski–Harabasz score of a labelling with fewer than two non-empty clusters |
 | `dtwc::SolverError` | `dtwcpp.SolverError` (a `RuntimeError`) | `dtwc:solverError` | a solver this build lacks, or a MIP or LR-core run that ends without a proven optimum |
 | `dtwc::DeviceError` | `dtwcpp.DeviceError` (a `RuntimeError`) | `dtwc:deviceError` | a device name, a GPU the build or machine lacks, or a setting the device cannot compute |
 | `dtwc::IOError` | `dtwcpp.IOError` (an `OSError`) | `dtwc:ioError` | a file that cannot be read, parsed or written, or a format this build cannot read |
