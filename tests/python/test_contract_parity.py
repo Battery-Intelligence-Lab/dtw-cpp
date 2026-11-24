@@ -6,7 +6,6 @@
 """
 import inspect
 import re
-import warnings
 
 import pytest
 
@@ -19,17 +18,6 @@ def test_the_diagnostics_return_the_cpp_report_fields():
     assert (set(dtwcpp.test.parallelisation()), set(dtwcpp.test.gpu())) == (
         {"available", "max_threads", "threads_engaged", "pass", "reason"},
         {"available", "backend", "device_name", "validated", "pass", "reason", "hybrid", "hybrid_reason"})
-
-
-def test_problem_cluster_size_is_the_v1_method():
-    """v1.0.0 bound ``cluster_size`` as a method (python/py_main.cpp), so
-    ``prob.cluster_size()`` must keep working, silently, and equal ``n_clusters()``."""
-    prob = dtwcpp.Problem("v1_cluster_size")
-    prob.set_n_clusters(3)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        assert prob.cluster_size() == 3
-    assert prob.n_clusters() == 3
 
 
 # ===========================================================================

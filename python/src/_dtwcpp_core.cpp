@@ -1020,7 +1020,6 @@ NB_MODULE(_dtwcpp_core, m)
     // ---- read accessors ----
     .def_prop_ro("size", &dtwc::Problem::size)
     .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters.")
-    .def("cluster_size", &dtwc::Problem::n_clusters, "Number of clusters: the v1.0.0 spelling of n_clusters().")
     .def("labels", labels_of,
          "Cluster label of each series, an int64 array (reads clusters_ind; parity with\n"
          "Result.labels).")
