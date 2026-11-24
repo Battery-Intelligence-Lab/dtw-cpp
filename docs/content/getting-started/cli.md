@@ -362,9 +362,10 @@ computes where it runs.
 
 `--fallback` makes the device a wish. Each refusal in the paragraph above, and a
 `cpu+gpu` request a build or a streamed run cannot take, then runs on the CPU
-instead of exiting 1: one line on stderr, `[dtwc] gpu requested: <reason>; running on
-cpu (fallback)`, and the run report's configuration row says `device cpu (gpu
-requested; fallback: <reason>)`, so a fallback is never silent. Only what is known
+instead of exiting 1: one line on stderr, `[dtwc] <device> requested: <reason>; running on
+cpu (fallback)` (the device asked for: `gpu`, `gpu:1`, `cpu+gpu`), and the run report's
+configuration row says `device cpu (<device> requested; fallback: <reason>)`, so a
+fallback is never silent. Only what is known
 before a series is read falls back: a failure once the GPU has begun (out of memory,
 a CUDA call that fails) still exits 1. `dtwc_cl --device gpu --fallback ...` is the
 command that uses the GPU where there is one and the CPU where there is none; the

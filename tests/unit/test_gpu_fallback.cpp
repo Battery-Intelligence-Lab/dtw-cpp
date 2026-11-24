@@ -16,6 +16,8 @@
 #include <algorithms/tadpole.hpp>
 #include <cdist.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -94,10 +96,10 @@ std::string flattened(const std::string &text)
   return out;
 }
 
-/// The one line a fallback writes on stderr.
-void check_says_fallback(const std::string &written)
+/// The one line a fallback writes on stderr, naming the device the request asked for.
+void check_says_fallback(const std::string &written, const std::string &requested = "gpu")
 {
-  CHECK_THAT(written, StartsWith("[dtwc] gpu requested: "));
+  CHECK_THAT(written, StartsWith("[dtwc] " + requested + " requested: "));
   CHECK_THAT(written, EndsWith("; running on cpu (fallback)\n"));
   CHECK(std::count(written.begin(), written.end(), '\n') == 1);
 }
@@ -122,6 +124,14 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
     CHECK_THAT(flattened(result.report()), ContainsSubstring(", device cpu (gpu requested; fallback: "));
     CHECK_THAT(flattened(result.report()), ContainsSubstring("--device \"gpu\" --fallback")); // the command that asked
     CHECK_THAT(expected.report(), !ContainsSubstring("gpu requested"));
+
+    // The line and the report's row name the GPU asked for, ordinal included.
+    auto second = gpu_request(Method::PAM, true);
+    second.device_index = 1;
+    const CerrCapture second_cerr;
+    const auto on_second = dtwc::run(second, levels());
+    check_says_fallback(second_cerr.text(), "gpu:1");
+    CHECK_THAT(flattened(on_second.report()), ContainsSubstring(", device cpu (gpu:1 requested; fallback: "));
   }
 
   SECTION("series in memory that a GPU cannot take (float32, two features a time step) run on the CPU from the check")
@@ -150,10 +160,18 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
   {
     auto forced = gpu_request(Method::PAM, true);
     forced.gpu_share = 0.5;
-    const CerrCapture cerr;
-    CHECK_THROWS_AS(dtwc::run(forced, levels()), dtwc::InvalidInput); // on every build, fallback or not
+    {
+      const CerrCapture cerr;
+      CHECK_THROWS_AS(dtwc::run(forced, levels()), dtwc::InvalidInput); // on every build, fallback or not
+      CHECK(cerr.text().empty());                                       // and no fallback is announced
+    }
     forced.device = Device::CPU_GPU;
-    CHECK(dtwc::run(forced, levels()).device() == "cpu");
+    const CerrCapture cerr;
+    const auto result = dtwc::run(forced, levels());
+    CHECK(result.device() == "cpu");
+    // The line and the report's row name the device asked for, which here is the GPU together with the CPU.
+    check_says_fallback(cerr.text(), "cpu+gpu");
+    CHECK_THAT(flattened(result.report()), ContainsSubstring(", device cpu (cpu+gpu requested; fallback: "));
   }
 
   SECTION("a method with no GPU path runs on the CPU too, and the same run without fallback is refused")
@@ -182,6 +200,16 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
     CHECK(prob.fallback());
     CHECK(prob.device() == std::pair{ Device::GPU, 0 });
 
+    {
+      // A forced share is for a fill or a pass these methods have no part in: refused whatever the fallback, before the
+      // fallback says anything.
+      prob.set_gpu_share(0.5);
+      const CerrCapture cerr;
+      CHECK_THROWS_AS(dtwc::algorithms::one_batch_pam(prob, { .n_clusters = 2 }), dtwc::InvalidInput);
+      CHECK_THROWS_AS(dtwc::algorithms::tadpole(prob, 2, 3.0), dtwc::InvalidInput);
+      CHECK(cerr.text().empty());
+      prob.set_gpu_share(-1.0);
+    }
     {
       const CerrCapture cerr;
       const auto onebatch = dtwc::algorithms::one_batch_pam(prob, { .n_clusters = 2 });
@@ -266,9 +294,89 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
     const auto data = levels();
     const dtwc::core::DistanceConfig distance{ .variant = { .variant = dtwc::core::DTWVariant::WDTW } };
     CHECK_THROWS_AS(dtwc::cdist(data, data, distance, Device::GPU), dtwc::DeviceError);
+    {
+      const CerrCapture cerr;
+      const auto matrix = dtwc::cdist(data, data, distance, Device::GPU, 0, dtwc::GpuPrecision::Auto, -1.0, true);
+      check_says_fallback(cerr.text());
+      CHECK(matrix == dtwc::cdist(data, data, distance));
+    }
+
+    // A GPU index below 0 and a band below -1 are malformed whatever the device can do: InvalidInput before the
+    // device is asked, with or without fallback, so a fallback never announces itself and then fails.
     const CerrCapture cerr;
-    const auto matrix = dtwc::cdist(data, data, distance, Device::GPU, 0, dtwc::GpuPrecision::Auto, -1.0, true);
-    check_says_fallback(cerr.text());
-    CHECK(matrix == dtwc::cdist(data, data, distance));
+    auto narrow = distance;
+    narrow.band = -2;
+    for (const bool fallback : { false, true }) {
+      CAPTURE(fallback);
+      CHECK_THROWS_AS(dtwc::cdist(data, data, distance, Device::GPU, -1, dtwc::GpuPrecision::Auto, -1.0, fallback),
+                      dtwc::InvalidInput);
+      CHECK_THROWS_AS(dtwc::cdist(data, data, narrow, Device::GPU, 0, dtwc::GpuPrecision::Auto, -1.0, fallback),
+                      dtwc::InvalidInput);
+    }
+    CHECK(cerr.text().empty());
   }
 }
+
+TEST_CASE("fallback: a checkpoint records the precision of the device that computes",
+          "[device][fallback][checkpoint]")
+{
+  // The request is a GPU run of WDTW, which no GPU takes, so every pair here is the CPU's, in the series' Float64. A
+  // fill's own saves are made inside the fallback, and a save, a load or a bind outside it: all must name that precision,
+  // whichever the GPU request names (an explicit FP32; auto, which CUDA leaves open and Metal makes FP32).
+  for (const auto precision : { dtwc::GpuPrecision::FP32, dtwc::GpuPrecision::Auto }) {
+    CAPTURE(static_cast<int>(precision));
+    const dtwc::test_support::ScratchDirectory scratch("fallback_checkpoint");
+    const auto problem = [precision](Device device, bool fallback) {
+      dtwc::Problem prob("fallback"); // one name: one checkpoint file
+      prob.set_data(levels());
+      prob.set_variant(dtwc::core::DTWVariant::WDTW);
+      prob.set_gpu_precision(precision);
+      prob.set_device(device, 0, fallback);
+      return prob;
+    };
+
+    auto filled = problem(Device::GPU, true);
+    filled.checkpoint.enabled = true;
+    filled.checkpoint.directory = (scratch.path / "autosave").string();
+    filled.checkpoint.save_interval = 2;
+    {
+      const CerrCapture cerr;
+      filled.fill_distance_matrix();
+      check_says_fallback(cerr.text());
+    }
+    REQUIRE(filled.is_distance_matrix_filled());
+    dtwc::save_checkpoint(filled, (scratch.path / "saved").string());
+
+    // Each file is read by the same request, which falls back as it did, and by the CPU Problem whose pairs these are.
+    for (const char *file : { "autosave", "saved" }) {
+      for (const bool gpu_request : { true, false }) {
+        CAPTURE(file, gpu_request);
+        auto reader = problem(gpu_request ? Device::GPU : Device::CPU, gpu_request);
+        REQUIRE(dtwc::load_checkpoint(reader, (scratch.path / file).string()));
+        REQUIRE(reader.is_distance_matrix_filled());
+        CHECK(reader.dist_by_ind(0, 5) == filled.dist_by_ind(0, 5));
+        CHECK(reader.distance_checkpoint_identity() == filled.distance_checkpoint_identity());
+      }
+    }
+  }
+}
+
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+TEST_CASE("fallback: a request a GPU honours is identified as the GPU, and one it cannot as the CPU",
+          "[device][fallback][checkpoint]")
+{
+  // Standard DTW on Float64 series, in FP32: the kernels take it, where a device is here, and no pair is computed.
+  const bool device_here = dtwc::gpu_available();
+  const auto identity = [](Device device, bool fallback) {
+    dtwc::Problem prob("fallback");
+    prob.set_data(levels());
+    prob.set_gpu_precision(dtwc::GpuPrecision::FP32);
+    prob.set_device(device, 0, fallback);
+    return prob.distance_checkpoint_identity();
+  };
+  const auto gpu = identity(Device::GPU, false); // the GPU's FP32
+  const auto cpu = identity(Device::CPU, false); // the series' Float64
+  REQUIRE(gpu != cpu);
+  CHECK(identity(Device::GPU, true) == (device_here ? gpu : cpu));
+}
+#endif

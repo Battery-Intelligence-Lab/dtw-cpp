@@ -213,6 +213,21 @@ void require_gpu_request(std::string_view where, const Problem &prob, std::optio
   require_gpu_device(where, index);
 }
 
+/// The device a fill of `prob` computes on: the one it asks for, except that a Problem given `fallback` whose GPU
+/// request a fill would refuse computes on the CPU (detail::DeviceScope). The cache's identity names the precision of
+/// this device, so a save, a load and a bind outside a fill agree with the saves a fill makes inside its scope.
+Device computing_device(const Problem &prob)
+{
+  const Device device = prob.device().first;
+  if (!uses_gpu(device) || !prob.fallback()) return device;
+  try {
+    require_gpu_request("Problem::distance_checkpoint_identity", prob, std::nullopt);
+  } catch (const GpuRefusal &) {
+    return Device::CPU;
+  }
+  return device;
+}
+
 /// The pair function a Problem binds: core::resolve_dtw_fn's, and under Soft-DTW the divergence of it, which the
 /// clustering uses (core::soft_dtw_divergence), three raw values a pair. `raw`, when given, takes the raw function
 /// under Soft-DTW and is emptied under any other variant.
@@ -311,7 +326,7 @@ DeviceScope::DeviceScope(Problem &prob, std::string_view where, std::optional<Me
   try {
     require_gpu_request(where, prob, method);
   } catch (const GpuRefusal &refusal) {
-    say_fallback(refusal.reason());
+    say_fallback(prob.device_, prob.device_index_, refusal.reason());
     // Not set_device: it would drop the matrix, and the request is the Problem's to keep.
     prob.device_ = Device::CPU;
     prob.device_index_ = 0;
@@ -755,15 +770,17 @@ Problem::distance_checkpoint_identity() const
   // The precision the distances are computed in: the series' on the CPU, the
   // GPU's on a GPU. Not the device: FP64 on a CPU and on a GPU differ by
   // rounding, so either's cache serves the other (and GPU 0's serves GPU 1),
-  // while FP32 distances in an FP64 run are a loss of precision.
+  // while FP32 distances in an FP64 run are a loss of precision. A Problem
+  // given `fallback` is identified as the device a fill computes on.
+  const Device device = computing_device(*this);
   const GpuPrecision gpu = resolve_gpu_precision(gpu_precision_);
-  if (uses_gpu(device_) && gpu == GpuPrecision::Auto)
+  if (uses_gpu(device) && gpu == GpuPrecision::Auto)
     throw InvalidInput(
       "A persistent distance cache (a mapped .dtwm or a checkpoint) records the precision "
       "its distances are computed in, but CUDA precision Auto resolves to FP32 or FP64 on the "
       "GPU a fill meets. Select explicit FP32 or FP64 (set_gpu_precision, --gpu-precision) "
       "before binding or saving the cache.");
-  const core::Precision computed = device_ == Device::CPU ? data_.precision
+  const core::Precision computed = device == Device::CPU ? data_.precision
                                  : gpu == GpuPrecision::FP32 ? core::Precision::Float32
                                                              : core::Precision::Float64;
 
@@ -1033,7 +1050,7 @@ void Problem::SeriesCheck::finish() const
     // The pairs this check guards compute on the CPU whatever the device (dtw_function): with fallback the request the
     // kernels cannot run is said and set aside; a fill is in a DeviceScope, which made the device the CPU's first.
     if (!problem.fallback_) throw;
-    detail::say_fallback(refusal.reason());
+    detail::say_fallback(problem.device_, problem.device_index_, refusal.reason());
   }
 }
 

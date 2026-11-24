@@ -168,11 +168,12 @@ namespace algorithms {
   {
     // A Problem on a GPU, or one with a forced share, asks for work this method has no part in (it computes its
     // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word;
-    // a Problem given `fallback` computes on the CPU, and says so.
-    const dtwc::detail::DeviceScope device_scope(prob, "tadpole", Method::TADPole);
-    if (prob.gpu_share() != -1.0)
+    // a Problem given `fallback` computes on the CPU, and says so. A forced share is refused first, whatever the
+    // fallback; cpu+gpu's goes with its device, as no CPU run splits a share.
+    if (prob.gpu_share() != -1.0 && prob.device().first != Device::CPU_GPU)
       throw InvalidInput(dtwc::detail::share_ignored_message(
         "tadpole", "the distance matrix's fill and FastCLARA's pass", prob.device().first));
+    const dtwc::detail::DeviceScope device_scope(prob, "tadpole", Method::TADPole);
     const index_t N = prob.size();
     const index_t k = n_clusters;
     if (N <= 0) throw InvalidInput("tadpole: Problem has no data points.");

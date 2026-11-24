@@ -341,3 +341,11 @@ class TestFallback:
             dtwcpp.cluster(_series(), 2, device="hpc", fallback=True)
         with pytest.raises(dtwcpp.InvalidInput, match="fallback"):
             dtwcpp.DTWClustering(n_clusters=2, device="hpc", fallback=True).fit(_series())
+
+    def test_a_fallback_that_is_not_a_bool_is_a_type_error_on_every_device(self):
+        # Not a truth value: 0 and "" would pass as False, 1 and "yes" as True, hpc included.
+        for device in ("cpu", "gpu", "hpc"):
+            for value in (0, 1, "", "yes", None):
+                estimator = dtwcpp.DTWClustering(n_clusters=2, device=device, fallback=value)
+                with pytest.raises(TypeError, match="fallback must be a bool"):
+                    estimator.fit(_series())

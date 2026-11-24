@@ -46,6 +46,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -306,6 +307,9 @@ struct RunStage
   std::optional<InputFormat> format; ///< empty: the series are in memory
   std::optional<MemoryPlan> plan;
   std::optional<detail::RunReport> report;
+  /// What the run does once it has passed its checks and its plan, as its series are about to be read: run_with's
+  /// announcement of a fallback, which a run refused in either stage never makes.
+  std::function<void()> planned;
 
   /// Enter stage `name`; the report closes the stage before it, on the plan's threads, and opens `name`'s row.
   void begin(const char *name)
@@ -824,6 +828,7 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
   }
 
   // ---- 3. Load the series into RAM ----
+  if (stage.planned) stage.planned();
   stage.begin("read");
   if (stream_payload) stage.note("none: FastCLARA streams them, inside cluster");
   if (!stream_payload) {
@@ -1183,9 +1188,9 @@ InvalidInput out_of_memory(const RunStage &stage, const Config &config)
 /// error, and throws its own exception on: a report that cannot be made or written is dropped, never the error.
 ///
 /// `asked.fallback` is this function's: execute refuses a GPU request that cannot be honoured, with a GpuRefusal in its
-/// check or plan stage (before a series is read, so `data` is whole), and then the run is made again on the CPU, one
-/// line on stderr and the report's configuration row saying why and Result::device() "cpu". Once the run has computed
-/// anything, a failure is an error and nothing is run again.
+/// check or plan stage (before a series is read, so `data` is whole), and then the run is made again on the CPU: one
+/// line on stderr, said when that run has passed its own check and plan, and the report's configuration row saying why
+/// and Result::device() "cpu". Once the run has computed anything, a failure is an error and nothing is run again.
 Outcome run_with(const Config &asked, std::optional<Data> data, const ExternalSolver &solver)
 {
   Config config = asked; // what execute runs: the request until a refusal, then the CPU's
@@ -1199,6 +1204,8 @@ Outcome run_with(const Config &asked, std::optional<Data> data, const ExternalSo
           stage.report.emplace(asked);
           if (!fallback.empty()) stage.report->fell_back(fallback);
         }
+        if (!fallback.empty()) // said once the run on the CPU has passed its checks and its plan, not before
+          stage.planned = [&] { detail::say_fallback(asked.device, asked.device_index, fallback); };
         stage.begin("check"); // the scratch given back first, the checks then
         const core::ScratchRelease release;
         Outcome outcome = execute(config, data, solver, stage);
@@ -1222,7 +1229,6 @@ Outcome run_with(const Config &asked, std::optional<Data> data, const ExternalSo
         // cpu+gpu's split has no CPU counterpart; a share forced on any other device stays, and the run refuses it as
         // it does on every build, rather than the fallback hiding it.
         if (asked.device == Device::CPU_GPU) config.gpu_share = -1.0;
-        detail::say_fallback(fallback);
         continue;
       }
       if (stage.report && !config.output.empty() && at != "check") {

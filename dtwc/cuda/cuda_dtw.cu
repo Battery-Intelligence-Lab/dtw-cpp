@@ -881,14 +881,11 @@ std::string cuda_device_refusal(int device_id)
 {
   if (!cuda_available()) return detail::no_cuda_device_reason();
   const std::string device = "CUDA device " + std::to_string(device_id);
-  // The runtime's own words for what it cannot do, each call's error consumed as CUDA_CHECK consumes it.
-  cudaError_t err = cudaSetDevice(device_id);
-  if (err != cudaSuccess) {
-    (void)cudaGetLastError();
-    return device + " cannot be selected: " + cudaGetErrorString(err);
-  }
+  // The runtime's own words for what it cannot do, each call's error consumed as CUDA_CHECK consumes it. The attributes
+  // take the ordinal, so a device refused for its ordinal or its compute capability is never made the calling thread's
+  // current one, and one whose context cannot start is given back: a refusal leaves the thread's device as it was.
   int major = 0, minor = 0;
-  err = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device_id);
+  cudaError_t err = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device_id);
   if (err == cudaSuccess) err = cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device_id);
   if (err != cudaSuccess) {
     (void)cudaGetLastError();
@@ -896,9 +893,25 @@ std::string cuda_device_refusal(int device_id)
   }
   if (const std::string too_old = detail::compute_capability_refusal(major, minor, device_id); !too_old.empty())
     return too_old;
+  int previous = 0;
+  const bool had_previous = cudaGetDevice(&previous) == cudaSuccess;
+  if (!had_previous) (void)cudaGetLastError();
+  // Where a refused probe moved the thread's device, it is given back (and where it did not, nothing is selected).
+  const auto give_back = [&] {
+    int current = previous;
+    if (had_previous && cudaGetDevice(&current) == cudaSuccess && current != previous) (void)cudaSetDevice(previous);
+    (void)cudaGetLastError();
+  };
+  err = cudaSetDevice(device_id);
+  if (err != cudaSuccess) {
+    (void)cudaGetLastError();
+    give_back();
+    return device + " cannot be selected: " + cudaGetErrorString(err);
+  }
   err = cudaFree(nullptr); // starts the context a launch needs, which an exclusive-mode device may refuse
   if (err != cudaSuccess) {
     (void)cudaGetLastError();
+    give_back();
     return device + " cannot start a context: " + cudaGetErrorString(err);
   }
   return {};

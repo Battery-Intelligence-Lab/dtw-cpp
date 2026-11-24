@@ -310,16 +310,17 @@ expect_refused(gpu_ordinal_checkpoint "${no_such_gpu}" -i "${INPUT}" --device gp
 if("${err}" MATCHES "--gpu-precision")
     message(FATAL_ERROR "gpu_ordinal_checkpoint: the --gpu-precision rule came before the device\nstderr:\n${err}")
 endif()
-# With --fallback it runs on the CPU: one line on stderr, and the report says the CPU ran it and why.
+# With --fallback it runs on the CPU: one line on stderr naming the device asked for, and the report says the CPU
+# ran it and why.
 expect_ran(gpu_fallback pam --device gpu:99 --fallback)
 string(REGEX MATCHALL "\n" fallback_lines "${err}")
 list(LENGTH fallback_lines fallback_line_count)
-if(NOT "${err}" MATCHES "^\\[dtwc\\] gpu requested: [^\n]+; running on cpu \\(fallback\\)\n$" OR NOT fallback_line_count EQUAL 1)
+if(NOT "${err}" MATCHES "^\\[dtwc\\] gpu:99 requested: [^\n]+; running on cpu \\(fallback\\)\n$" OR NOT fallback_line_count EQUAL 1)
     message(FATAL_ERROR "gpu_fallback: stderr is not the one fallback line\nstderr:\n${err}")
 endif()
 file(READ "${WORK_ROOT}/gpu_fallback/gpu_fallback_report.txt" fallback_report)
 string(REGEX REPLACE "[ \r\n]+" " " fallback_report "${fallback_report}")
-string(FIND "${fallback_report}" ", device cpu (gpu requested; fallback: " fallback_row_at)
+string(FIND "${fallback_report}" ", device cpu (gpu:99 requested; fallback: " fallback_row_at)
 if(fallback_row_at EQUAL -1)
     message(FATAL_ERROR "gpu_fallback: its report's configuration row does not say the CPU ran it and why:\n${fallback_report}")
 endif()

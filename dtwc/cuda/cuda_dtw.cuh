@@ -68,7 +68,8 @@ std::string cuda_device_info(int device_id = 0);
 /// Why CUDA device @p device_id cannot run the kernels on this machine, "" where it can: no usable GPU, an ordinal past
 /// the last (the runtime's own words, "invalid device ordinal"), a compute capability below 8.0, or a context the device
 /// refuses (an exclusive-mode GPU another process holds). The backend's own query, which a run makes before it reads a
-/// series or allocates a byte; it makes @p device_id the calling thread's current device, as every fill does.
+/// series or allocates a byte. A device it finds usable becomes the calling thread's current device, as every fill makes
+/// it; a refusal leaves the thread's device as it was.
 std::string cuda_device_refusal(int device_id);
 
 /// Fill @p out with the DTW distance of every pair of @p series on the GPU.

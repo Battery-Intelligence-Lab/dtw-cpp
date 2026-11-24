@@ -166,9 +166,10 @@ GpuRefusal as_it_goes_refusal(std::string_view where, std::string_view method, D
                     reason);
 }
 
-void say_fallback(std::string_view reason)
+void say_fallback(Device requested, int index, std::string_view reason)
 {
-  std::cerr << "[dtwc] gpu requested: " + std::string(reason) + "; running on cpu (fallback)\n";
+  std::cerr << "[dtwc] " + format_device({ requested, index }) + " requested: " + std::string(reason)
+                 + "; running on cpu (fallback)\n";
 }
 
 std::string share_ignored_message(std::string_view where, std::string_view splits, Device device)

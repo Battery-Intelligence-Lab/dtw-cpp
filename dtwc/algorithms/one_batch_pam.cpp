@@ -299,11 +299,12 @@ core::ClusteringResult one_batch_pam(Problem &prob,
 {
   // A Problem on a GPU, or one with a forced share, asks for work this method has no part in (it computes its
   // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word;
-  // a Problem given `fallback` computes on the CPU, and says so.
-  const dtwc::detail::DeviceScope device_scope(prob, "one_batch_pam", Method::OneBatch);
-  if (prob.gpu_share() != -1.0)
+  // a Problem given `fallback` computes on the CPU, and says so. A forced share is refused first, whatever the
+  // fallback; cpu+gpu's goes with its device, as no CPU run splits a share.
+  if (prob.gpu_share() != -1.0 && prob.device().first != Device::CPU_GPU)
     throw InvalidInput(dtwc::detail::share_ignored_message(
       "one_batch_pam", "the distance matrix's fill and FastCLARA's pass", prob.device().first));
+  const dtwc::detail::DeviceScope device_scope(prob, "one_batch_pam", Method::OneBatch);
   const std::size_t n = prob.size();
   validate_options(n, options);
   const index_t k = options.n_clusters;
