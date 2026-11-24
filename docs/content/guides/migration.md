@@ -39,8 +39,9 @@ with a warning. What needs attention is the behaviour listed further down.
 - Including `dtwc.hpp` under `-ffast-math` stops the build: NaN marks missing
   values, which `-ffinite-math-only` would let the compiler ignore. Add
   `-fno-finite-math-only` after `-ffast-math`.
-- `settings.hpp`, `timing.hpp` and `parallelisation.hpp` moved to `dtwc/base/`;
-  the old include paths still work and print a message at compile time.
+- `settings.hpp`, `timing.hpp` and `parallelisation.hpp` moved to `dtwc/base/`
+  (`#include "base/settings.hpp"`); the old include paths are gone. `dtwc.hpp`
+  includes all three.
 
 ## C++ names
 
