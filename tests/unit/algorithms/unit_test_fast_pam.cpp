@@ -167,11 +167,9 @@ TEST_CASE("FastPAM cost <= Lloyd cost", "[fast_pam][quality]")
   constexpr int N = 15;
   constexpr int k = 3;
 
-  dtwc::randGenerator.seed(42);
   Problem prob_fp = make_synthetic_problem(N);
   double fp_cost = fast_pam(prob_fp, k).total_cost;
 
-  dtwc::randGenerator.seed(42);
   double ll_cost = lloyd_cost(N, k);
 
   // FastPAM should find an equal or better (lower) cost than Lloyd.

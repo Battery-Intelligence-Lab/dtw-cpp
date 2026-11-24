@@ -40,7 +40,7 @@ dtwc::Problem capped_lloyd_problem(const std::filesystem::path &output)
   problem.set_max_iter(100);
   problem.set_n_repetitions(1);
   problem.set_output_folder(output);
-  problem.init_fun = [](dtwc::Problem &candidate) {
+  problem.init_fun = [](dtwc::Problem &candidate, std::uint64_t) {
     std::vector<dtwc::index_t> initial_medoids{ 0, 8 };
     candidate.set_clusters(initial_medoids);
   };

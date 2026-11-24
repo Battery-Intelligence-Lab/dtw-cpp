@@ -1674,7 +1674,7 @@ void Problem::cluster_by_kmedoids_lloyd()
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
     if (verbose_) std::cout << "Medoid initialisation is started.\n";
     // Unsigned: a seed near 2^64 wraps to another valid seed.
-    init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
+    init_fun(*this, random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     if (verbose_)
       std::cout << "Medoid initialisation is finished. "
@@ -1683,7 +1683,7 @@ void Problem::cluster_by_kmedoids_lloyd()
 
     // A caller's init_fun may leave the medoids unset; it is then called a second time.
     if (centroids_ind.empty())
-      init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
+      init_fun(*this, random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     auto oldmedoids = centroids_ind;
     bool converged = false;

@@ -18,7 +18,6 @@
 #endif
 
 #include "base/settings.hpp"
-#include "base/random_engine.hpp" //!< dtwc::randGenerator, split out of settings.hpp
 #include "api.hpp"
 #include "fileOperations.hpp"
 #include "Problem.hpp"

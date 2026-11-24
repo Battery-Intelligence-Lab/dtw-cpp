@@ -181,7 +181,7 @@ TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
   }
 }
 
-TEST_CASE("Tier-1 C++ PAM uses the shared local seed without touching legacy RNG",
+TEST_CASE("Tier-1 C++ PAM uses the shared local seed",
           "[api][tier1][seed]")
 {
   REQUIRE(dtwc::settings::DEFAULT_RANDOM_SEED == 42);
@@ -202,42 +202,12 @@ TEST_CASE("Tier-1 C++ PAM uses the shared local seed without touching legacy RNG
   CHECK(final_42.medoid_indices == std::vector<dtwc::index_t>{6, 2, 5});
   CHECK(final_42.total_cost == 24.0);
 
-  // Tier-1 owns an invocation-local engine.  Its result is the seed-42 oracle,
-  // and the call must neither consume nor reseed mutable Tier-2 randGenerator.
-  const auto legacy_rng_original = dtwc::randGenerator;
-  dtwc::randGenerator.seed(8675309); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
-  const auto legacy_rng_before = dtwc::randGenerator;
+  // Tier-1 PAM runs from the default seed: its result is the seed-42 oracle.
   const auto result = dtwc::cluster(
     dtwc::load(seed_sensitive_series()), 3, "pam", -1, "cpu", 100);
   CHECK(result.medoids() == final_42.medoid_indices);
   CHECK(result.labels() == final_42.labels);
   CHECK(result.cost() == final_42.total_cost);
-  CHECK(dtwc::randGenerator == legacy_rng_before);
-  dtwc::randGenerator = legacy_rng_original;
-}
-
-TEST_CASE("Tier-1 C++ Lloyd is invocation-local and independent of legacy RNG",
-          "[api][tier1][seed][lloyd]")
-{
-  const auto legacy_rng_original = dtwc::randGenerator;
-
-  dtwc::randGenerator.seed(17); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
-  const auto legacy_rng_before_first = dtwc::randGenerator;
-  const auto first = dtwc::cluster(
-    dtwc::load(seed_sensitive_series(), 0, 0, 0, "lloyd_first"),
-    3, "kmedoids", -1, "cpu", 100);
-  CHECK(dtwc::randGenerator == legacy_rng_before_first);
-
-  dtwc::randGenerator.seed(8675309); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
-  const auto legacy_rng_before_second = dtwc::randGenerator;
-  const auto second = dtwc::cluster(
-    dtwc::load(seed_sensitive_series(), 0, 0, 0, "lloyd_second"),
-    3, "kmedoids", -1, "cpu", 100);
-  CHECK(dtwc::randGenerator == legacy_rng_before_second);
-  CHECK(canonicalise(first) == canonicalise(second));
-  CHECK(first.cost() == second.cost());
-
-  dtwc::randGenerator = legacy_rng_original;
 }
 
 TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
@@ -251,7 +221,7 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
   problem.set_n_repetitions(2);
 
   int repetition = 0;
-  problem.init_fun = [&repetition](dtwc::Problem &current) {
+  problem.init_fun = [&repetition](dtwc::Problem &current, std::uint64_t) {
     std::vector<dtwc::index_t> medoids = repetition++ == 0
       ? std::vector<dtwc::index_t>{0, 1, 7}
       : std::vector<dtwc::index_t>{0, 1, 2};
@@ -270,22 +240,14 @@ TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers
 {
   REQUIRE(dtwc::Problem{}.random_seed() == dtwc::settings::DEFAULT_RANDOM_SEED);
 
-  // Lloyd's restarts initialise by these portable schedules; the one-argument
-  // forms run them from one draw of the legacy engine. Oracle: the 2.0 seeded
-  // twins at 254ecd3b fed std::mt19937(29)'s first value gave {4, 1, 0}, {6, 1, 5}.
-  const auto legacy_rng_original = dtwc::randGenerator;
+  // Lloyd's restarts initialise by these portable schedules. Oracle: the seed 3709820885
+  // (the first value of std::mt19937(29)) picks {4, 1, 0} at random and {6, 1, 5} by k-medoids++.
   auto problem = seed_sensitive_problem();
   problem.set_n_clusters(3);
-  dtwc::randGenerator.seed(29); // NOLINT(cert-msc51-cpp) fixed seed: the oracle's engine state
-  dtwc::init::random(problem);
+  dtwc::init::random(problem, 3709820885);
   CHECK(problem.medoids() == std::vector<dtwc::index_t>{4, 1, 0});
-  dtwc::randGenerator.seed(29); // NOLINT(cert-msc51-cpp)
-  dtwc::init::Kmeanspp(problem);
+  dtwc::init::Kmeanspp(problem, 3709820885);
   CHECK(problem.medoids() == std::vector<dtwc::index_t>{6, 1, 5});
-  std::mt19937 after_one_draw(29); // NOLINT(cert-msc51-cpp)
-  after_one_draw.discard(1);
-  CHECK(dtwc::randGenerator == after_one_draw);
-  dtwc::randGenerator = legacy_rng_original;
 
   auto no_restarts = seed_sensitive_problem();
   no_restarts.set_n_clusters(3);
@@ -303,13 +265,9 @@ TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers
     return std::pair{ run.find_total_cost(), run.medoids() };
   };
   constexpr auto max_seed = std::numeric_limits<std::uint64_t>::max();
-  dtwc::randGenerator.seed(271828); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Lloyd never touches this engine
-  const auto legacy_rng_before = dtwc::randGenerator;
   const auto last = lloyd(max_seed, 1);
   const auto wrapped = lloyd(0, 1);
   const auto both = lloyd(max_seed, 2);
-  CHECK(dtwc::randGenerator == legacy_rng_before); // Lloyd seeds init::random itself
-  dtwc::randGenerator = legacy_rng_original;
   CHECK((both == last || both == wrapped));
   CHECK(both.first == std::min(last.first, wrapped.first));
 }

@@ -54,7 +54,8 @@ with a warning. What needs attention is the behaviour listed further down.
 | `cluster_by_MIP()`, `cluster_by_kMedoidsPAM()` | `cluster_by_mip()`, `cluster_by_kmedoids_lloyd()` (Lloyd's k-medoids, as before) |
 | `set_clusters(std::vector<int>&)` | `set_clusters(const std::vector<index_t>&)` |
 | public fields `method`, `output_folder`, `name`, `data` | `method()` / `set_method`, `output_folder()` / `set_output_folder`, `name()` / `set_name`, `data()` / `set_data` |
-| public fields `maxIter`, `N_repetition`, `band`, `init_fun`, `clusters_ind`, `centroids_ind` | still public (the last two now hold `index_t`); also `set_max_iter`, `set_n_repetitions`, `set_band`, which check their value |
+| public fields `maxIter`, `N_repetition`, `band`, `clusters_ind`, `centroids_ind` | still public (the last two now hold `index_t`); also `set_max_iter`, `set_n_repetitions`, `set_band`, which check their value |
+| `init::random(prob)`, `init::Kmeanspp(prob)`, and `Problem::init_fun`, a `std::function<void(Problem &)>` | `init::random(prob, seed)`, `init::Kmeanspp(prob, seed)`; `init_fun` is a `std::function<void(Problem &, std::uint64_t)>` that Lloyd's k-medoids calls with `random_seed() + r` for repetition r (`prob.init_fun = init::Kmeanspp;` still works), and `init()` seeds from `random_seed()`. An initialiser that takes only the `Problem` needs the second parameter |
 | `Problem::cluster()` returning `void` | returns the `core::ClusteringResult` (labels, medoids, cost, iterations, converged) |
 | `distMat`, `distMat_t` (Armadillo) | `distance_matrix()`, a `core::DistanceMatrix` |
 | `resize()` | none: `set_n_clusters` no longer sizes `clusters_ind` and `centroids_ind`, which stay empty until a clustering writes them |
@@ -64,7 +65,7 @@ with a warning. What needs attention is the behaviour listed further down.
 | the `dtwc::solver` MIP helpers that `dtwc.hpp` reached (`Element`, `Triplet`, `RowMajor`, `ColumnMajor`, `isAround`, `isFractional`, ...), `dtwc/types/element_types.hpp`, `types_util.hpp` | none |
 | `settings::root_folder`, `dtwc_folder`, `resultsPath`, `dataPath`, `dtwc_dataPath`, `DTWC_ROOT_FOLDER`, `CURRENT_ROOT_FOLDER` | none: pass paths explicitly; a `Problem`'s output folder is `./results/`, relative to the working directory |
 | `dtwc::Range`, `dtwc::Index`, `settings::isDebug` | none: write the loop (`for (std::size_t i = 0; i < n; ++i)`) |
-| `dtwc::randGenerator`, in `settings.hpp` | the same engine, in `base/random_engine.hpp`, which `dtwc.hpp` includes: one engine per program (v1.0.0 had a `static` copy in each translation unit) |
+| `dtwc::randGenerator`, in `settings.hpp` | none: every function that draws takes its seed |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |
 | `dtwBanded`, `dtwFull`, `dtwFull_L` | the same names; the scalar type defaults to `double` (v1.0.0's `dtwBanded` defaulted to `float`), with new trailing defaulted parameters and span overloads |
 | `run(task, n, numMaxParallelWorkers = 32)` | the same name; the default is now `0`, every OpenMP thread, and a positive limit is applied (v1.0.0 used every OpenMP thread) |
@@ -73,9 +74,9 @@ Counts of series and clusters, labels, medoids and indices are `index_t`
 (`std::int64_t`) where v1.0.0 used `int`: `size()`, `n_clusters()`,
 `clusters_ind`, `centroids_ind`, `centroid_of`, `Data::size()`,
 `DataLoader::n_data`. `Method::Kmedoids`, `Method::MIP`, `Solver::Gurobi`,
-`Solver::HiGHS`, `init::random`, `init::Kmeanspp`, `scores::silhouette`,
-`MIP_clustering_byGurobi`, `MIP_clustering_byHiGHS` and `Clock` keep their names
-and signatures. The rest of 2.0's C++ surface is new;
+`Solver::HiGHS`, `scores::silhouette`, `MIP_clustering_byGurobi`,
+`MIP_clustering_byHiGHS` and `Clock` keep their names and signatures. The rest of
+2.0's C++ surface is new;
 the [Tier 1](../../api/tier-1/) and [Tier 2](../../api/tier-2/) pages describe it.
 
 ## dtwc_cl
@@ -207,10 +208,9 @@ lengths under a band, and Lloyd k-medoids runs. These change too:
 - **`dtwc_cl` with no `--method`** runs FastPAM from seed 42 where v1.0.0 ran
   Lloyd's k-medoids, so it can return other medoids. `--method kmedoids` runs
   Lloyd's, with the seeding and the tie rule above.
-- **`init::random(prob)` and `init::Kmeanspp(prob)`** pick other medoids than
-  v1.0.0 did for the same `randGenerator` state: each takes one draw from it as
-  the seed of a sampler that gives the same picks on every platform, and neither
-  picks a medoid twice.
+- **`init::random` and `init::Kmeanspp`** pick other medoids than v1.0.0 did:
+  each takes a seed (v1.0.0 drew from `randGenerator`) for a sampler that gives
+  the same picks on every platform, and neither picks a medoid twice.
 - **`Method::MIP`** solves the full model with the selected solver at every N,
   as v1.0.0 did; with the start and the gap above, a run that stops at the gap
   can return another clustering within it.

@@ -115,7 +115,10 @@ GPU and on `cpu+gpu`, and on the CPU `pam` up to 5000 series and `clara` above.
 
 The C++ fields `band`, `maxIter`, `N_repetition`, `init_fun`, `clusters_ind` and
 `centroids_ind` stay public, as in v1.0.0, beside the new `mip_settings` and
-`checkpoint`; a direct write is not checked, where the setters are.
+`checkpoint`; a direct write is not checked, where the setters are. `init_fun` is
+a `std::function<void(Problem &, std::uint64_t)>`, `init::random` by default:
+Lloyd's k-medoids calls it with the `Problem` and the seed of the repetition it
+starts, `random_seed() + r`.
 
 ### The distance matrix
 

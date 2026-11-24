@@ -110,28 +110,12 @@ TEST_CASE("MIPSettings: struct has correct defaults", "[mip]")
   REQUIRE(s.verbose_solver == false);
 }
 
-TEST_CASE("The MIP warm start (seeded FastPAM) ignores the legacy RNG",
+TEST_CASE("The MIP warm start (seeded FastPAM) runs from the default seed, and another seed overrides it",
           "[mip][seed][warm-start]")
 {
-  const auto legacy_rng_original = dtwc::randGenerator;
-
-  dtwc::randGenerator.seed(17);
-  const auto legacy_rng_before_first = dtwc::randGenerator;
   auto first_problem = make_seed_sensitive_problem();
   const auto first = dtwc::fast_pam(
     first_problem, 3, dtwc::settings::DEFAULT_MAX_ITER, dtwc::settings::DEFAULT_RANDOM_SEED);
-  CHECK(dtwc::randGenerator == legacy_rng_before_first);
-
-  dtwc::randGenerator.seed(8675309);
-  const auto legacy_rng_before_second = dtwc::randGenerator;
-  auto second_problem = make_seed_sensitive_problem();
-  const auto second = dtwc::fast_pam(
-    second_problem, 3, dtwc::settings::DEFAULT_MAX_ITER, dtwc::settings::DEFAULT_RANDOM_SEED);
-  CHECK(dtwc::randGenerator == legacy_rng_before_second);
-
-  CHECK(first.medoid_indices == second.medoid_indices);
-  CHECK(first.labels == second.labels);
-  CHECK(first.total_cost == second.total_cost);
   CHECK(first.medoid_indices == std::vector<dtwc::index_t>{6, 2, 5});
   CHECK(first.total_cost == 24.0);
 
@@ -140,8 +124,6 @@ TEST_CASE("The MIP warm start (seeded FastPAM) ignores the legacy RNG",
     override_problem, 3, dtwc::settings::DEFAULT_MAX_ITER, 43);
   CHECK(override_result.medoid_indices == std::vector<dtwc::index_t>{6, 4, 1});
   CHECK(override_result.total_cost == 20.0);
-
-  dtwc::randGenerator = legacy_rng_original;
 }
 
 TEST_CASE("decode_assignment reads both solver matrix layouts", "[mip][decode]")
@@ -239,9 +221,6 @@ TEST_CASE("Unavailable direct HiGHS leaves caller clustering state unchanged",
 TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
 {
   require_highs_solver();
-  const auto legacy_rng_original = dtwc::randGenerator;
-  dtwc::randGenerator.seed(314159);
-  const auto legacy_rng_before = dtwc::randGenerator;
   auto prob = make_small_problem(8, 20);
   prob.set_n_clusters(2);
   prob.mip_settings.warm_start = true;
@@ -252,8 +231,6 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
   prob.centroids_ind = {0, 7};
   prob.clusters_ind = {0, 0, 0, 0, 1, 1, 1, 1};
   prob.cluster();
-  CHECK(dtwc::randGenerator == legacy_rng_before);
-  dtwc::randGenerator = legacy_rng_original;
 
   require_valid_exact_clustering(prob, 2);
 }
