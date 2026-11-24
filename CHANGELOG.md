@@ -47,7 +47,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 ## Added
 
 - The Python package `dtwcpp` and the MATLAB package `+dtwc` (v1.0.0 published neither); `dtwc_cl` archives and wheels
-  for Linux and Windows on x86-64-v3 (AVX2, FMA) and macOS 13.3+ on arm64, and wheels for Linux arm64.
+  for Linux and Windows on x86-64-v3 (AVX2, FMA) and macOS 13.3+ on arm64, and wheels for Linux arm64. A wheel for
+  Python 3.12 or newer is stable-ABI (`cp312-abi3`): one per platform serves every later Python.
 - One four-step API in C++, Python and MATLAB, `device()`, `load()`, `cluster()` and a `Result` (labels, medoids, cost,
   `score`, `save`, `distance_matrix`; `plot` in Python and MATLAB), on the code `dtwc_cl` runs, plus a unified
   CasADi-style workflow (`dtwc::make_settings` / `dtwc::settings::make` in C++, `dtwcpp.settings` in Python,
@@ -107,7 +108,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   (v1.0.0's `--repeat`) restarts FastPAM too.
 - DTW barycenters (`dtw_barycenter`: SSG, DBA, Soft-DTW) and barycenter k-means (`barycenter_kmeans`).
 - Scores: Davies–Bouldin, Dunn, inertia and Calinski–Harabasz beside the silhouette (`Result::score(name)`), and the
-  adjusted Rand index and normalised mutual information of two labellings.
+  adjusted Rand index and normalised mutual information of two labellings. Below two non-empty clusters, the
+  silhouette, Dunn, Davies–Bouldin and Calinski–Harabasz raise `UndefinedScore`.
 - GPUs: CUDA (compute capability 8.0 or newer, `-DDTWC_ENABLE_CUDA=ON`) and Metal (Apple silicon, built by default on
   macOS) fill the matrix of Standard DTW on univariate series and FastCLARA's samples (`--device gpu`); series that a
   `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) are read where they lie on CUDA and

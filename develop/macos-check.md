@@ -133,14 +133,16 @@ Covered by steps 2 and 4 if they pass; look here first if they fail:
   libomp, which is keg-only):
 
   ```bash
-  rm -rf .venv-mac && uv venv .venv-mac
+  rm -rf .venv-mac && uv venv .venv-mac --python 3.13
   OpenMP_ROOT="$(brew --prefix libomp)" uv pip install --python .venv-mac/bin/python . numpy scipy h5py pyarrow \
     scikit-learn matplotlib pandas pytest
+  .venv-mac/bin/python -c "import dtwcpp, pathlib; print(pathlib.Path(dtwcpp._dtwcpp_core.__file__).name)"
   DTWC_CL_PATH="$PWD/build/bin/dtwc_cl" .venv-mac/bin/python -m pytest tests/python tests/conformance -q -rs
   ```
 
-  774 passed and 19 skipped on Windows; another split is fine where `-rs` shows, for each skip, a reason that holds
-  here.
+  The module's file name is `_dtwcpp_core.abi3.so`: on Python 3.12 or newer the wheel is stable-ABI, which has been
+  built and tested only on Windows so far. pytest: 777 passed and 19 skipped on Windows; another split is fine where
+  `-rs` shows, for each skip, a reason that holds here.
 
 ## 7. Record the outcome
 
@@ -148,5 +150,6 @@ If every step passes: commit the step-3 test case and the removal of this file, 
 (`git add tests/unit/test_metal_correctness.cpp && git rm develop/macos-check.md`), as
 `test(metal): a pair whose length gap exceeds the band gets no path on every Metal kernel`, noting in the commit body
 what ran (the `[metal]` counts with the new case, the step-4 comparison). If something fails: fix it in its own
-commit with the failing output in the body, rerun the steps, and only then make the commit above. Push with
-`git push origin HEAD:v2.0-fast`, a fast-forward.
+commit with the failing output in the body, rerun the steps, and only then make the commit above. The branch may
+have moved while the steps ran: `git pull --rebase origin v2.0-fast` (rerun step 2 if it brought commits), then push
+with `git push origin HEAD:v2.0-fast`, a fast-forward.
