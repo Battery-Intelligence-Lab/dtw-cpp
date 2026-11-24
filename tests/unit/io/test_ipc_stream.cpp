@@ -644,7 +644,12 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
     return config;
   };
   const dtwc::io::IpcFile lz4(fixture("clara_256_lz4.arrow"));
-  // Refused at the plan, before any device is used.
+  if (!dtwc::gpu_available()) { // the run asks for its device first: the backend's refusal, never a plan's, a view's or the stream's
+    CHECK_THROWS_MATCHES(dtwc::run(on_gpu("clara_256_lz4.arrow", dtwc::Method::PAM)), dtwc::DeviceError,
+                         MessageMatches(!ContainsSubstring("view")));
+    return;
+  }
+  // Refused at the plan, before a series is read.
   dtwc::Config pam = on_gpu("clara_256_lz4.arrow", dtwc::Method::PAM);
   pam.ram_limit = 16000;
   CHECK_THROWS_MATCHES(dtwc::run(pam), dtwc::InvalidInput,
@@ -694,11 +699,6 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
                                          "read its values as float32 (--dtype float32) with --method clara, whose copy "
                                          "FastCLARA reads a record batch at a time.")));
 #  endif
-  if (!dtwc::gpu_available()) { // the backend's refusal, never a view's or the stream's
-    CHECK_THROWS_MATCHES(dtwc::run(on_gpu("clara_256_lz4.arrow", dtwc::Method::PAM)), dtwc::DeviceError,
-                         MessageMatches(!ContainsSubstring("view")));
-    return;
-  }
   for (const auto method : { dtwc::Method::PAM, dtwc::Method::CLARA }) {
     const auto twin = dtwc::run(on_gpu("clara_256.csv", method));
     for (const char *file : { "clara_256.arrow", "clara_256_lz4.arrow" }) {

@@ -95,12 +95,14 @@ bool float_exact(const std::vector<double> &matrix)
 }
 
 /// Without HiGHS, `mip` (whose default backend it is) must raise SolverError, not
-/// solve some other way, on either device and before a GPU is looked for. True
-/// once that refusal has been asserted, so the caller skips the checks that need
-/// a result; false on a build with HiGHS.
+/// solve some other way, on either device; a GPU run asks for its device first, so
+/// where none is present that is the refusal (the caller's check, not this one's).
+/// True once the SolverError has been asserted, so the caller skips the checks that
+/// need a result; false on a build with HiGHS, and for a GPU that is not there.
 bool mip_refused_without_highs(Method method, Device device = Device::CPU)
 {
   if (method != Method::MIP || dtwc::highs_solver_available()) return false;
+  if (uses_gpu(device) && !dtwc::gpu_available()) return false;
   CHECK_THROWS_MATCHES(dtwc::run(config_for(method, device), levels()), dtwc::SolverError,
                        MessageMatches(ContainsSubstring("HiGHS solver is unavailable")));
   return true;

@@ -124,6 +124,28 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
     CHECK_THAT(expected.report(), !ContainsSubstring("gpu requested"));
   }
 
+  SECTION("series in memory that a GPU cannot take (float32, two features a time step) run on the CPU from the check")
+  {
+    // The kernels take Standard DTW, so only the series refuse; the run knows them before it plans or reads anything.
+    std::vector<std::vector<double>> pairs;
+    std::vector<std::string> names;
+    for (const double level : { 0.1, 0.3, 0.5, 10.1, 10.3, 10.5 }) {
+      pairs.emplace_back(6, level); // three time steps of two features
+      names.push_back(std::to_string(names.size()));
+    }
+    const dtwc::Data two_features(std::move(pairs), std::move(names), 2);
+    const dtwc::Data single = dtwc::detail::owned_copy(levels(), dtwc::core::Precision::Float32);
+    for (const dtwc::Data *series : { &single, &two_features }) {
+      auto config = gpu_request(Method::PAM, false);
+      config.variant.variant = dtwc::core::DTWVariant::Standard;
+      CHECK_THROWS_AS(dtwc::run(config, *series), dtwc::DeviceError);
+      config.fallback = true;
+      const CerrCapture cerr;
+      CHECK(dtwc::run(config, *series).device() == "cpu");
+      check_says_fallback(cerr.text());
+    }
+  }
+
   SECTION("a forced share: refused on a device that would ignore it, dropped where cpu+gpu's split has no CPU twin")
   {
     auto forced = gpu_request(Method::PAM, true);
@@ -211,19 +233,31 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
   }
 
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-  SECTION("a request the GPU can honour is no fallback: it computes there, and says nothing")
+  SECTION("a GPU build: a request the GPU can honour computes there and says nothing, and with no device it is a fallback")
   {
-    if (!dtwc::gpu_available()) SKIP("no GPU device");
+    const bool device_here = dtwc::gpu_available();
     auto config = gpu_request(Method::PAM, true);
     config.variant.variant = dtwc::core::DTWVariant::Standard;
-    const CerrCapture cerr;
-    CHECK(dtwc::run(config, levels()).device() == "gpu");
-    dtwc::Problem prob("gpu");
-    prob.set_data(levels());
-    prob.set_device(Device::GPU, 0, true);
-    prob.fill_distance_matrix();
-    CHECK(prob.is_distance_matrix_filled());
-    CHECK(cerr.text().empty());
+    {
+      const CerrCapture cerr;
+      CHECK(dtwc::run(config, levels()).device() == (device_here ? "gpu" : "cpu"));
+      if (device_here)
+        CHECK(cerr.text().empty());
+      else
+        check_says_fallback(cerr.text());
+    }
+    {
+      const CerrCapture cerr;
+      dtwc::Problem prob("gpu");
+      prob.set_data(levels());
+      prob.set_device(Device::GPU, 0, true);
+      prob.fill_distance_matrix();
+      CHECK(prob.is_distance_matrix_filled());
+      if (device_here)
+        CHECK(cerr.text().empty());
+      else
+        check_says_fallback(cerr.text());
+    }
   }
 #endif
 

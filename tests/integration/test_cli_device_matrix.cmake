@@ -258,9 +258,15 @@ else()
     else()
         expect_refused(hybrid_forced "GPU was detected" -i "${INPUT}" --device cpu+gpu --gpu-share 0.5 --method pam)
     endif()
-    # A compressed file beyond --ram-limit streams; a streamed batch is assigned on one device.
+    # A compressed file beyond --ram-limit streams; a streamed batch is assigned on one device. The run asks for its
+    # device before it plans, so where there is none that is the refusal.
     set(ENV{OMP_NUM_THREADS} 4)
-    expect_refused(hybrid_stream "${hybrid}the series are streamed" -i "${STREAM_INPUT}" --device cpu+gpu
+    if(device STREQUAL "present")
+        set(streamed_needle "${hybrid}the series are streamed")
+    else()
+        set(streamed_needle "GPU was detected")
+    endif()
+    expect_refused(hybrid_stream "${streamed_needle}" -i "${STREAM_INPUT}" --device cpu+gpu
                    --method clara --sample-size 8 --n-samples 2 --ram-limit 300000)
     unset(ENV{OMP_NUM_THREADS})
     if(device STREQUAL "present")
