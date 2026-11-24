@@ -232,13 +232,15 @@ dtwc::core::DistanceConfig distance_config(const std::string &variant, int band,
 
 /// _run's body: dtwc::run of `config`, the caller's copied, on `data` (series in memory), else on config.input, with
 /// the GIL released for the whole run. The reader's options and the series' dtype go on the copy (run refuses a
-/// reader option beside series in memory, and converts float64 ones to a float32 dtype); `output` is cleared, so the
-/// run writes no files (Config::output defaults to "./results"). The run is named config.name, else as dtwc_cl names
-/// it (the input's file or folder name, "dataset" in memory: a Dataset's default name). Where `external`, the run's
-/// ExternalSolver is dtwcpp._mip.solve: MIP on HiGHS calls it with the run's own Problem,
-/// which an object that outlives the call co-owns, and takes its ClusteringResult. The solver captures nothing Python:
-/// it takes the GIL and imports dtwcpp._mip there; an exception it raises crosses the run as nb::python_error, which
-/// nanobind raises again, the same exception, when _run returns.
+/// reader option beside series in memory, and converts float64 ones to a float32 dtype), as do `output`, `checkpoint`
+/// and `checkpoint_interval`, as given: the run writes result files only into a non-empty `output` (empty is _run's
+/// default; Config::output defaults to "./results"), and saves and resumes the distance matrix as dtwc_cl's
+/// checkpoint flags do. The run is named config.name, else as dtwc_cl names it (the input's file or folder name,
+/// "dataset" in memory: a Dataset's default name). Where `external`, the run's ExternalSolver is dtwcpp._mip.solve:
+/// MIP on HiGHS calls it with the run's own Problem, which an object that outlives the call co-owns, and takes its
+/// ClusteringResult. The solver captures nothing Python: it takes the GIL and imports dtwcpp._mip there; an
+/// exception it raises crosses the run as nb::python_error, which nanobind raises again, the same exception, when
+/// _run returns.
 dtwc::Result run_released(dtwc::Config config, std::optional<dtwc::Data> data, dtwc::index_t skip_cols,
                           dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype,
                           bool external, const std::string &output, const std::string &checkpoint,

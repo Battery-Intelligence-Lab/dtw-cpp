@@ -159,8 +159,16 @@ class TestClusterFilesAndFastIngest:
             dtwcpp.cluster(ds32, 2, dtype="float64")
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Data was made with dtype='float64'"):
             dtwcpp.cdist(ds.as_data(), dtype="float32")
-        with pytest.raises(dtwcpp.InvalidInput, match="Data already carries ndim=2, which disagrees with ndim=3"):
-            dtwcpp.load(dtwcpp.load(ds.source, ndim=2).as_data(), ndim=3)
+        multivariate = dtwcpp.load(ds.source, ndim=2).as_data()
+        for given in (3, 1):  # a default value given is a value given
+            with pytest.raises(dtwcpp.InvalidInput, match=f"Data already carries ndim=2, which disagrees with ndim={given}"):
+                dtwcpp.load(multivariate, ndim=given)
+            with pytest.raises(dtwcpp.InvalidInput, match=f"Data already carries ndim=2, which disagrees with ndim={given}"):
+                dtwcpp.Dataset(multivariate, ndim=given)
+        assert dtwcpp.load(multivariate, ndim=2).as_data() is multivariate
+        assert dtwcpp.load(multivariate).as_data() is multivariate
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32' and dtype='float64' was given"):
+            dtwcpp.load(ds32, dtype="float64")
         assert dtwcpp.cluster(ds, 2).n_series == 5
         assert dtwcpp.cluster(ds32, 2, dtype="float32").n_series == 6
         assert dtwcpp.cluster(ds32, 2).n_series == 6

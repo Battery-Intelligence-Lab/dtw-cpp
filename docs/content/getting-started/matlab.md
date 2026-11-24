@@ -105,7 +105,7 @@ res = dtwc.cluster({x1, x2, x3, x4}, 2);
 | `Delimiter` | `''` | the field delimiter of text; `''` infers it from the extension |
 | `Name` | `''` | the run's name: the file's name without its extension, the folder's name, or `'dataset'` |
 | `Dtype` | `'float64'` | the precision the series are stored in: `'float32'` keeps them `single`, half the memory, each value the double read rounded; `single` data alone stays `double` |
-| `Ndim` | `1` | the features per time step of a multivariate series: each series holds its steps interleaved, `[t0f0 t0f1 t1f0 ...]`, so its length is a multiple of `Ndim`; an Arrow IPC file gives its own in its metadata, and one given that differs is refused when the file is read |
+| `Ndim` | `1` | the features per time step of a multivariate series: each series holds its steps interleaved, `[t0f0 t0f1 t1f0 ...]`, so its length is a multiple of `Ndim`; an Arrow IPC file gives its own in its metadata, and one given above 1 that differs is refused when the file is read; an `Ndim` above 1 makes `dtwc.cluster` read a path into memory, so an Arrow IPC file, which carries its own, streams under `RamLimit` only if `Ndim` is left out |
 
 CSV/TSV text, folders of it and Arrow IPC (`.arrow`, `.ipc`, `.feather`: mapped, its
 series views of the file; decoded or read into memory where it cannot be viewed in place,
