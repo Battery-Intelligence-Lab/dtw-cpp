@@ -31,7 +31,6 @@
 #include <test_api.hpp> // dtwc::test::parallelisation() and gpu(): the capability probes
 #include <mip/mip.hpp>
 #include <mip/decode_assignment.hpp>
-#include <mip/lagrangian_root.hpp>
 
 
 #include <algorithm>
@@ -232,69 +231,13 @@ dtwc::core::DistanceConfig distance_config(const std::string &variant, int band,
            .band = band };
 }
 
-/// LR-core's Kelley master LP (dtwc::mip::KelleyMaster) on a Python object with the
-/// same four methods: dtwcpp._mip's, over the user's highspy, since the extension
-/// links no HiGHS. LR-core calls it on the thread that called _lr_core, which
-/// released the GIL, so each call takes the GIL back; an array it hands over is a
-/// NumPy copy.
-class PythonKelleyMaster final : public dtwc::mip::KelleyMaster
-{
-public:
-  explicit PythonKelleyMaster(nb::object master) : master_(std::move(master)) {}
-
-  bool pass_model(dtwc::index_t ncol, const double *cost, const double *lower, const double *upper) override
-  {
-    nb::gil_scoped_acquire gil;
-    ncol_ = ncol;
-    return nb::cast<bool>(master_.attr("pass_model")(array(cost, ncol), array(lower, ncol), array(upper, ncol)));
-  }
-
-  void add_row(double lower, double upper, dtwc::index_t nnz, const dtwc::index_t *index,
-               const double *value) override
-  {
-    nb::gil_scoped_acquire gil;
-    master_.attr("add_row")(lower, upper, array(index, nnz), array(value, nnz));
-  }
-
-  void change_col_bounds(dtwc::index_t first, dtwc::index_t count, const double *lower,
-                         const double *upper) override
-  {
-    nb::gil_scoped_acquire gil;
-    master_.attr("change_col_bounds")(first, array(lower, count), array(upper, count));
-  }
-
-  bool run(double *x) override
-  {
-    nb::gil_scoped_acquire gil;
-    const nb::object solution = master_.attr("run")();
-    if (solution.is_none()) return false;
-    const auto values = nb::cast<std::vector<double>>(solution);
-    if (static_cast<dtwc::index_t>(values.size()) != ncol_)
-      throw dtwc::SolverError("lr_root 'kelley': the master LP returned " + std::to_string(values.size())
-                              + " column values for " + std::to_string(ncol_) + " columns.");
-    std::copy(values.begin(), values.end(), x);
-    return true;
-  }
-
-private:
-  /// `data[0, n)` as a NumPy array: an ndarray without an owner is copied on its way to Python.
-  template <class T>
-  static nb::ndarray<nb::numpy, const T, nb::ndim<1>> array(const T *data, dtwc::index_t n)
-  {
-    return { data, { static_cast<size_t>(n) } };
-  }
-
-  nb::object master_;
-  dtwc::index_t ncol_ = 0;
-};
-
 /// _run's body: dtwc::run of `config`, the caller's copied, on `data` (series in memory), else on config.input, with
 /// the GIL released for the whole run. The reader's options and the series' dtype go on the copy (run refuses a
 /// reader option beside series in memory, and converts float64 ones to a float32 dtype); `output` is cleared, so the
 /// run writes no files (Config::output defaults to "./results"). The run is named config.name, else as dtwc_cl names
 /// it (the input's file or folder name, "dataset" in memory: a Dataset's default name). Where `external`, the run's
-/// ExternalSolver is dtwcpp._mip.solve: MIP on HiGHS and LR-core's Kelley root call it with the run's own Problem,
-/// which an object that outlives the call co-owns, and take its ClusteringResult. The solver captures nothing Python:
+/// ExternalSolver is dtwcpp._mip.solve: MIP on HiGHS calls it with the run's own Problem,
+/// which an object that outlives the call co-owns, and takes its ClusteringResult. The solver captures nothing Python:
 /// it takes the GIL and imports dtwcpp._mip there; an exception it raises crosses the run as nb::python_error, which
 /// nanobind raises again, the same exception, when _run returns.
 dtwc::Result run_released(dtwc::Config config, std::optional<dtwc::Data> data, dtwc::index_t skip_cols,
@@ -633,11 +576,8 @@ NB_MODULE(_dtwcpp_core, m)
              + ", numeric_focus=" + std::to_string(s.numeric_focus)
              + ", mip_focus=" + std::to_string(s.mip_focus)
              + ", lr_max_nodes=" + std::to_string(s.lr_max_nodes)
-             + ", lr_root=" + std::string(dtwc::name_of(dtwc::lr_root_names, s.lr_root))
              + ", verbose=" + (s.verbose_solver ? "True" : "False") + ")";
     });
-  // 'subgradient' (default) or 'kelley': Kelley's master LP solves on highspy (a dependency of dtwcpp).
-  def_named(mip_settings, "lr_root", [](dtwc::MIPSettings &s) -> dtwc::LRRoot & { return s.lr_root; }, dtwc::lr_root_names);
 
   // =========================================================================
   // Config: the settings of a clustering, keyed by the CLI long names in
@@ -685,7 +625,6 @@ NB_MODULE(_dtwcpp_core, m)
   def_field<int>(config, "mip_focus", [](Config &c) -> int & { return c.mip.mip_focus; });
   def_field<bool>(config, "verbose_solver", [](Config &c) -> bool & { return c.mip.verbose_solver; });
   def_field<std::int64_t>(config, "lr_max_nodes", [](Config &c) -> std::int64_t & { return c.mip.lr_max_nodes; });
-  def_named(config, "lr_root", [](Config &c) -> dtwc::LRRoot & { return c.mip.lr_root; }, dtwc::lr_root_names);
 
   m.def("apply", &dtwc::apply, "config"_a, "prob"_a,
         "Hand prob the clustering settings of config: the distance, the method and its\n"
@@ -1241,8 +1180,8 @@ NB_MODULE(_dtwcpp_core, m)
     "The run takes a copy of config: it writes result files only when output is\n"
     "non-empty (empty by default) and is named\n"
     "config.name, else as dtwc_cl names it. The GIL is released for the whole run.\n"
-    "external (a build without HiGHS) solves Method.MIP on HiGHS and LR-core's kelley\n"
-    "root with dtwcpp._mip.solve(prob), prob the run's own Problem, co-owned; an\n"
+    "external (a build without HiGHS) solves Method.MIP on HiGHS with\n"
+    "dtwcpp._mip.solve(prob), prob the run's own Problem, co-owned; an\n"
     "exception solve raises reaches the caller as itself.";
   m.def("_run", [](const dtwc::Config &config, const std::string &source, dtwc::index_t skip_cols, dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype, bool external, const std::string &output, const std::string &checkpoint, int checkpoint_interval) {
           dtwc::Config copy = config;
@@ -1302,26 +1241,6 @@ NB_MODULE(_dtwcpp_core, m)
     return result; }, "prob"_a, "x"_a,
         "Decode a solution of prob's _mip_model (dtwc::mip::decode_assignment), publish\n"
         "it on prob and return the ClusteringResult Problem.cluster() returns.");
-
-  // Method.LRCore with lr_root 'kelley' without linked HiGHS (the wheel): the Kelley
-  // root runs in C++ on the master LP dtwcpp._mip builds over highspy.
-  m.def("_lr_core", [](dtwc::Problem &prob, nb::object master) {
-    dtwc::require_clusterable(prob.n_clusters(), static_cast<std::size_t>(prob.size())); // as Problem::cluster()
-    PythonKelleyMaster kelley(std::move(master));
-    {
-      nb::gil_scoped_release release;
-      dtwc::LR_core_clustering(prob, &kelley);
-    }
-    dtwc::core::ClusteringResult result; // as Problem::cluster() returns an exact method's result
-    result.labels = prob.clusters_ind;
-    result.medoid_indices = prob.centroids_ind;
-    result.total_cost = prob.find_total_cost();
-    result.converged = true;
-    return result; }, "prob"_a, "master"_a,
-        "Cluster prob by LR-core (dtwc::LR_core_clustering) with its Kelley root on master,\n"
-        "an object with pass_model, add_row, change_col_bounds and run (dtwcpp._mip's over\n"
-        "highspy); publish the clustering on prob and return the ClusteringResult\n"
-        "Problem.cluster() returns.");
 
   // =========================================================================
   // FastPAM
