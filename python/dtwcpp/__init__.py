@@ -214,7 +214,6 @@ from dtwcpp._api import (
     load,
     cluster,
     Result,
-    plot,
 )
 
 # Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
@@ -315,13 +314,13 @@ __all__ = [
     "derivative_transform", "z_normalize",
     "compute_distance_matrix", "cdist",
     "device",
-    "Dataset", "load", "cluster", "Result", "plot",
+    "Dataset", "load", "cluster", "Result",
     "distance",
     "gpu_available", "gpu_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
     "save_checkpoint", "load_checkpoint",
-    "write_result_files",
     "CheckpointOptions",
+    "write_result_files",
     "DTWClustering",
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",
