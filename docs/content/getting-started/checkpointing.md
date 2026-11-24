@@ -84,7 +84,9 @@ held in RAM; a `Problem` whose matrix was mapped lets go of the mapping.
 The fingerprint includes the `Problem`'s metric (`prob.set_metric(...)`, L1 by
 default). A matrix that something other than the `Problem` computed is saved
 under the metric it was computed with: set that metric first (a change of metric
-drops the matrix), put the matrix in (`writable_distance_matrix()`), then save.
+drops the matrix), put the matrix in (C++: `resize` the matrix
+`writable_distance_matrix()` returns to the number of series, then set its pairs;
+Python and MATLAB: `set_distance_matrix(D)`), then save.
 
 ### CheckpointOptions
 
