@@ -142,7 +142,7 @@ Covered by steps 2 and 4 if they pass; look here first if they fail:
   ```
 
   The wheel is built on Python 3.12 and run on 3.13: a stable-ABI wheel (`cp312-abi3`, module `_dtwcpp_core.abi3.so`)
-  must serve both. It has been checked on Windows and Linux, not yet on macOS. pytest: 777 passed and 19 skipped on
+  must serve both. It has been checked on Windows and Linux, not yet on macOS. pytest: 731 passed and 18 skipped on
   Windows; another split is fine where `-rs` shows, for each skip, a reason that holds here.
 
 ## 7. Record the outcome
