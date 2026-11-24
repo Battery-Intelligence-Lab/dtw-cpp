@@ -84,11 +84,11 @@ which ships inside the `dtwcpp` package, so an installed wheel needs no source c
 are in `scripts/slurm/slurm_remote.sh` of a clone alone. Put `.env` in the directory you run Python from,
 or set `DTWC_REPO_ROOT` to the directory that holds it; the labels, medoids, and
 `<name>_report.txt` are downloaded to `results/slurm/cluster_<job id>/` there.
-`cluster()` and `do_clustering()` hydrate all three onto the returned `Result`;
+`cluster()` hydrates all three onto the returned `Result`;
 `DTWClustering.fit()` sets `labels_` only (its `medoid_indices_`, `cluster_centers_`,
 `inertia_` and `n_iter_` are `None`, so `predict`, `transform` and `score` raise
-`NotFittedError`). Pass `upload_input=True` (in `dtwcpp.settings`, or to
-`do_clustering`) when passing a local file path that should be staged to the cluster job
+`NotFittedError`). Pass `upload_input=True` to `cluster()`
+when passing a local file path that should be staged to the cluster job
 directory automatically rather than read from a pre-existing cluster path; a path that does not
 exist locally is then a `FileNotFoundError`. `DTWC_REPO_ROOT` steers only this Python route:
 `bash scripts/slurm/slurm_remote.sh` always reads the `.env` of, and uploads, its own

@@ -33,7 +33,7 @@ classdef Dataset < handle
 
     methods
         function obj = Dataset(source, skipCols, skipRows, delimiter, name, dtype, ndim)
-        %DATASET Made by dtwc.load / dtwc.load_data, which document the arguments.
+        %DATASET Made by dtwc.load, which documents the arguments.
             if nargin < 7 || isempty(ndim)
                 ndim = 1;
             end

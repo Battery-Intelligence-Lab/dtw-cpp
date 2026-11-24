@@ -1,10 +1,10 @@
 function tests = test_cdist_and_workflow
-%TEST_CDIST_AND_WORKFLOW MATLAB tests for dtwc.cdist and settings/load_data/do_clustering/write_data.
+%TEST_CDIST_AND_WORKFLOW MATLAB tests for dtwc.cdist and for the files dtwc.cluster writes.
 %
 %   Exercises rectangular cross-collection DTW distances (column-major MATLAB
 %   matrices, cell arrays, Band, Metric, Variant, MatrixDtype='float32') and
-%   the CasADi-style workflow across persistent output/checkpoint and pure
-%   in-memory modes.
+%   dtwc.cluster's Output and Checkpoint: the result files and the checkpoint it
+%   is asked for, and none otherwise.
 
 %> @file test_cdist_and_workflow.m
 %> @author Volkan Kumtepeli
@@ -71,13 +71,17 @@ function test_cdist_ragged_cells_and_multivariate(testCase)
     D_mv = dtwc.cdist(X_mv, Y_mv, 'Ndim', 2, 'MvMode', 'dependent', 'Band', 2);
     verifySize(testCase, D_mv, [4 3]);
 
-    % dtwc.cluster clusters a Dataset in its Ndim, as dtwc.do_clustering does
-    mv = dtwc.load_data(X_mv, dtwc.settings('Ndim', 2));
-    verifyEqual(testCase, dtwc.cluster(mv, 2, 'Method', 'pam').cost, ...
-                dtwc.do_clustering(mv, dtwc.settings('K', 2, 'Method', 'pam', 'Output', '')).cost);
+    % dtwc.cluster clusters a Dataset in its Ndim: what Tier 2 gives the series at 2 values a step, not what 1
+    % value a step gives
+    mv = dtwc.load(X_mv, 'Ndim', 2);
+    prob = dtwc.Problem('mv_oracle');
+    prob.set_data(X_mv, {}, 2);
+    oracle = dtwc.fast_pam(prob, 2);
+    verifyEqual(testCase, dtwc.cluster(mv, 2, 'Method', 'pam').cost, oracle.total_cost, 'RelTol', 1e-12);
+    verifyNotEqual(testCase, dtwc.cluster(X_mv, 2, 'Method', 'pam').cost, oracle.total_cost);
 end
 
-function test_casadi_workflow_persistent_and_in_memory(testCase)
+function test_cluster_writes_the_files_and_checkpoint_it_is_asked_for(testCase)
     work = fullfile(tempdir, ['dtwc_wf_' num2str(feature('getpid')) '_' num2str(randi(1e6))]);
     mkdir(work);
     cleanup = onCleanup(@() rmdir(work, 's')); %#ok<NASGU>
@@ -97,11 +101,9 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
     ckpt_dir = fullfile(work, 'ckpt');
     manual_out = fullfile(work, 'manual_out');
 
-    cfg = dtwc.settings('NClusters', 2, 'Method', 'pam', 'Band', 2, ...
-                        'SkipRows', 1, 'SkipCols', 1, ...
-                        'Output', auto_out, 'Checkpoint', ckpt_dir, 'Name', 'sensor');
-    ds = dtwc.load_data(csv_file, cfg);
-    res = dtwc.do_clustering(ds, cfg);
+    ds = dtwc.load(csv_file, 'SkipRows', 1, 'SkipCols', 1, 'Name', 'sensor');
+    opts = {'Method', 'pam', 'Band', 2};   % kept for reuse: a pair after them overrides one
+    res = dtwc.cluster(ds, 2, opts{:}, 'Output', auto_out, 'Checkpoint', ckpt_dir);
 
     verifyNumElements(testCase, res.labels, 6);
     verifyEqual(testCase, res.labels(1), res.labels(2));
@@ -110,25 +112,39 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
     verifyTrue(testCase, isfile(fullfile(auto_out, 'sensor_labels.csv')));
     verifyTrue(testCase, isfile(fullfile(auto_out, 'sensor_medoids.csv')));
     verifyTrue(testCase, isfile(fullfile(auto_out, 'sensor_report.txt')));
+    verifyTrue(testCase, isfile(fullfile(ckpt_dir, 'sensor.dtwm')));
 
-    % Pure in-memory override (Output = '') + explicit write_data
-    mem_res = dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '');
+    % The same checkpoint resumes.
+    resumed = dtwc.cluster(ds, 2, opts{:}, 'Checkpoint', ckpt_dir);
+    verifyNotEmpty(testCase, regexp(resumed.Report, 'the checkpoint\s+resumed', 'once'));
+    verifyEqual(testCase, resumed.labels, res.labels);
+
+    % No Output (the default) writes nothing; Result.save writes on request.
+    before = numel(dir(fullfile(work, '**', '*')));
+    mem_res = dtwc.cluster(ds, 2, opts{:});
+    verifyEqual(testCase, numel(dir(fullfile(work, '**', '*'))), before);
     verifyEqual(testCase, mem_res.labels, res.labels);
     verifyEqual(testCase, mem_res.cost, res.cost, 'RelTol', 1e-12);
+    mem_res.save(manual_out);
+    verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_labels.csv')));
+    verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_medoids.csv')));
 
-    % A Dataset is read with the options it was made with: settings that give one another value are
-    % refused, naming it, an override even at its default; the same value (above) runs.
+    % A CheckpointInterval saves a checkpoint, so it needs one.
+    verifyError(testCase, @() dtwc.cluster(ds, 2, opts{:}, 'CheckpointInterval', 5), 'dtwc:invalidArgument');
+
+    % A Dataset is read with the options it was made with: dtwc.load refuses one given that differs, at its
+    % default too, naming both values; the same value runs.
     try
-        dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '', 'SkipRows', 2);
-        verifyFail(testCase, 'SkipRows 2 beside a Dataset made with SkipRows 1 ran');
+        dtwc.load(ds, 'SkipRows', 2);
+        verifyFail(testCase, 'SkipRows 2 beside a Dataset made with SkipRows 1 was accepted');
     catch err
         verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
-        verifySubstring(testCase, err.message, 'SkipRows 1 and the settings give SkipRows 2');
+        verifySubstring(testCase, err.message, 'SkipRows 1 and SkipRows 2 was given');
     end
-    verifyError(testCase, @() dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '', 'SkipRows', 0), ...
-                'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc.load(ds, 'SkipRows', 0), 'dtwc:invalidArgument');
+    verifySameHandle(testCase, dtwc.load(ds, 'SkipRows', 1), ds);
     verifyError(testCase, @() dtwc.cdist(ds, 'Dtype', 'float32'), 'dtwc:invalidArgument');
-    ds32 = dtwc.load_data(csv_file, cfg, 'Dtype', 'float32');
+    ds32 = dtwc.load(csv_file, 'SkipRows', 1, 'SkipCols', 1, 'Dtype', 'float32', 'Name', 'sensor');
     verifyError(testCase, @() dtwc.cdist(ds32, 'Dtype', 'float64'), 'dtwc:invalidArgument');
 
     % dtwc.load and dtwc.cluster take a Dataset by the same rule: a Dtype that differs is refused, naming
@@ -138,27 +154,22 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
         verifyFail(testCase, 'Dtype float64 beside a Dataset made with Dtype float32 ran');
     catch err
         verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
-        verifySubstring(testCase, err.message, 'Dtype ''float32'' and the settings give Dtype ''float64''');
+        verifySubstring(testCase, err.message, 'Dtype ''float32'' and Dtype ''float64'' was given');
     end
     verifySameHandle(testCase, dtwc.load(ds32, 'Dtype', 'float32'), ds32);
     verifySameHandle(testCase, dtwc.load(ds32), ds32);
     verifyError(testCase, @() dtwc.cluster(ds32, 2, 'Dtype', 'float64'), 'dtwc:invalidArgument');
     verifyNumElements(testCase, dtwc.cluster(ds32, 2, 'Dtype', 'float32').labels, 6);
-
-    dtwc.write_data(mem_res, manual_out);
-    verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_labels.csv')));
-    verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_medoids.csv')));
-
-    % Post-init struct field mutation on settings is reconciled and validated
-    mut = dtwc.settings('NClusters', 3, 'Method', 'kmedoids', 'Band', -1, 'Output', '', 'Checkpoint', '');
-    mut.NClusters = 2;
-    mut.Method = 'pam';
-    mut.Band = 1;
-    mut_res = dtwc.do_clustering(ds, mut);
-    verifyNumElements(testCase, mut_res.medoids, 2);
-
-    bad = mut;
-    bad.UnknownField = 42;
-    verifyError(testCase, @() dtwc.do_clustering(ds, bad), 'dtwc:invalidArgument');
+    verifyNumElements(testCase, dtwc.cluster(ds32, 2).labels, 6);
 end
 
+function test_a_name_given_twice_takes_its_last_value(testCase)
+%   Options kept in a cell array are overridden by a pair after them: dtwc.cluster(X, k, opts{:}, 'Band', 6).
+    rng(5);
+    X = cumsum(randn(8, 20), 2);
+    narrow = dtwc.cluster(X, 2, 'Method', 'pam', 'Band', 1);
+    wide = dtwc.cluster(X, 2, 'Method', 'pam', 'Band', 6);
+    verifyNotEqual(testCase, narrow.cost, wide.cost);   % the two bands differ on these series
+    opts = {'Method', 'pam', 'Band', 1};
+    verifyEqual(testCase, dtwc.cluster(X, 2, opts{:}, 'Band', 6).cost, wide.cost);
+end

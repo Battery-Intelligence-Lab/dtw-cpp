@@ -78,7 +78,7 @@ res.save('out');                                      % the CSVs dtwc_cl writes,
 res.Report                                            % the run report's text
 ```
 
-`dtwc.cluster` runs `dtwc::run` in memory (`res.save` writes the CSV outputs and `<name>_report.txt`; see [Tier 1](../../api/tier-1/)). It accepts the `dtwc_cl` options ([CLI reference](../cli/)) in CamelCase: `MatrixDtype`, `RamLimit`, `Method`, `Band`, `Metric`, `Variant`, `WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`, `TweNu`, `TweLambda`, `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`, `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver`, `MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`, `VerboseSolver`, `LrMaxNodes`, `GpuPrecision`, `GpuShare`, `Device`, `Name`, `Verbose`, `NoReport` (no run report: `res.Report` is `''`), plus `Dtype` when loading a path or in-memory series directly. C++ reads and checks them before a series is read: omitted keys use `dtwc_cl` defaults (`Method` = `'auto'`, `Device` = `dtwc.device()`, naming one sets that run's device only), and an unknown key raises `dtwc:invalidArgument` naming the valid ones. Streamed Arrow IPC runs under `RamLimit` hold no series (`score`, `distance_matrix`, and `plot` raise `dtwc:invalidArgument`; `save` writes labels, medoids, and the report).
+`dtwc.cluster` runs `dtwc::run` in memory unless `'Output'` names a directory (`res.save` writes the CSV outputs and `<name>_report.txt`; see [Tier 1](../../api/tier-1/)). It accepts the `dtwc_cl` options ([CLI reference](../cli/)) in CamelCase: `MatrixDtype`, `RamLimit`, `Method`, `Band`, `Metric`, `Variant`, `WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`, `TweNu`, `TweLambda`, `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`, `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver`, `MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`, `VerboseSolver`, `LrMaxNodes`, `GpuPrecision`, `GpuShare`, `Device`, `Name`, `Verbose`, `NoReport` (no run report: `res.Report` is `''`), plus `Dtype` when loading a path or in-memory series directly, and the run's files: `Output`, the directory it writes its result files and run report into (`''`, the default, writes none), `Checkpoint`, the directory it saves its distance matrix in and resumes from, and `CheckpointInterval`, the rows between saves (it needs a `Checkpoint`). A name given twice takes its last value, so `dtwc.cluster(data, 3, opts{:}, 'Band', 2)` overrides the `Band` kept in `opts`. C++ reads and checks the keys before a series is read: omitted keys use `dtwc_cl` defaults (`Method` = `'auto'`, `Device` = `dtwc.device()`, naming one sets that run's device only), and an unknown key raises `dtwc:invalidArgument` naming the valid ones. Streamed Arrow IPC runs under `RamLimit` hold no series (`score`, `distance_matrix`, and `plot` raise `dtwc:invalidArgument`; `save` writes labels, medoids, and the report).
 
 ## Loading data
 
@@ -105,6 +105,7 @@ res = dtwc.cluster({x1, x2, x3, x4}, 2);
 | `Delimiter` | `''` | the field delimiter of text; `''` infers it from the extension |
 | `Name` | `''` | the run's name: the file's name without its extension, the folder's name, or `'dataset'` |
 | `Dtype` | `'float64'` | the precision the series are stored in: `'float32'` keeps them `single`, half the memory, each value the double read rounded; `single` data alone stays `double` |
+| `Ndim` | `1` | the features per time step of a multivariate series: each series holds its steps interleaved, `[t0f0 t0f1 t1f0 ...]`, so its length is a multiple of `Ndim`; an Arrow IPC file gives its own in its metadata, and one given that differs is refused when the file is read |
 
 CSV/TSV text, folders of it and Arrow IPC (`.arrow`, `.ipc`, `.feather`: mapped, its
 series views of the file; decoded or read into memory where it cannot be viewed in place,
@@ -130,8 +131,8 @@ res = dtwc.cluster(series, 3);
 ```
 
 The clustering is the path's, with two differences. The result files name series in
-memory `0`, `1`, ..., not by `names`. And `dtwc.cluster` takes no `Ndim` for series in
-memory, so the third output of `as_series()`, the `Ndim`, does not reach it: an Arrow IPC
+memory `0`, `1`, ..., not by `names`. And `dtwc.cluster` takes no `Ndim` keyword (give it to
+`dtwc.load`), so the third output of `as_series()`, the `Ndim`, does not reach it: an Arrow IPC
 file whose schema says `ndim` above 1 clusters as multivariate from its path, and as
 univariate series (each row's interleaved values) from `as_series()`.
 

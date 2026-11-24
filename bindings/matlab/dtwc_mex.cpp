@@ -876,8 +876,8 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 //  Problem property get/set commands
 // =========================================================================
 
-/// Series in memory as the Data a Problem (Problem_set_data) or a run (run) takes, their values as T (double, or float
-/// from single), named by `names_mx` and `ndim_mx` values a time step; either may be nullptr.
+/// Series in memory as the Data a Problem (Problem_set_data) or a run (run_workflow) takes, their values as T
+/// (double, or float from single), named by `names_mx` and `ndim_mx` values a time step; either may be nullptr.
 template <typename T>
 static dtwc::Data series_data(const mxArray *source, const mxArray *names_mx, const mxArray *ndim_mx)
 {
@@ -1628,7 +1628,7 @@ static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, cons
 // =========================================================================
 //  Tier-1: dtwc.cluster, dtwc.load and dtwc.Result are Python's cluster(),
 //  load() and Result. dtwc.cluster runs dtwc::run, as dtwc_cl and Python do
-//  (run): the keys set a dtwc::Config, C++ reads a path itself and takes series
+//  (run_workflow): the keys set a dtwc::Config, C++ reads a path itself and takes series
 //  in memory (Parquet, which parquetread reads, and arrays) as a Data, and the
 //  run's dtwc::Result stays here under a handle that dtwc.Result wraps
 //  (Result_*). The estimator (DTWClustering) and the Tier-2 functions keep the
@@ -1660,21 +1660,21 @@ static void cmd_apply(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
   plhs[0] = mxCreateString(dtwc::device_text(config).c_str());
 }
 
-/// The run's Result a handle names (run).
+/// The run's Result a handle names (run_workflow).
 static const dtwc::Result &stored_result(const mxArray *handle)
 {
   return *HandleManager<dtwc::Result>::get(get_handle(handle));
 }
 
-/// The run of cmd_run and cmd_run_workflow: dtwc::run of `config` on the path source_mx names, or on the series in
-/// memory it holds (named by names_mx), its Result stored under a handle, and the struct both return.
+/// The run of cmd_run_workflow: dtwc::run of `config` on the path source_mx names, or on the series in memory it
+/// holds (named by names_mx), its Result stored under a handle, and the struct it returns.
 static mxArray *execute_mex_run(dtwc::Config &config, const mxArray *source_mx, const mxArray *names_mx,
-                                const mxArray *ndim_mx, const char *path_names_err)
+                                const mxArray *ndim_mx)
 {
   std::optional<dtwc::Data> data;
   if (mxIsChar(source_mx)) {
     if (!mxIsEmpty(names_mx))
-      throw std::invalid_argument(path_names_err);
+      throw std::invalid_argument("run_workflow: names name series in memory; pass {} for a path.");
     config.input = get_string(source_mx);
   } else if (config.dtype == dtwc::core::Precision::Float32) {
     data = series_data<float>(source_mx, names_mx, ndim_mx);
@@ -1698,41 +1698,21 @@ static mxArray *execute_mex_run(dtwc::Config &config, const mxArray *source_mx, 
   return out;
 }
 
-/// run(source, names, skip_cols, skip_rows, delimiter, dtype, name, k, Name, Value, ...) -> struct {handle, labels,
-/// medoids, cost, device, name, report}: dtwc::run, the run dtwc_cl makes, without its files (output cleared:
-/// Config::output is "./results"; Result_save writes them). `source` is a path C++ reads (CSV/TSV text, a folder of
-/// it or an Arrow IPC file, which the run's memory plan may stream through FastCLARA) with its reader options, and
-/// `names` {}; or series in memory (Parquet that parquetread read, or arrays), an N x L matrix or a cell of vectors as
-/// Problem_set_data takes them (of class double, or single for dtype 'float32'), named by `names` ({}: 0, 1, ...),
-/// skip_cols and skip_rows 0 and delimiter '' (the run refuses a reader option beside series in memory). k and the
-/// keys are dtwc.cluster's (config_keys); the device is dtwc.device()'s unless Device names one; the run is named
-/// Name, else `name` (the Dataset's), else as dtwc_cl names it (run_name). dtwc::apply checks every key on a Problem
-/// of no series before anything is read, so a bad value reads as apply says it, whatever the input (run's own check
-/// would name dtwc_cl's flags). The Result is stored under a handle before any output is made; the labels and
-/// medoids come back 1-based, the device as device_text writes it, the report '' under NoReport. MIP solves on the
-/// HiGHS this MEX links: no external solver.
-static void cmd_run(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
-{
-  (void)nlhs;
-  if (nrhs < 9)
-    throw std::invalid_argument("run requires a source, names, skip_cols, skip_rows, delimiter, dtype, a name and k.");
-  dtwc::Config config = read_keys(config_keys, "key", config_defaults(prhs[8]), nrhs, prhs, 9);
-  {
-    dtwc::Problem settings; // holds no series: apply only checks the keys
-    dtwc::apply(config, settings);
-  }
-  if (config.name.empty()) config.name = optional_string(nrhs, prhs, 7, "name");
-  config.dtype = optional_dtype(nrhs, prhs, 6);
-  config.skip_cols = get_exact_int<dtwc::index_t>(prhs[3], "skip_cols");
-  config.skip_rows = get_exact_int<dtwc::index_t>(prhs[4], "skip_rows");
-  config.delimiter = parse_delimiter(optional_string(nrhs, prhs, 5, "delimiter"));
-  config.output.clear();
-  plhs[0] = execute_mex_run(
-    config, prhs[1], prhs[2], nullptr,
-    "run: names name series in memory; a path's series are named by its reader, so pass {}.");
-}
-
-/// run_workflow(source, names, ndim, skip_cols, skip_rows, delimiter, dtype, name, output, checkpoint, checkpoint_interval, k, Name, Value, ...)
+/// run_workflow(source, names, ndim, skip_cols, skip_rows, delimiter, dtype, name, output, checkpoint,
+/// checkpoint_interval, k, Name, Value, ...) -> struct {handle, labels, medoids, cost, device, name, report}: dtwc::run,
+/// the run dtwc_cl makes, which dtwc.cluster calls for a path and for series in memory. `source` is a path C++ reads
+/// (CSV/TSV text, a folder of it or an Arrow IPC file, which the run's memory plan may stream through FastCLARA) with
+/// its reader options, and `names` {}; or series in memory (Parquet that parquetread read, or arrays), an N x L matrix
+/// or a cell of vectors as Problem_set_data takes them (of class double, or single for dtype 'float32'), `ndim` values a
+/// time step, named by `names` ({}: 0, 1, ...), skip_cols and skip_rows 0 and delimiter '' (the run refuses a reader
+/// option beside series in memory). `output` is the directory the run writes its result files and report into ('' writes
+/// none; Config::output is "./results"), `checkpoint` the directory it saves its distance matrix in and resumes from,
+/// `checkpoint_interval` the rows between saves. k and the keys are dtwc.cluster's (config_keys); the device is
+/// dtwc.device()'s unless Device names one; the run is named Name, else `name` (the Dataset's), else as dtwc_cl names it
+/// (run_name). dtwc::apply checks every key on a Problem of no series before anything is read, so a bad value reads as
+/// apply says it, whatever the input (run's own check would name dtwc_cl's flags). The Result is stored under a handle
+/// before any output is made; the labels and medoids come back 1-based, the device as device_text writes it, the report
+/// '' under NoReport. MIP solves on the HiGHS this MEX links: no external solver.
 static void cmd_run_workflow(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   (void)nlhs;
@@ -1751,9 +1731,7 @@ static void cmd_run_workflow(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
   config.output = optional_string(nrhs, prhs, 9, "output");
   config.checkpoint = optional_string(nrhs, prhs, 10, "checkpoint");
   config.checkpoint_interval = get_exact_int(prhs[11], "checkpoint_interval");
-  plhs[0] = execute_mex_run(
-    config, prhs[1], prhs[2], prhs[3],
-    "run_workflow: names name series in memory; pass {} for a path.");
+  plhs[0] = execute_mex_run(config, prhs[1], prhs[2], prhs[3]);
 }
 
 /// Result_score(handle, name) -> scalar: the run's Result::score, the score scores::score names. A streamed run holds
@@ -2023,8 +2001,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "normalized_mutual_info")
       cmd_normalized_mutual_info(nlhs, plhs, nrhs, prhs);
     // Tier-1: dtwc::run and its Result, a Config applied to a Problem, the C++ reader
-    else if (cmd == "run")
-      cmd_run(nlhs, plhs, nrhs, prhs);
     else if (cmd == "run_workflow")
       cmd_run_workflow(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_score")

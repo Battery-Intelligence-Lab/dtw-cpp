@@ -21,17 +21,23 @@ function ds = load(source, varargin)
 %              double) or 'float32' (single, half the memory; also 'f32', 'fp32',
 %              'float'). Each value is read as a double and rounded to single;
 %              single data in memory alone does not choose it.
+%   Ndim     : the features per time step of a multivariate series (default 1,
+%              univariate): each series holds its steps interleaved, [t0f0 t0f1
+%              t1f0 ...], so its length is a multiple of Ndim. An Arrow IPC file
+%              gives its own Ndim in its schema metadata; one given here that
+%              differs from it is refused when the file is read. dtwc.cluster
+%              takes a series' Ndim from its Dataset.
 %
 %   Nothing is read here. ds.as_series() reads a path once and keeps its series,
 %   which dtwc.cluster takes for Parquet; dtwc.cluster hands any other path to C++
 %   dtwc::run, which reads it at every call (and may stream an Arrow IPC file
 %   under RamLimit); to read it once, cluster its series: dtwc.cluster(ds.as_series(), k).
-%   A Dataset passes through with the options it was made with, as dtwc.load_data
-%   takes it: a SkipCols, SkipRows, Delimiter or Dtype given here that differs from
-%   the Dataset's, at its default too, is refused, naming both values; one equal
-%   to it runs, and a Name is refused.
+%   A Dataset passes through with the options it was made with: a SkipCols,
+%   SkipRows, Delimiter, Dtype or Ndim given here that differs from the Dataset's
+%   (once it has read an Arrow IPC file, its Ndim is the file's), at its default
+%   too, is refused, naming both values; one equal to it runs, and a Name is refused.
 %
-%   See also dtwc.Dataset, dtwc.load_data, dtwc.cluster
+%   See also dtwc.Dataset, dtwc.cluster
 
 %> @file load.m
 %> @brief Lazy dataset loader.
@@ -43,14 +49,36 @@ function ds = load(source, varargin)
     addParameter(p, 'Delimiter', '');
     addParameter(p, 'Name', '');
     addParameter(p, 'Dtype', 'float64');
+    addParameter(p, 'Ndim', 1);
     parse(p, varargin{:});
     if isa(source, 'dtwc.Dataset')
         if ~ismember('Name', p.UsingDefaults)
-            error('dtwc:invalidArgument', 'load_data: Dataset keeps the options it was made with; unexpected Name.');
+            error('dtwc:invalidArgument', 'load: Dataset keeps the options it was made with; unexpected Name.');
         end
-        ds = dtwc.load_data(source, varargin{:});
+        for key = {'SkipCols', 'SkipRows', 'Delimiter', 'Dtype', 'Ndim'}
+            if ismember(key{1}, p.UsingDefaults)
+                continue
+            end
+            given = p.Results.(key{1});
+            if strcmp(key{1}, 'Dtype')
+                given = dtwc_mex('dtype', char(given));   % the C++ table's canonical name, as a Dataset holds it
+            elseif strcmp(key{1}, 'Delimiter')
+                given = char(given);
+            end
+            if ~same(given, source.(key{1}))
+                error('dtwc:invalidArgument', ['load: the Dataset was made with %s %s and %s %s was given; ' ...
+                      'a Dataset keeps the options it was made with, so pass %s to dtwc.load, or leave it out.'], ...
+                      key{1}, mat2str(source.(key{1})), key{1}, mat2str(given), key{1});
+            end
+        end
+        ds = source;
         return
     end
     ds = dtwc.Dataset(source, p.Results.SkipCols, p.Results.SkipRows, ...
-                      char(p.Results.Delimiter), char(p.Results.Name), char(p.Results.Dtype));
+                      char(p.Results.Delimiter), char(p.Results.Name), char(p.Results.Dtype), p.Results.Ndim);
+end
+
+function tf = same(a, b)
+%SAME Whether two option values are one: equal in value whatever their class, or both empty ('' and "").
+    tf = isequal(a, b) || (isempty(a) && isempty(b));
 end

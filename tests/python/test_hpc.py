@@ -209,14 +209,13 @@ class TestJobToml:
         monkeypatch.setattr(_hpc, "SlurmRemoteRunner",
                             lambda repo_root: pytest.fail("the wrapper was reached"))
         with pytest.raises(dtwcpp.InvalidInput, match="ndim=3"):
-            dtwcpp.do_clustering(np.zeros((4, 5, 3)), dtwcpp.settings(k=2, ndim=3, device="hpc", output=""))
+            dtwcpp.cluster(dtwcpp.load(np.zeros((4, 5, 3)), ndim=3), 2, device="hpc")
         with pytest.raises(dtwcpp.InvalidInput, match="checkpoint"):
-            dtwcpp.do_clustering(np.zeros((4, 5)), dtwcpp.settings(
-                k=2, device="hpc", output="", checkpoint=str(tmp_path / "ckpt")))
+            dtwcpp.cluster(np.zeros((4, 5)), 2, device="hpc", checkpoint=str(tmp_path / "ckpt"))
         with pytest.raises(dtwcpp.InvalidInput, match="ndim=3"):
-            dtwcpp.do_clustering(dtwcpp.Data(np.zeros((4, 6)).tolist(), list("abcd"), 3), dtwcpp.settings(k=2, device="hpc"))
+            dtwcpp.cluster(dtwcpp.Data(np.zeros((4, 6)).tolist(), list("abcd"), 3), 2, device="hpc")
         with pytest.raises(dtwcpp.InvalidInput, match="checkpoint_interval"):
-            dtwcpp.do_clustering(np.zeros((4, 5)), dtwcpp.settings(k=2, device="hpc", checkpoint_interval=5))
+            dtwcpp.cluster(np.zeros((4, 5)), 2, device="hpc", checkpoint_interval=5)
         assert not (tmp_path / "results").exists()
 
     def test_the_estimator_sends_its_parameters(self, monkeypatch, tmp_path):

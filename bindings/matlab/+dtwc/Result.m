@@ -40,7 +40,7 @@ classdef Result < handle
 
     methods
         function obj = Result(out)
-        %RESULT Made by dtwc.cluster from what dtwc_mex('run', ...) returns.
+        %RESULT Made by dtwc.cluster from what dtwc_mex('run_workflow', ...) returns.
             obj.Handle = out.handle;
             obj.labels = out.labels;
             obj.medoids = out.medoids;
