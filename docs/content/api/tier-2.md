@@ -309,8 +309,7 @@ value type, NaN for a pair not yet computed. A new file is not filled with NaN:
 its rows from the rows written on hold no distance, and the fill records rows
 once they are on the disk. A direct `get` or `dist_by_ind` of such a row reads
 what the file holds there, 0, where every reader of the library takes it as not
-computed. A file of version 4 (2.0 builds before `matrix_dtype`) is read and
-mapped as float64. The same file is the memory-mapped cache and the checkpoint.
+computed. The same file is the memory-mapped cache and the checkpoint.
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|

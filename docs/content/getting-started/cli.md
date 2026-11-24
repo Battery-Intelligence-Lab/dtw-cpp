@@ -333,8 +333,7 @@ fingerprint of the data and distance settings and value type (`--matrix-dtype`)
 match, the rows it records as written kept and the rest computed; a file of other
 data, settings or value type is `InvalidInput` (the message names the
 value type that reads it) and a damaged or earlier-layout one `IOError`, both
-before any cached distance is read. A version-4 file, from a 2.0 build before
-`--matrix-dtype`, is read as `float64`. `--dist-matrix` (a CSV matrix) is read into
+before any cached distance is read. `--dist-matrix` (a CSV matrix) is read into
 RAM: a matrix over an explicit `--ram-limit` is rejected before the `--dist-matrix` file is
 opened, and the automatic limit keeps it in RAM. CUDA
 mmap and checkpoint runs must select explicit `--gpu-precision fp32` or `fp64`:

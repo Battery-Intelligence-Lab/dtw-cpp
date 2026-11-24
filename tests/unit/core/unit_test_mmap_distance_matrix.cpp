@@ -3,8 +3,9 @@
  * @brief The mapped storage of core::DistanceMatrix and the `.dtwm` file it maps.
  *
  * @details The oracle for the file is its documented byte layout, read back
- * with plain streams: a 48-byte header {magic "DTWM", uint32 version 4, uint64 N,
- * 32-byte fingerprint} and N(N+1)/2 doubles.
+ * with plain streams: a 64-byte header {magic "DTWM", uint32 version 5, uint64 N,
+ * 32-byte fingerprint, uint32 bytes a value, a zero word, uint64 rows written}
+ * and N(N+1)/2 values.
  *
  * @author Volkan Kumtepeli
  * @date 29 Sep 2026
@@ -32,7 +33,6 @@
 #endif
 
 #include <algorithm>
-#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -87,7 +87,7 @@ std::vector<std::uint64_t> bits_of(const DistanceMatrix &m)
   return bits;
 }
 
-/// A version-5 header: the version-4 layout above (bytes 0-47, version 5), then the bytes of a value, a zero word
+/// A version-5 header: magic, version, N and the fingerprint (bytes 0-47), then the bytes of a value, a zero word
 /// and the rows written.
 std::vector<char> v5_header(std::size_t n, const DistanceMatrix::fingerprint_type &fingerprint, std::uint32_t bytes,
                             std::uint64_t rows)
@@ -190,9 +190,10 @@ TEST_CASE("Rows written: a wait that leaves rows on the device records them, and
   REQUIRE(csv.str() == ",2.5,,\n2.5,,,\n,,,\n,,,\n");
 }
 
-TEST_CASE("A version-4 file is read and mapped as float64, and a mapped one stays version 4", "[DistanceMatrix][mmap]")
+TEST_CASE("A version-4 file is refused, naming its version, and left as it is", "[DistanceMatrix][mmap][error]")
 {
-  // Version 4: a 48-byte header (bytes 0-47 of version 5's) and doubles, every row written.
+  // Version 4: a 48-byte header (bytes 0-47 of version 5's) and doubles, every row written: whole and matching
+  // in every respect but its version.
   const ScratchDirectory tmp_dir{ "mmap_v4" };
   const fs::path tmp = tmp_dir.path / "v4.dtwm";
   const auto fingerprint = fingerprint_of(0x44);
@@ -205,23 +206,11 @@ TEST_CASE("A version-4 file is read and mapped as float64, and a mapped one stay
                                              reinterpret_cast<const char *>(&v) + sizeof v);
   std::ofstream(tmp, std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 
-  const auto read = DistanceMatrix::read(tmp, 3, fingerprint);
-  REQUIRE(read.rows_written() == 3);
-  REQUIRE(read.get(1, 0) == 1.5);
-  REQUIRE_FALSE(read.is_computed(2, 0));
-  REQUIRE_THROWS_MATCHES(DistanceMatrix::read(tmp, 3, fingerprint, dtwc::core::Precision::Float32),
-                         dtwc::InvalidInput, MessageMatches(ContainsSubstring("holds float64 distances")));
-  {
-    auto mapped = DistanceMatrix::map(tmp, 3, fingerprint);
-    REQUIRE(mapped.rows_written() == 3);
-    REQUIRE(mapped.get(2, 1) == 2.25);
-    mapped.set(2, 0, 4.0);
-    mapped.write(tmp, fingerprint); // its own file: flushed in place
-  }
-  const auto after = file_bytes(tmp);
-  REQUIRE(after.size() == 48 + 6 * sizeof(double));
-  REQUIRE(read_at<std::uint32_t>(after, 4) == 4);
-  REQUIRE(read_at<double>(after, 48 + 3 * sizeof(double)) == 4.0);
+  REQUIRE_THROWS_MATCHES(DistanceMatrix::read(tmp, 3, fingerprint), dtwc::IOError,
+                         MessageMatches(ContainsSubstring("version 4") && ContainsSubstring("reads version 5")));
+  REQUIRE_THROWS_MATCHES(DistanceMatrix::map(tmp, 3, fingerprint), dtwc::IOError,
+                         MessageMatches(ContainsSubstring("version 4") && ContainsSubstring("reads version 5")));
+  REQUIRE(file_bytes(tmp) == bytes);
 }
 
 TEST_CASE("A file of the other width is InvalidInput naming both; a bad header word is IOError",
@@ -356,13 +345,8 @@ TEST_CASE("open rejects N that overflows packed size", "[DistanceMatrix][mmap][s
 {
   const ScratchDirectory tmp_dir{ "mmap_overflow" };
   const fs::path tmp = tmp_dir.path / "overflow.dtwm";
-  std::array<char, 48> header{};
-  std::memcpy(header.data(), "DTWM", 4);
-  const std::uint32_t version = 4;
-  std::memcpy(header.data() + 4, &version, sizeof version);
-  const std::uint64_t bad_n = std::uint64_t{ 1 } << 62;
-  std::memcpy(header.data() + 8, &bad_n, sizeof bad_n);
-  std::ofstream(tmp, std::ios::binary).write(header.data(), header.size());
+  const auto header = v5_header(std::size_t{ 1 } << 62, {}, 8, 0);
+  std::ofstream(tmp, std::ios::binary).write(header.data(), static_cast<std::streamsize>(header.size()));
 
   REQUIRE_THROWS_MATCHES(DistanceMatrix::map(tmp, 3, {}), dtwc::IOError,
                          MessageMatches(ContainsSubstring("not the size")));
