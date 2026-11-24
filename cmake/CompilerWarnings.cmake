@@ -3,6 +3,7 @@
 # https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md
 
 function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
+  # Sign changes go unwarned on every compiler: int64 indices meet size_t containers throughout, by design.
   set(MSVC_WARNINGS
       /W4 # Baseline reasonable warnings
       /w14242 # 'identifier': conversion from 'type1' to 'type2', possible loss of data
@@ -10,7 +11,6 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       /w14263 # 'function': member function does not override any base class virtual member function
       /w14265 # 'classname': class has virtual functions, but destructor is not virtual instances of this class may not
               # be destructed correctly
-      /w14287 # 'operator': unsigned/negative constant mismatch
       /we4289 # nonstandard extension used: 'variable': loop control variable declared in the for-loop is used outside
               # the for-loop scope
       /w14296 # 'operator': expression is always 'boolean_value'
@@ -22,7 +22,6 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       /w14555 # expression has no effect; expected expression with side- effect
       /w14619 # pragma warning: there is no warning number 'number'
       /w14640 # Enable warning on thread un-safe static member initialization
-      /w14826 # Conversion from 'type1' to 'type2' is sign-extended. This may cause unexpected runtime behavior.
       /w14905 # wide string literal cast to 'LPSTR'
       /w14906 # string literal cast to 'LPWSTR'
       /w14928 # illegal copy-initialization; more than one user-defined conversion has been implicitly applied
@@ -41,7 +40,8 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       -Woverloaded-virtual # warn if you overload (not override) a virtual function
       -Wpedantic # warn if non-standard C++ is used
       -Wconversion # warn on type conversions that may lose data
-      -Wsign-conversion # warn on sign conversions
+      -Wno-sign-conversion # sign changes (see above); clang's -Wconversion would turn it on
+      -Wno-sign-compare # sign changes (see above); clang's -Wextra and GCC's -Wall would turn it on
       -Wnull-dereference # warn if a null dereference is detected
       -Wdouble-promotion # warn if float is implicit promoted to double
       -Wformat=2 # warn on security issues around functions that format output (ie printf)
