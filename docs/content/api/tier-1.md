@@ -89,9 +89,8 @@ without llfio, it is decoded or read into memory). Parquet is read by C++ in a b
 MATLAB through `parquetread`.
 
 A `Dataset` of a path keeps no series: every `cluster()` call on it reads the
-file again. The exceptions, in Python and MATLAB, are Parquet, which `pyarrow` or
-`parquetread` reads, and a `Dataset` made with an `ndim` above 1: each is read once
-and the `Dataset` keeps its series. To read a file once for several
+file again. The exception, in Python and MATLAB, is Parquet, which `pyarrow` or
+`parquetread` reads once: the `Dataset` keeps its series. To read a file once for several
 runs, read its series into memory first and cluster those: C++
 `dtwc::run(config, dtwc::read_data(path))`, Python `dtwcpp.cluster(data.as_series(), k)`,
 MATLAB `dtwc.cluster(data.as_series(), k)` (with `dtype` given again for float32). The
@@ -131,13 +130,32 @@ A negative `skip_cols` or `skip_rows` is `InvalidInput`. In C++,
 `load(path, 0, ',')` does not compile: give `skip_rows` before the delimiter,
 `load(path, 0, 0, ',')`.
 
+A `Dataset` is read with the reader options it was made with (`skip_cols`, `skip_rows`,
+`delimiter` and `dtype`), so a call that gives another value for one is `InvalidInput` (MATLAB
+`dtwc:invalidArgument`), naming the option and both values: pass it to `load` when the `Dataset`
+is made, or leave it out. One equal to the `Dataset`'s own runs, and one not given is never
+refused. In C++, `cluster(dataset, config)` and `cdist(X, Y, config)` read the options from the
+`Config`, whose defaults stand for "not given": a field that is not at its default and differs is
+refused, and so is a `column` beside series in memory (a C++ `Dataset` holds no `column`: a path's
+read takes the `Config`'s). In Python and MATLAB, `cluster(dataset, k, dtype=...)` refuses a
+`dtype` (`'Dtype'`) that was given and differs, its default value included, and so does MATLAB's
+`load(dataset, ...)` for each of its options; Python's `load` cannot tell a keyword left at its
+default from one not given, so it refuses a keyword only when it is not at its default. A `name`
+given to `load` beside a `Dataset` is refused. `cdist` checks each `Dataset` by the same rule in
+Python and MATLAB for `dtype` and `ndim` (Python's checks a `Data`'s `ndim` too); its `dtype`
+(MATLAB `'Dtype'`) is not given unless passed (Python `None`, MATLAB `''`): a `Dataset`, or in
+Python a `Data`, refuses one other than its own, and other series are stored as `float64` unless
+it says otherwise. Once a `Dataset` has read an Arrow IPC file, the `ndim` `cdist` compares is the
+file's; an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is
+refused when the file is read, and given none, the series take the file's `ndim`.
+
 ## Cluster
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::cluster(data, k, method = "auto", band = -1, device = "", max_iter = 100)` | `dtwcpp.cluster(data, k, **keys)` | `dtwc.cluster(data, k, Name, Value, ...)` |
+| call | `dtwc::cluster(data, k, method = "auto", band = -1, device = "", max_iter = 100)`, or `dtwc::cluster(data, config)` | `dtwcpp.cluster(data, k, **keys)` | `dtwc.cluster(data, k, Name, Value, ...)` |
 | `data` | a `Dataset` | a `Dataset`, a path or series in memory | a `dtwc.Dataset`, a path or series in memory |
-| other settings | through `dtwc::run(Config)`, below | keyword arguments | name-value pairs |
+| other settings | the fields of a `dtwc::Config`, below | keyword arguments | name-value pairs |
 
 The settings are these `dtwc_cl` long options, as snake_case keywords in Python
 and the same words in CamelCase in MATLAB: `method`, `band`, `metric`, `variant`
@@ -149,8 +167,9 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 (MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'GpuShare'`, `'MatrixDtype'`, `'RamLimit'`, ...), and
 `no_report` (MATLAB `'NoReport'`; `--no-report`: no run report). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
-beside a `Dataset`, which keeps its own, refuses one that differs. The others (`input`, `output`,
-`checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys here.
+beside a `Dataset`, which keeps its own, refuses one that differs. `output`, `checkpoint` and
+`checkpoint_interval` are the run's files, below. The others (`input`, `dist_matrix`, ...) are
+`dtwc_cl`'s and `dtwc::run`'s, unknown keys here.
 `ram_limit` is the run's soft memory budget, a byte count or a size such as `"8G"`, as
 `--ram-limit` is: a reserve for the threads, then where the series and the matrix go (`0`, the
 default, plans with 90 % of the memory available); a run that cannot fit under an explicit limit is
@@ -180,15 +199,60 @@ are `InvalidInput`.
 
 In Python, `device="hpc"` or `"hpc:gpu"` submits the run as one `job.toml` and
 returns a `Result` holding the labels, medoids and run report; `gpu_device` (`"a100"`, `"a6000"`,
-`"l40s"`, `"h100"`) picks the GPU of an `hpc:gpu` run.
+`"l40s"`, `"h100"`) picks the GPU of an `hpc:gpu` run. `upload_input=True` sends the local file or
+folder a path names with the job, which otherwise reads an absolute path on the cluster
+([SLURM](../../getting-started/slurm/)); `output` receives the downloaded files, and `checkpoint` and
+`checkpoint_interval` are refused, since the cluster's run is its own.
+
+### Result files and a checkpoint
+
+`cluster()` writes no file unless it is asked to; `save` writes them on request. Three settings ask:
+
+| | C++ (`Config` fields) | Python | MATLAB |
+|---|---|---|---|
+| the directory the run writes its result files into | `output` | `output` | `'Output'` |
+| the directory it saves its distance matrix in, and resumes from | `checkpoint` | `checkpoint` | `'Checkpoint'` |
+| the rows between saves of it | `checkpoint_interval` | `checkpoint_interval` | `'CheckpointInterval'` |
+
+`output` receives the files `dtwc_cl` writes, as `--output` does, the run report last
+(`<name>_report.txt`): the matrix and silhouette files only where the method filled the matrix,
+where `save` fills it first. Leaving it out, `None` or `""` in Python and `''` in MATLAB writes
+nothing. `checkpoint` saves the distance matrix there as `<name>.dtwm` and resumes from it where it
+holds one for these data ([Checkpointing](../../getting-started/checkpointing/)); a method that computes
+no distance matrix writes none. `checkpoint_interval` saves it every that many rows (0, the default:
+once, at the end) and needs `checkpoint`: without one, or below 0, it is `InvalidInput`. In C++ they are
+fields of the `Config` that `cluster(data, config)` takes, whose `output` starts at `dtwc_cl`'s
+`./results`: clear it to cluster in memory, as the six-value `cluster()` does.
+
+```cpp
+dtwc::Config config;
+config.k = 3;
+config.output = "results";         // the run writes its files here ("" writes none)
+config.checkpoint = "checkpoints"; // and saves its distance matrix here, resuming from it
+const auto res = dtwc::cluster(data, config);
+```
+
+```python
+res = dtwcpp.cluster(data, 3, output="results", checkpoint="checkpoints")
+```
+
+```matlab
+res = dtwc.cluster(data, 3, 'Output', 'results', 'Checkpoint', 'checkpoints');
+```
+
+To run the same settings again, keep them: a `Config` in C++, a dict in Python
+(`dtwcpp.cluster(data, 3, **opts)`; to override one, merge, `**{**opts, "band": 2}`, since Python
+refuses a keyword given twice), a cell array in MATLAB (`dtwc.cluster(data, 3, opts{:}, 'Band', 2)`:
+a name given twice takes its last value).
 
 ### Every setting in C++: Config
 
-C++ `cluster()` takes `k` and four settings. Any other goes through
+C++ `cluster(data, k, ...)` takes `k` and four settings. Any other goes through
 `dtwc::Config`, the struct that `dtwc_cl`'s flags and its `--config` TOML file
 fill: its fields follow the long options (`k` is `--n-clusters`, `tadpole_dc` is
-`--dc`), and each starts at `dtwc_cl`'s default. `dtwc::run(config)` reads `config.input`; `dtwc::run(config, data)`
-clusters series already in memory. Both write the result files into
+`--dc`), and each starts at `dtwc_cl`'s default. `dtwc::cluster(data, config)` clusters a `Dataset` with
+it; `dtwc::run(config)` reads `config.input`, and `dtwc::run(config, data)` clusters series already in
+memory. All three write the result files into
 `config.output` (`./results` unless cleared), and the run report last
 (`<name>_report.txt`; `config.report = false`, `dtwc_cl --no-report`, makes none).
 From `examples/cpp/tier1.cpp`:
@@ -234,7 +298,7 @@ from the input. Under `softdtw` the matrix, here and in `distance_matrix`, holds
 divergence the clustering uses ([DTW variants](../../method/dtw-variants/#soft-dtw)), not
 `cdist`'s raw value. `save` then writes the run report, last, as `<name>_report.txt`
 (the run's own: its times and machine; a run without an output directory, as
-`cluster()` is, reports its silhouettes not computed though `save` computes them;
+`cluster()` is unless it is given `output`, reports its silhouettes not computed though `save` computes them;
 a `save` that fails before it writes none; none under `config.report = false`,
 Python's `no_report=True`, MATLAB's `'NoReport', true`). `save` fills the matrix first, where `dtwc_cl` writes the
 matrix and silhouette files only when the method filled it (not after
@@ -253,48 +317,6 @@ the remote run: `score` raises `InvalidInput` because the series and distance
 matrix remain on the cluster (where `dtwc_cl` already wrote the output files),
 `save` copies the downloaded files into its directory, and `plot` prints the
 cluster sizes.
-
-## CasADi-style workflow: settings, load_data, do_clustering, write_data
-
-For persistent pipelines, crash-safe `.dtwm` checkpointing, or switching a
-script between `"cpu"`, `"gpu"`, `"cpu+gpu"`, and `"hpc"` via a single setting,
-Tier 1 also provides a reusable four-verb workflow:
-
-| Step | C++ | Python | MATLAB |
-|---|---|---|---|
-| 1. Configure | `auto cfg = dtwc::make_settings({{"n-clusters", "3"}, {"method", "pam"}, {"output", "results"}})` (or `dtwc::settings::make(...)`) | `cfg = dtwcpp.settings(k=3, method="pam", output="results", ...)` | `cfg = dtwc.settings('K', 3, 'Method', 'pam', 'Output', 'results', ...)` |
-| 2. Load | `auto data = dtwc::load_data(source, ...)` | `data = dtwcpp.load_data(source, ...)` | `data = dtwc.load_data(source, ...)` |
-| 3. Cluster | `auto res = dtwc::do_clustering(data, cfg)` | `res = dtwcpp.do_clustering(data, cfg, **overrides)` | `res = dtwc.do_clustering(data, cfg, ...)` |
-| 4. Write (optional) | `dtwc::write_data(res, dir)` | `dtwcpp.write_data(res, dir)` | `dtwc.write_data(res, dir)` |
-
-By default `settings` sets `output` to `"./results"` so `do_clustering` writes
-labels, medoids, silhouettes, distance matrix (when filled), and the run report
-automatically (plus a resumable `.dtwm` file when `checkpoint` is set). Pass an
-empty `output=""` (`'Output', ''` in MATLAB) to run purely in memory and call
-`write_data` only if needed.
-
-A `Dataset` is read with the reader options it was made with: `skip_cols`, `skip_rows`,
-`delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Beside a `Dataset`, `do_clustering`
-and, in Python and MATLAB, `load_data`, `load` and `cluster` refuse one of them that differs
-from the Dataset's own: one given to the call itself (a keyword or override in Python, a
-name-value pair in MATLAB, an override in C++) whenever it differs, its default value
-included, and one the settings give only when it is not at its default. (`load` takes no
-`ndim` and `cluster` only `dtype`; Python's `load` cannot tell a keyword left at its default
-from one not given, so it refuses a keyword only when it is not at its default.) That is
-`InvalidInput` (MATLAB `dtwc:invalidArgument`) naming the option and both values: pass it to
-`load_data`, or leave it out. One equal to the Dataset's own runs, and one not given is never
-refused. Once the
-`Dataset` has read an Arrow IPC file, the `ndim` compared is the file's; Python's
-`load_data` also refuses an `ndim` other than a `Data`'s own. The same settings given to
-`load_data` and `do_clustering` agree. `cdist` checks each `Dataset` by the settings' rule:
-C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `ndim` (Python's checks a `Data`'s
-`ndim` too). Their `dtype` (MATLAB `'Dtype'`) is not given unless passed (Python `None`,
-MATLAB `''`): a `Dataset`, or in Python a `Data`, refuses one other than its own, and other
-series are stored as `float64` unless it says otherwise. A path or array passed to
-`do_clustering` itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset`
-holds no `column`: a path's read takes the Config's, and series in memory refuse one. In
-Python and MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim`
-above 1 is refused too, when the file is read; given none, the series take the file's `ndim`.
 
 ## Cross-collection distances: cdist
 

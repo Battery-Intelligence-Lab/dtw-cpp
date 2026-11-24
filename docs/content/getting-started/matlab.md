@@ -78,7 +78,7 @@ res.save('out');                                      % the CSVs dtwc_cl writes,
 res.Report                                            % the run report's text
 ```
 
-`dtwc.cluster` runs `dtwc::run` in memory (`res.save` writes the CSV outputs and `<name>_report.txt`; see [Tier 1](../../api/tier-1/)). It accepts the `dtwc_cl` options ([CLI reference](../cli/)) in CamelCase: `MatrixDtype`, `RamLimit`, `Method`, `Band`, `Metric`, `Variant`, `WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`, `TweNu`, `TweLambda`, `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`, `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver`, `MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`, `VerboseSolver`, `LrMaxNodes`, `LrRoot`, `GpuPrecision`, `GpuShare`, `Device`, `Name`, `Verbose`, `NoReport` (no run report: `res.Report` is `''`), plus `Dtype` when loading a path or in-memory series directly. C++ reads and checks them before a series is read: omitted keys use `dtwc_cl` defaults (`Method` = `'auto'`, `Device` = `dtwc.device()`, naming one sets that run's device only), and an unknown key raises `dtwc:invalidArgument` naming the valid ones. Streamed Arrow IPC runs under `RamLimit` hold no series (`score`, `distance_matrix`, and `plot` raise `dtwc:invalidArgument`; `save` writes labels, medoids, and the report).
+`dtwc.cluster` runs `dtwc::run` in memory unless `'Output'` names a directory (`res.save` writes the CSV outputs and `<name>_report.txt`; see [Tier 1](../../api/tier-1/)). It accepts the `dtwc_cl` options ([CLI reference](../cli/)) in CamelCase: `MatrixDtype`, `RamLimit`, `Method`, `Band`, `Metric`, `Variant`, `WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`, `TweNu`, `TweLambda`, `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`, `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver`, `MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`, `VerboseSolver`, `LrMaxNodes`, `LrRoot`, `GpuPrecision`, `GpuShare`, `Device`, `Name`, `Verbose`, `NoReport` (no run report: `res.Report` is `''`), plus `Dtype` when loading a path or in-memory series directly, and the run's files: `Output`, the directory it writes its result files and run report into (`''`, the default, writes none), `Checkpoint`, the directory it saves its distance matrix in and resumes from, and `CheckpointInterval`, the rows between saves (it needs a `Checkpoint`). A name given twice takes its last value, so `dtwc.cluster(data, 3, opts{:}, 'Band', 2)` overrides the `Band` kept in `opts`. C++ reads and checks the keys before a series is read: omitted keys use `dtwc_cl` defaults (`Method` = `'auto'`, `Device` = `dtwc.device()`, naming one sets that run's device only), and an unknown key raises `dtwc:invalidArgument` naming the valid ones. Streamed Arrow IPC runs under `RamLimit` hold no series (`score`, `distance_matrix`, and `plot` raise `dtwc:invalidArgument`; `save` writes labels, medoids, and the report).
 
 ## Loading data
 
@@ -119,9 +119,10 @@ series, named by its file.
 
 `dtwc.load` reads nothing, and a `Dataset` of a path keeps no series: `dtwc.cluster`
 hands a text file, a folder or an Arrow IPC file to C++, which reads it at every
-call. Parquet is the exception, and so is a `Dataset` of `Ndim` above 1:
-`Dataset.as_series()` reads it at the first `dtwc.cluster` call (`parquetread` for
-Parquet) and keeps the series, which are clustered in the Dataset's `Ndim`. To read any file once for several
+call. Parquet is the exception: `Dataset.as_series()` reads it at the first
+`dtwc.cluster` call (`parquetread`) and keeps the series. So is a `Dataset` whose
+`as_series()` has read an Arrow IPC file of `ndim` above 1, its `Ndim` then the file's:
+`dtwc.cluster` clusters the series it keeps, in that `Ndim`. To read any file once for several
 runs, take its series and cluster those (`'Dtype'` again for `'float32'`):
 
 ```matlab
