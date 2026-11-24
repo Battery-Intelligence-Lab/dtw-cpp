@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.26)
 
-# Python discovery — scikit-build-core pre-configures the correct paths
-find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+# Python discovery — scikit-build-core pre-configures the correct paths. SKBUILD_SABI_COMPONENT is
+# Development.SABIModule where pyproject.toml's wheel.py-api asks for a stable-ABI wheel and the interpreter
+# can build one, else empty; nanobind builds its STABLE_ABI module below only where CMake has found that component.
+find_package(Python COMPONENTS Interpreter Development.Module ${SKBUILD_SABI_COMPONENT} REQUIRED)
 
 # nanobind discovery — try pip-installed first, fall back to CPM
 execute_process(

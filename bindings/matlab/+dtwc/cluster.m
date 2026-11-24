@@ -15,7 +15,8 @@ function res = cluster(data, k, varargin)
 %   Parquet (dtwc.load), and series in memory go as they are.
 %
 %   Dtype is dtwc.load's, for a path or series in memory that cluster loads:
-%   'float32' stores the series as single, half the memory.
+%   'float32' stores the series as single, half the memory. A dtwc.Dataset keeps
+%   its own: a Dtype given that differs is refused.
 %
 %   The name-value pairs are these dtwc_cl keys, by their long names in
 %   CamelCase, the words of Python's cluster() keywords:

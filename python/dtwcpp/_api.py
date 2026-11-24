@@ -267,20 +267,17 @@ def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="
     """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
     ``dtype="float32"`` stores the series as float32, half the memory: a file's
     reader rounds each value, never holding a float64 copy (float32 input data
-    alone does not choose it). A Dataset passes through unchanged: it keeps the
-    options it was made with, so an option other than its default is refused, as
-    MATLAB's dtwc.load refuses any."""
+    alone does not choose it). A Dataset passes through with the options it was
+    made with, as :func:`load_data` takes it: a keyword other than its default
+    that differs from the Dataset's raises :class:`dtwcpp.InvalidInput` naming
+    both values, one equal to it runs, and ``name`` is refused. ``load`` cannot
+    tell a keyword at its default from one not given; ``load_data`` and
+    :func:`cluster` can."""
     if isinstance(source, Dataset):
-        ignored = [key for key, value, default in (
+        return load_data(source, **{key: value for key, value, default in (
             ("skip_cols", skip_cols, 0), ("skip_rows", skip_rows, 0),
             ("delimiter", delimiter, None), ("name", name, None),
-            ("dtype", dtype, "float64")) if value != default]
-        if ignored:
-            from dtwcpp import InvalidInput
-            raise InvalidInput(
-                f"load: a Dataset keeps the options it was made with, so {', '.join(ignored)} "
-                "would be ignored; load its source with the options instead.")
-        return source
+            ("dtype", dtype, "float64")) if value != default})
     return Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                    delimiter=delimiter, name=name, dtype=dtype)
 
@@ -519,7 +516,9 @@ def cluster(data, k, **keys):
     pyarrow reads Parquet, and series in memory go as they are. ``data`` may be
     a :class:`Dataset`, a path, or an array; ``dtype`` is
     :func:`load`'s, for a path or an array cluster() loads (``"float32"`` stores
-    the series at half the memory). ``keys`` are the
+    the series at half the memory), and a :class:`Dataset` keeps its own: one
+    given that differs raises :class:`dtwcpp.InvalidInput`, as in
+    :func:`load_data`. ``keys`` are the
     keys of a dtwc_cl run — its long names in snake_case: ``method``, ``band``,
     ``metric``, ``variant`` and its parameters (``wdtw_g``, ``adtw_penalty``,
     ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
@@ -551,14 +550,14 @@ def cluster(data, k, **keys):
     from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
     device = keys.pop("device", None)
     gpu_device = keys.pop("gpu_device", None)
-    dtype = keys.pop("dtype", "float64")
+    given = {"dtype": keys.pop("dtype")} if "dtype" in keys else {}  # load_data's rule beside a Dataset
     config = _config(k, keys)
     eff = device if device is not None else dtwcpp.device()
     backend, _ = _resolve_device(eff)
     if gpu_device is not None and eff.strip().lower() != "hpc:gpu":
         raise InvalidInput(f"cluster: gpu_device names the GPU of a device='hpc:gpu' "
                            f"run, and the device is '{eff}'.")
-    data = load(data, dtype=dtype)
+    data = load_data(data, **given)
 
     if backend == "hpc":
         t0 = time.perf_counter()

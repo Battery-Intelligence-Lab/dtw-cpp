@@ -934,10 +934,11 @@ NB_MODULE(_dtwcpp_core, m)
          "Validate that all series flat sizes are divisible by ndim.\n\n"
          "Raises InvalidInput (a ValueError) if any series has incompatible size.");
 
-  // Zero-copy Arrow C Data interface ingest. Consumes the PyCapsule
-  // protocol `__arrow_c_array__` (polars / DuckDB / pyarrow / pandas) via the
-  // vendored nanoarrow — NO pyarrow dependency. Each list element becomes one
-  // (univariate) series; see dtwc::io::data_from_arrow for accepted layouts.
+  // Arrow C Data interface ingest with no Python list conversion; the Data owns
+  // a copy of the values. Consumes the PyCapsule protocol `__arrow_c_array__`
+  // (polars / DuckDB / pyarrow / pandas) via the vendored nanoarrow — NO pyarrow
+  // dependency. Each list element becomes one (univariate) series; see
+  // dtwc::io::data_from_arrow for accepted layouts.
   m.def("data_from_arrow_c_array", [](nb::object obj, const std::string &dtype) -> dtwc::Data {
     // Checked before a capsule is taken, so a bad dtype consumes no stream.
     const auto precision = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
@@ -988,9 +989,10 @@ NB_MODULE(_dtwcpp_core, m)
     }
     dtwc::io::release_arrow(schema, array);
     return data; }, "obj"_a, "dtype"_a = std::string("float64"),
-        "Build a Data object from an Arrow C Data interface source (zero-copy,\n"
-        "no pyarrow). `obj` must implement __arrow_c_array__ over a list/large_list\n"
-        "of float32/float64 (each element one series) or a struct containing one.\n"
+        "Build a Data object from an Arrow C Data interface source (no Python list\n"
+        "conversion, no pyarrow; the Data owns a copy). `obj` must implement\n"
+        "__arrow_c_array__ over a list/large_list of float32/float64 (each element\n"
+        "one series) or a struct containing one.\n"
         "dtype 'float32' stores each value rounded to float.");
 
   // =========================================================================
@@ -1201,12 +1203,6 @@ NB_MODULE(_dtwcpp_core, m)
       p.write_silhouettes(); }, "Write per-series silhouette scores.")
     .def("__repr__", [](const dtwc::Problem &p) { return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
                                                          + ", k=" + std::to_string(p.n_clusters()) + ")"; });
-
-  m.def("_write_result_files", [](dtwc::Problem &prob, const std::filesystem::path &directory) {
-    nb::gil_scoped_release release;
-    dtwc::detail::write_result_files(prob, directory, true); }, "prob"_a, "directory"_a,
-        "Write a clustered Problem's four result files into directory, as\n"
-        "dtwc_cl and C++ Result::save write them (detail::write_result_files).");
 
   // =========================================================================
   // dtwc::run, the run dtwc_cl makes: _run and its _Result (C++ dtwc::Result)

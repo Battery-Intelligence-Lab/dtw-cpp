@@ -69,13 +69,16 @@ class TestLoad:
             dtwcpp.load([[0.0], [1.0]], skip_rows=bad)
 
     def test_a_dataset_refuses_the_options_it_would_ignore(self):
-        """load(Dataset, ...) returned the Dataset and dropped the options. A
-        Dataset keeps the options it was made with, so one given is refused by
-        name, as MATLAB's dtwc.load refuses it."""
-        ds = dtwcpp.load([[0.0], [1.0], [2.0]])
+        """A Dataset keeps the options it was made with, so load(Dataset, ...) refuses
+        a keyword other than its default that differs from them, naming both values,
+        as load_data does; the Dataset's own runs, and a name is refused."""
+        ds = dtwcpp.load([[0.0], [1.0], [2.0]], skip_rows=1)
         assert dtwcpp.load(ds) is ds
-        with pytest.raises(dtwcpp.InvalidInput, match=r"so skip_rows, name would be ignored"):
-            dtwcpp.load(ds, skip_rows=1, name="x")
+        assert dtwcpp.load(ds, skip_rows=1) is ds
+        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=2"):
+            dtwcpp.load(ds, skip_rows=2)
+        with pytest.raises(dtwcpp.InvalidInput, match=r"unexpected \['name'\]"):
+            dtwcpp.load(ds, name="x")
 
     def test_arrow_ipc_path_reads_its_data_and_name_columns(self, tmp_path):
         """load('x.arrow') reads through the C++ reader, as dtwc_cl reads Arrow IPC:

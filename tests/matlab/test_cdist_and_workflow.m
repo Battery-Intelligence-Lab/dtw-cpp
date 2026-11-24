@@ -128,8 +128,22 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
     verifyError(testCase, @() dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '', 'SkipRows', 0), ...
                 'dtwc:invalidArgument');
     verifyError(testCase, @() dtwc.cdist(ds, 'Dtype', 'float32'), 'dtwc:invalidArgument');
-    verifyError(testCase, @() dtwc.cdist(dtwc.load_data(csv_file, cfg, 'Dtype', 'float32'), 'Dtype', 'float64'), ...
-                'dtwc:invalidArgument');
+    ds32 = dtwc.load_data(csv_file, cfg, 'Dtype', 'float32');
+    verifyError(testCase, @() dtwc.cdist(ds32, 'Dtype', 'float64'), 'dtwc:invalidArgument');
+
+    % dtwc.load and dtwc.cluster take a Dataset by the same rule: a Dtype that differs is refused, naming
+    % both values, at its default too; the same one, or none, runs.
+    try
+        dtwc.load(ds32, 'Dtype', 'float64');
+        verifyFail(testCase, 'Dtype float64 beside a Dataset made with Dtype float32 ran');
+    catch err
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+        verifySubstring(testCase, err.message, 'Dtype ''float32'' and the settings give Dtype ''float64''');
+    end
+    verifySameHandle(testCase, dtwc.load(ds32, 'Dtype', 'float32'), ds32);
+    verifySameHandle(testCase, dtwc.load(ds32), ds32);
+    verifyError(testCase, @() dtwc.cluster(ds32, 2, 'Dtype', 'float64'), 'dtwc:invalidArgument');
+    verifyNumElements(testCase, dtwc.cluster(ds32, 2, 'Dtype', 'float32').labels, 6);
 
     dtwc.write_data(mem_res, manual_out);
     verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_labels.csv')));

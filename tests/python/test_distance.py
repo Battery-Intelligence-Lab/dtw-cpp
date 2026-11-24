@@ -12,6 +12,7 @@ hand values.
 import math
 import re
 
+import numpy as np
 import pytest
 
 import dtwcpp
@@ -26,6 +27,9 @@ NAN = math.nan
 GAP_X, GAP_Y = [0, NAN, 2], [0, 9, 9, 0]
 
 ACCEPTED = [
+    # One value each: |5 - 3|. NumPy arrays go in as lists do: 3 + 3 + 3 on the diagonal, the cheapest path.
+    ({}, [5], [3], 2),
+    ({}, np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0]), 9),
     ({}, [1, 2, 3], [3, 4, 5, 6, 7], 13),
     ({"metric": "squared_euclidean"}, [1, 2, 3], [3, 4, 5, 6, 7], 35),
     ({"band": 2}, [0, 1, 0, 2, 0], [0, 0, 0, 0, 0, 0, 2], 5),
