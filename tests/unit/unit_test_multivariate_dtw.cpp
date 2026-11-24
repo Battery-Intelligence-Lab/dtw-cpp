@@ -117,8 +117,7 @@ TEST_CASE("MV DTW: ndim 2, 5, 10 and 50 equal the oracle, full and banded", "[mv
           spec.band = band;
           spec.ndim = ndim;
           const double want = ts::dtw_oracle(spec, x, y);
-          const double got = band < 0 ? dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, ndim, -1, -1.0, metric)
-                                      : dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, ndim, band, -1.0, metric);
+          const double got = dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, ndim, band, -1.0, metric);
           INFO("ndim " << ndim << ", band " << band << ", " << nx << "x" << ny << ": got " << got
                        << ", oracle " << want);
           // The library's sentinel for no path is max(); the oracle's is infinity.

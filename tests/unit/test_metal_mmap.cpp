@@ -156,9 +156,7 @@ TEST_CASE("Metal squared-L2 cache via Problem::fill_distance_matrix", "[metal][m
     for (size_t i = 0; i < series.size(); ++i) {
       for (size_t j = i + 1; j < series.size(); ++j) {
         CAPTURE(i, j);
-        const double oracle = band < 0
-          ? dtwc::dtwBanded(series[i], series[j], -1, -1.0, dtwc::core::MetricType::SquaredL2)
-          : dtwc::dtwBanded(series[i], series[j], band, -1.0, dtwc::core::MetricType::SquaredL2);
+        const double oracle = dtwc::dtwBanded(series[i], series[j], band, -1.0, dtwc::core::MetricType::SquaredL2);
         REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)),
                      WithinRel(oracle, 1e-4) || WithinAbs(oracle, 1e-3));
       }
