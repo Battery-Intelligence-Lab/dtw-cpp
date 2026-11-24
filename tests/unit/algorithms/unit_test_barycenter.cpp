@@ -28,6 +28,7 @@ namespace {
 Problem make_problem(std::vector<std::vector<data_t>> values, std::size_t ndim = 1)
 {
   std::vector<std::string> names;
+  names.reserve(values.size());
   for (std::size_t i = 0; i < values.size(); ++i) names.push_back("s" + std::to_string(i));
   Problem problem("barycenter_test");
   Data data(std::move(values), std::move(names));
@@ -257,6 +258,7 @@ TEST_CASE("barycenter k-means separates two waveform groups",
           "[barycenter][kmeans]")
 {
   std::vector<std::vector<data_t>> values;
+  values.reserve(16);
   for (int i = 0; i < 8; ++i)
     values.push_back({0.0 + i * 0.01, 1.0, 2.0, 1.0, 0.0});
   for (int i = 0; i < 8; ++i)

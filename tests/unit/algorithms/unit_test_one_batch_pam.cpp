@@ -548,9 +548,9 @@ TEST_CASE("OneBatchPAM's parallel final assignment reports the failure a serial 
     names.push_back("s" + std::to_string(i));
   }
   series.push_back({ huge });
-  names.push_back("pos");
+  names.emplace_back("pos");
   series.push_back({ -huge });
-  names.push_back("neg");
+  names.emplace_back("neg");
 
   const auto outcome = [&](int threads, std::uint64_t seed) {
     const ThreadCount scope(threads);

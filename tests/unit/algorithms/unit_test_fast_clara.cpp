@@ -56,6 +56,7 @@ static Problem make_clara_problem(int N)
 
     std::vector<data_t> ts;
     int len = 20 + (i % 5);
+    ts.reserve(static_cast<std::size_t>(len));
     for (int j = 0; j < len; ++j) {
       ts.push_back(baseline + slope * j + noise_offset);
     }
@@ -444,6 +445,7 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
 
     std::vector<float> ts;
     int len = 20 + (i % 5);
+    ts.reserve(static_cast<std::size_t>(len));
     for (int j = 0; j < len; ++j)
       ts.push_back(baseline + slope * j + noise_offset);
     vecs.push_back(std::move(ts));
@@ -775,6 +777,7 @@ TEST_CASE("FastCLARA's result is the per-sample loop's", "[fast_clara][samples]"
     const auto pam = fast_pam(sub, opts.n_clusters, opts.max_iter,
                               opts.random_seed + static_cast<std::uint64_t>(s));
     std::vector<index_t> medoids;
+    medoids.reserve(pam.medoid_indices.size());
     for (const index_t m : pam.medoid_indices) medoids.push_back(sample[static_cast<std::size_t>(m)]);
     const auto [labels, cost] = per_pair_assignment<data_t>(prob, medoids);
     if (winner < 0 || cost < expected.total_cost) {

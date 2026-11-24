@@ -31,8 +31,6 @@
 #include <utility>
 #include <vector>
 
-using Catch::Matchers::WithinAbs;
-
 using namespace dtwc;
 using dtwc::test_support::ScratchDirectory;
 

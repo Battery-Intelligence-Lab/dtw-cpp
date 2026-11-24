@@ -110,8 +110,8 @@ TEST_CASE("--ram-limit reads a size and rejects anything else", "[cli][parquet][
 
 TEST_CASE("Parquet plan selects streaming before payload materialization", "[cli][parquet][ram][streaming]")
 {
-  const auto plan = plan_parquet_load(Method::CLARA, Device::CPU, 6001, /*bytes=*/4097, /*cap=*/4096,
-                                      ParquetLayout::ListColumn);
+  const auto plan = plan_parquet_load(Method::CLARA, Device::CPU, 6001, /*estimated_resident_bytes=*/4097,
+                                      /*ram_limit=*/4096, ParquetLayout::ListColumn);
   CHECK(plan.method == Method::CLARA);
   CHECK(plan.stream_payload);
 

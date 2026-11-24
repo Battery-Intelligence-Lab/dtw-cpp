@@ -33,7 +33,6 @@
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinRel;
 using dtwc::core::MetricType;
-namespace fs = std::filesystem;
 using dtwc::test_support::ScratchDirectory;
 
 // The Problem's fill and the checked free function reach the same squared-L2
@@ -61,6 +60,7 @@ std::vector<std::vector<double>> random_series(std::size_t n, std::size_t base_l
 std::vector<std::string> names_for(std::size_t n)
 {
   std::vector<std::string> names;
+  names.reserve(n);
   for (std::size_t i = 0; i < n; ++i) names.push_back("s" + std::to_string(i));
   return names;
 }
@@ -204,7 +204,8 @@ TEST_CASE("FastCLARA samples compute with the parent's metric",
   // the value nearest the mean (8 or 9) under squared L2.
   const std::vector<double> values{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 40, 41 };
   std::vector<std::vector<double>> series;
-  for (const double v : values) series.push_back(std::vector<double>(3, v));
+  series.reserve(values.size());
+  for (const double v : values) series.emplace_back(3, v);
   auto prob = make_problem(series);
   prob.set_metric(MetricType::SquaredL2);
 

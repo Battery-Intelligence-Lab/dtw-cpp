@@ -80,6 +80,7 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   std::mt19937_64 rng(1000003u * n + 7919u * W + 31u * std::size_t(band + 2) + (ties ? 1 : 0));
   const auto x = series<T>(rng, n, ties);
   std::vector<std::vector<T>> y;
+  y.reserve(W);
   for (std::size_t w = 0; w < W; ++w) y.push_back(series<T>(rng, n, ties));
 
   const auto lanes = lanes_of<T>(x, y, band, metric);
@@ -106,6 +107,7 @@ int ragged_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   std::uniform_int_distribution<std::size_t> length(1, n);
   const auto x = series<T>(rng, length(rng), ties);
   std::vector<std::vector<T>> y;
+  y.reserve(W);
   for (std::size_t w = 0; w < W; ++w) y.push_back(series<T>(rng, length(rng), ties));
 
   const auto lanes = lanes_of<T>(x, y, band, metric);
@@ -255,6 +257,7 @@ TEST_CASE("fill_distance_matrix: DDTW and Interpolate SIMD lanes agree with per-
 {
   constexpr std::size_t N = 2 * dtwc::core::dtw_lanes<double> + 5;
   std::vector<std::size_t> lengths;
+  lengths.reserve(N);
   for (std::size_t i = 0; i < N; ++i) lengths.push_back(i % 2 ? 44 : 40);
 
   SECTION("DDTW unbanded and banded")

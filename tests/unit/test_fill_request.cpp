@@ -55,6 +55,7 @@ std::vector<double> ramp(std::size_t n, double offset)
 dtwc::Data named(std::vector<std::vector<double>> series, std::size_t ndim = 1)
 {
   std::vector<std::string> names;
+  names.reserve(series.size());
   for (std::size_t i = 0; i < series.size(); ++i)
     names.emplace_back(1, static_cast<char>('a' + i));
   return dtwc::Data(std::move(series), std::move(names), ndim);

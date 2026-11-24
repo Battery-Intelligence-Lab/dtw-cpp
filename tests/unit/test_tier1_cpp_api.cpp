@@ -580,8 +580,10 @@ dtwc::Data seam_series()
   std::vector<std::vector<dtwc::data_t>> series;
   std::vector<std::string> names;
   for (int i = 0; i < 10; ++i) {
+    const int group = i / 5;
     std::vector<dtwc::data_t> values;
-    for (int t = 0; t < 6; ++t) values.push_back(10.0 * (i / 5) + 0.1 * i + 0.05 * t * (i % 3));
+    values.reserve(6);
+    for (int t = 0; t < 6; ++t) values.push_back(10.0 * group + 0.1 * i + 0.05 * t * (i % 3));
     series.push_back(std::move(values));
     names.push_back("s" + std::to_string(i));
   }

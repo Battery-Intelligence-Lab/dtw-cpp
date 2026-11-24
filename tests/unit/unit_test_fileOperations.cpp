@@ -92,7 +92,7 @@ using Series = std::vector<std::vector<double>>;
 
 TEST_CASE("ignoreBOM test", "[file_operations]")
 {
-  auto testText = [](std::string data) {
+  auto testText = [](const std::string &data) {
     std::stringstream in(data);
 
     ignoreBOM(in);
@@ -117,7 +117,7 @@ TEST_CASE("ignoreBOM test", "[file_operations]")
 
   SECTION("ignoreBOM with empty stream")
   {
-    std::string dataText("");
+    std::string dataText;
     REQUIRE(testText(dataText).empty());
   }
 

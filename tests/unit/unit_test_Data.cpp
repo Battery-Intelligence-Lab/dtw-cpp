@@ -18,8 +18,6 @@
 #include <string_view>
 #include <vector>
 
-using Catch::Matchers::WithinAbs;
-
 using namespace dtwc;
 
 TEST_CASE("Data class functionality", "[Data]")

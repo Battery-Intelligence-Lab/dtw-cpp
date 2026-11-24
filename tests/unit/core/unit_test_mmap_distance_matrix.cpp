@@ -360,6 +360,7 @@ TEST_CASE("A distance matrix stored for other data is InvalidInput, CSV and cach
   // is InvalidInput. A cache computed for other series is the same request.
   const auto problem = [](std::vector<std::vector<double>> series) {
     std::vector<std::string> names;
+    names.reserve(series.size());
     for (std::size_t i = 0; i < series.size(); ++i) names.push_back("s" + std::to_string(i));
     dtwc::Problem prob("gt4b_other_data");
     prob.set_data(dtwc::Data(std::move(series), std::move(names)));

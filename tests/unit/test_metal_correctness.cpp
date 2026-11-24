@@ -29,9 +29,6 @@
 #include <random>
 #include <vector>
 
-using Catch::Matchers::WithinAbs;
-using Catch::Matchers::WithinRel;
-
 #ifndef DTWC_HAS_METAL
 
 TEST_CASE("Metal not available", "[metal]")
@@ -40,6 +37,9 @@ TEST_CASE("Metal not available", "[metal]")
 }
 
 #else // DTWC_HAS_METAL
+
+using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 
 namespace {
 

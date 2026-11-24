@@ -160,7 +160,7 @@ TEST_CASE("a clustering goes stale when the cluster count changes", "[problem][c
     auto more = kSeries;
     more.push_back({ 0, 1, 2, 3 });
     auto names = kNames;
-    names.push_back("s6");
+    names.emplace_back("s6");
     prob.set_data(dtwc::Data(std::move(more), std::move(names)));
     require_every_reader_refuses(prob);
   }

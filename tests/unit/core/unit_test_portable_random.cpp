@@ -27,6 +27,7 @@ TEST_CASE("portable random mapping is fixed across standard libraries",
 
   std::mt19937_64 engine(0);
   std::vector<std::uint64_t> bounded;
+  bounded.reserve(5);
   for (int i = 0; i < 5; ++i)
     bounded.push_back(dtwc::core::portable_bounded(engine, 10));
 

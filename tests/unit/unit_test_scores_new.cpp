@@ -21,7 +21,6 @@
 #include <utility>
 
 using Catch::Matchers::WithinAbs;
-using Catch::Matchers::WithinRel;
 using namespace dtwc;
 
 // ---------------------------------------------------------------------------
@@ -332,6 +331,7 @@ static Problem make_clustered(std::vector<std::vector<data_t>> series,
                               std::vector<index_t> medoids)
 {
   std::vector<std::string> names;
+  names.reserve(series.size());
   for (std::size_t i = 0; i < series.size(); ++i)
     names.push_back("s" + std::to_string(i));
 
