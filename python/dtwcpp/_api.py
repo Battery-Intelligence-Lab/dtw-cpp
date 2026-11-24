@@ -311,8 +311,8 @@ def load(source, *, skip_cols=None, skip_rows=None, delimiter=None, name=None, d
     """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
     A reader option left ``None`` is not given: its default for a new source
     (``skip_cols`` and ``skip_rows`` 0, ``delimiter`` the extension's, ``dtype``
-    ``"float64"``, ``ndim`` 1), and the one a Dataset or a :class:`Data` has beside
-    one. ``dtype="float32"`` stores the series as float32, half the memory: a file's
+    ``"float64"``, ``ndim`` 1), a :class:`Data`'s own ``ndim``, or a Dataset's own
+    option. ``dtype="float32"`` stores the series as float32, half the memory: a file's
     reader rounds each value, never holding a float64 copy (float32 input data
     alone does not choose it). ``ndim`` is the number of values per time step of
     a multivariate series (1 is univariate): each series holds its steps

@@ -154,7 +154,7 @@ no `column`: a path's read takes the `Config`'s). In Python and MATLAB, `load(da
 each option and `cluster(dataset, k, dtype=...)` only `dtype`, and each refuses an option that was
 given and differs, its default value included: Python's reader options are `None` unless given,
 `None` being an option's default for a new source (`0`, `0`, the extension's delimiter, `float64`,
-`1`) and the `Dataset`'s or `Data`'s own beside one. A `name` given to `load` beside a `Dataset`
+`1`), a `Data`'s own `ndim`, or a `Dataset`'s own option. A `name` given to `load` beside a `Dataset`
 is refused. Once a `Dataset` has read an Arrow IPC file, its `ndim` is the file's.
 `cdist` checks each `Dataset` by the same rule in Python and MATLAB for `dtype` (MATLAB `'Dtype'`),
 which is not given unless passed (Python `None`, MATLAB `''`): a `Dataset`, or in Python a `Data`,
