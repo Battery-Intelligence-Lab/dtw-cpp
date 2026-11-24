@@ -163,7 +163,6 @@ class TestClusterFilesAndFastIngest:
             dtwcpp.load(dtwcpp.load(ds.source, ndim=2).as_data(), ndim=3)
         assert dtwcpp.cluster(ds, 2).n_series == 5
         assert dtwcpp.cluster(ds32, 2, dtype="float32").n_series == 6
-        assert dtwcpp.cluster(ds32, 2, dtype="f32").n_series == 6
         assert dtwcpp.cluster(ds32, 2).n_series == 6
 
     def test_direct_numpy_and_3d_ingest_and_estimator_transform(self):

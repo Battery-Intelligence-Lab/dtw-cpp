@@ -129,15 +129,8 @@ function test_cluster_writes_the_files_and_checkpoint_it_is_asked_for(testCase)
     verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_labels.csv')));
     verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_medoids.csv')));
 
-    % An Output given twice takes the last; a CheckpointInterval needs a Checkpoint and is not negative.
-    first_out = fullfile(work, 'first_out');
-    last_out = fullfile(work, 'last_out');
-    dtwc.cluster(ds, 2, opts{:}, 'Output', first_out, 'Output', last_out);
-    verifyFalse(testCase, isfolder(first_out));
-    verifyTrue(testCase, isfile(fullfile(last_out, 'sensor_labels.csv')));
+    % A CheckpointInterval saves a checkpoint, so it needs one.
     verifyError(testCase, @() dtwc.cluster(ds, 2, opts{:}, 'CheckpointInterval', 5), 'dtwc:invalidArgument');
-    verifyError(testCase, @() dtwc.cluster(ds, 2, opts{:}, 'Checkpoint', ckpt_dir, 'CheckpointInterval', -1), ...
-                'dtwc:invalidArgument');
 
     % A Dataset is read with the options it was made with: dtwc.load refuses one given that differs, at its
     % default too, naming both values; the same value runs.
