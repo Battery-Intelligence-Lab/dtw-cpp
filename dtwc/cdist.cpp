@@ -459,7 +459,7 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
     validate_cdist_device(cfg, both_f32, device, device_index, gpu_precision);
   } catch (const GpuRefusal &refusal) {
     if (!fallback) throw;
-    detail::say_fallback(refusal.reason());
+    detail::say_fallback(device, device_index, refusal.reason());
     device = Device::CPU;
     device_index = 0;
     gpu_share = -1.0;

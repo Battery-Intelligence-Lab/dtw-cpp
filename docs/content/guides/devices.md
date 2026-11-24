@@ -28,10 +28,12 @@ build with a GPU backend.
 
 `fallback` makes the device a wish. Where the request cannot be honoured, the call
 computes on the CPU instead of raising a device error, and says so: one line on
-stderr, `[dtwc] gpu requested: <reason>; running on cpu (fallback)`, the run
-report's configuration row (`device cpu (gpu requested; fallback: <reason>)`), and a
-result whose device is `cpu`. It is off by default and belongs to one call; the
-process-wide `device(...)` has none.
+stderr, `[dtwc] <device> requested: <reason>; running on cpu (fallback)`, the run
+report's configuration row (`device cpu (<device> requested; fallback: <reason>)`),
+and a result whose device is `cpu`; `<device>` is the one asked for (`gpu`, `gpu:1`,
+`cpu+gpu`). A run says it once the CPU run has passed its own checks, so a request
+that fails them anyway announces no fallback. It is off by default and belongs to one
+call; the process-wide `device(...)` has none.
 
 | Where | How |
 |---|---|

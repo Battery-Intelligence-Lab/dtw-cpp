@@ -211,8 +211,8 @@ are `InvalidInput`.
 makes a GPU `device` a wish. A request that cannot be honoured (no GPU backend or usable GPU, a variant,
 missing-data strategy, precision or number of features the kernels lack, a method with no GPU path, `cpu+gpu`
 without CUDA or on a streamed run) is then run on the CPU, before a series is read, instead of raising
-`DeviceError`: one line on stderr, `[dtwc] gpu requested: <reason>; running on cpu (fallback)`, the run report's
-configuration row saying why, and a `Result` whose `device` is `cpu`. It belongs to the call (the process device
+`DeviceError`: one line on stderr, `[dtwc] <device> requested: <reason>; running on cpu (fallback)` (the device asked
+for: `gpu`, `gpu:1`, `cpu+gpu`), the run report's configuration row saying why, and a `Result` whose `device` is `cpu`. It belongs to the call (the process device
 has none) and is off by default; a failure once the GPU has begun is a `DeviceError` either way
 ([Devices](../../guides/devices/)).
 

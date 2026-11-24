@@ -326,7 +326,7 @@ DeviceScope::DeviceScope(Problem &prob, std::string_view where, std::optional<Me
   try {
     require_gpu_request(where, prob, method);
   } catch (const GpuRefusal &refusal) {
-    say_fallback(refusal.reason());
+    say_fallback(prob.device_, prob.device_index_, refusal.reason());
     // Not set_device: it would drop the matrix, and the request is the Problem's to keep.
     prob.device_ = Device::CPU;
     prob.device_index_ = 0;
@@ -1050,7 +1050,7 @@ void Problem::SeriesCheck::finish() const
     // The pairs this check guards compute on the CPU whatever the device (dtw_function): with fallback the request the
     // kernels cannot run is said and set aside; a fill is in a DeviceScope, which made the device the CPU's first.
     if (!problem.fallback_) throw;
-    detail::say_fallback(refusal.reason());
+    detail::say_fallback(problem.device_, problem.device_index_, refusal.reason());
   }
 }
 

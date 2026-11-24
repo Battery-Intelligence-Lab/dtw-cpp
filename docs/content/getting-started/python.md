@@ -302,8 +302,8 @@ labels = clf.fit_predict(X)
 
 `fallback=True` (in `cluster`, `cdist`, `DTWClustering` and `Problem`) makes the device a wish: a GPU request that cannot be honoured
 (no GPU backend or device, a variant, missing-data strategy, precision or number of features the kernels lack, a method with
-no GPU path) computes on the CPU instead of raising `DeviceError`, with one line on stderr (`[dtwc] gpu requested: <reason>;
-running on cpu (fallback)`) and the run report saying why, and `Result.device` is `"cpu"`. It belongs to the call, not to
+no GPU path) computes on the CPU instead of raising `DeviceError`, with one line on stderr (`[dtwc] <device> requested: <reason>;
+running on cpu (fallback)`, the device asked for) and the run report saying why, and `Result.device` is `"cpu"`. It belongs to the call, not to
 `dtwcpp.device(...)`; a failure once the GPU has begun is a `DeviceError` either way, and `device="hpc"` with it is `InvalidInput`.
 `prob.set_device("gpu", fallback=True)` or `Problem("p", device="gpu", fallback=True)` keeps the request and settles it where
 each fill or method starts ([Devices](../../guides/devices/)):

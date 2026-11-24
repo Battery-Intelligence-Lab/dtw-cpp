@@ -244,7 +244,8 @@ std::string RunReport::render() const
                    + std::to_string(config.seed) + ", dtype "
                    + std::string(name_of(core::precision_names, config.dtype)) + ", matrix "
                    + std::string(name_of(core::precision_names, config.matrix_dtype)) + ", device "
-                   + (fallback.empty() ? device_text(config) : "cpu (gpu requested; fallback: " + fallback + ")")
+                   + (fallback.empty() ? device_text(config)
+                                       : "cpu (" + device_text(config) + " requested; fallback: " + fallback + ")")
                    + ", threads "
                    + (plan ? std::to_string(plan->threads) + " of " + std::to_string(plan->requested)
                            : std::string("not planned yet"));

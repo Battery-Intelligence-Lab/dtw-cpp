@@ -115,8 +115,9 @@ GpuRefusal hybrid_streamed_refusal();
 /// CPU as it goes, so it has no fill and no pass for a GPU to take, and the GPU would sit idle.
 GpuRefusal as_it_goes_refusal(std::string_view where, std::string_view method, Device device);
 
-/// @brief What a fallback says, once, on stderr: `[dtwc] gpu requested: <reason>; running on cpu (fallback)`.
-void say_fallback(std::string_view reason);
+/// @brief What a fallback says, once, on stderr: `[dtwc] <device> requested: <reason>; running on cpu (fallback)`, the
+/// device as it was asked for (gpu, gpu:N, cpu+gpu, cpu+gpu:N).
+void say_fallback(Device requested, int index, std::string_view reason);
 
 /// @brief The InvalidInput text where a forced gpu_share meets a device other than cpu+gpu, which would ignore it:
 /// `where` refuses it, `splits` names the work cpu+gpu splits.
