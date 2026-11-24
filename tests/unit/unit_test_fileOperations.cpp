@@ -281,8 +281,9 @@ TEST_CASE("Load batch file", "[fileOperations]")
   SECTION("csv batch load")
   {
     fs::path pth = tempFileName + ".csv";
-    int start_row{ 0 }, start_col{}, delimiter{ ',' };
-    auto [p_vec, p_names] = load_batch_file<double>(pth, N_data, false, start_row, start_col, delimiter);
+    int start_row{ 0 }, start_col{};
+    char delimiter{ ',' };
+    auto [p_vec, p_names] = load_batch_file<double>(pth, LoadOptions{ N_data, 0, start_row, start_col, delimiter });
 
     for (size_t i{}; i < N_data; i++)
       REQUIRE(p_names[i] == std::to_string(i + 1));
@@ -293,8 +294,9 @@ TEST_CASE("Load batch file", "[fileOperations]")
   SECTION("tsv batch load")
   {
     fs::path pth = tempFileName + ".tsv";
-    int start_row{ 0 }, start_col{}, delimiter{ '\t' };
-    auto [p_vec, p_names] = load_batch_file<double>(pth, N_data, false, start_row, start_col, delimiter);
+    int start_row{ 0 }, start_col{};
+    char delimiter{ '\t' };
+    auto [p_vec, p_names] = load_batch_file<double>(pth, LoadOptions{ N_data, 0, start_row, start_col, delimiter });
 
     for (size_t i{}; i < N_data; i++)
       REQUIRE(p_names[i] == std::to_string(i + 1));
@@ -309,7 +311,7 @@ TEST_CASE("Load batch file", "[fileOperations]")
       std::ofstream out(pth, std::ios::app);
       out << "\n\n"; // trailing blank lines: ignored
     }
-    auto [p_vec, p_names] = load_batch_file<double>(pth, -1, false, 0, 0, ',');
+    auto [p_vec, p_names] = load_batch_file<double>(pth, LoadOptions{ -1, 0, 0, 0, ',' });
     REQUIRE(p_vec == random_data);
 
     // An empty series written first, as a blank line followed by data: an
@@ -317,7 +319,7 @@ TEST_CASE("Load batch file", "[fileOperations]")
     auto with_empty = random_data;
     with_empty.insert(with_empty.begin(), std::vector<double>{});
     test_util::write_data_to_file(pth.string(), with_empty, ',');
-    REQUIRE_THROWS_WITH(load_batch_file<double>(pth, -1, false, 0, 0, ','),
+    REQUIRE_THROWS_WITH(load_batch_file<double>(pth, LoadOptions{ -1, 0, 0, 0, ',' }),
                         ContainsSubstring("row 1 is empty"));
   }
 }
@@ -442,7 +444,7 @@ TEST_CASE("Load folder", "[fileOperations]")
     fs::path pth = folder;
     int start_row{ 0 }, start_col{ 1 };
     char delimiter{ ',' };
-    auto [p_vec, p_names] = load_folder<double>(pth, N_data, false, start_row, start_col, delimiter);
+    auto [p_vec, p_names] = load_folder<double>(pth, LoadOptions{ N_data, 0, start_row, start_col, delimiter });
 
     // Order of names and data is different in different operating systems.
     for (size_t i{}; i < N_data; i++) {

@@ -68,6 +68,7 @@ with a warning. What needs attention is the behaviour listed further down.
 | `dtwc::Range`, `dtwc::Index`, `settings::isDebug` | none: write the loop (`for (std::size_t i = 0; i < n; ++i)`) |
 | `dtwc::randGenerator`, in `settings.hpp` | none: every function that draws takes its seed |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |
+| `load_folder<T>(path, Ndata, verbose, start_row, start_col, delimiter)`, `load_batch_file<T>(path, Ndata, verbose, start_row, start_col, delimiter)` | `load_folder<T>(path, LoadOptions{ Ndata, verbose, start_row, start_col, delimiter })`, `load_batch_file<T>(path, LoadOptions{ ... })`; a field left out keeps v1.0.0's default (`Ndata` -1, `verbose` 1, `start_row` and `start_col` 0, `delimiter` `','`) |
 | `dtwBanded`, `dtwFull`, `dtwFull_L` | the same names; the scalar type defaults to `double` (v1.0.0's `dtwBanded` defaulted to `float`), with new trailing defaulted parameters and span overloads |
 | `run(task, n, numMaxParallelWorkers = 32)` | the same name; the default is now `0`, every OpenMP thread, and a positive limit is applied (v1.0.0 used every OpenMP thread) |
 
