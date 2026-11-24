@@ -21,9 +21,11 @@ template <typename Series>
 using series_value_t = std::ranges::range_value_t<Series>;
 
 /// Two series of one element type, float or double: contiguous ranges, so a pointer and a length reach the kernel.
+/// The entry points take them by const reference, so the const ranges are what must be contiguous and sized.
 template <typename X, typename Y>
-concept SeriesPair = std::ranges::contiguous_range<X> && std::ranges::sized_range<X> && std::ranges::contiguous_range<Y>
-                     && std::ranges::sized_range<Y> && std::floating_point<series_value_t<X>>
+concept SeriesPair = std::ranges::contiguous_range<const X> && std::ranges::sized_range<const X>
+                     && std::ranges::contiguous_range<const Y> && std::ranges::sized_range<const Y>
+                     && (std::same_as<series_value_t<X>, float> || std::same_as<series_value_t<X>, double>)
                      && std::same_as<series_value_t<X>, series_value_t<Y>>;
 
 } // namespace dtwc::core
