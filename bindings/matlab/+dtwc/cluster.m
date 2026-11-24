@@ -24,7 +24,7 @@ function res = cluster(data, k, varargin)
 %   Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda, MvMode,
 %   MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver,
 %   MipGap, TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver,
-%   LrMaxNodes, LrRoot, Device, GpuPrecision, GpuShare, Verbose, NoReport ('float32'
+%   LrMaxNodes, Device, GpuPrecision, GpuShare, Verbose, NoReport ('float32'
 %   MatrixDtype stores the distance matrix at half the memory, each distance
 %   rounded to a single; GpuShare is the GPU's share of the work Device
 %   'cpu+gpu' splits with the CPU, -1 (the default) measured, [0, 1] forced so a

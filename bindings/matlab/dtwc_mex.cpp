@@ -498,7 +498,6 @@ enum class Key {
   MipFocus,
   VerboseSolver,
   LrMaxNodes,
-  LrRoot,
   Device,
   GpuPrecision,
   GpuShare,
@@ -574,7 +573,6 @@ constexpr dtwc::Name<Key> config_keys[]{
   { "MipFocus", Key::MipFocus },
   { "VerboseSolver", Key::VerboseSolver },
   { "LrMaxNodes", Key::LrMaxNodes },
-  { "LrRoot", Key::LrRoot },
   { "Device", Key::Device },
   { "GpuPrecision", Key::GpuPrecision },
   { "GpuShare", Key::GpuShare },
@@ -685,9 +683,6 @@ static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxA
     break;
   case Key::LrMaxNodes:
     c.mip.lr_max_nodes = get_exact_int<std::int64_t>(value, key_name);
-    break;
-  case Key::LrRoot:
-    c.mip.lr_root = dtwc::parse_name(dtwc::lr_root_names, text(), "lr root");
     break;
   case Key::Device:
     std::tie(c.device, c.device_index) = dtwc::detail::parse_device(text());
@@ -1261,7 +1256,7 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (!mxIsStruct(s))
     throw std::invalid_argument(
       "mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
-      "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes, lr_root).");
+      "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes).");
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap")) m.mip_gap = get_scalar(f, "mip_gap");
@@ -1272,10 +1267,6 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
     m.lr_max_nodes = get_exact_int<std::int64_t>(f, "lr_max_nodes");
-  if (mxArray *f = mxGetField(s, 0, "lr_root")) {
-    require_char(f, "lr_root");
-    m.lr_root = dtwc::parse_name(dtwc::lr_root_names, get_string(f), "lr root");
-  }
   prob.mip_settings = m;
 }
 
@@ -1285,8 +1276,8 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (nrhs < 2) throw std::invalid_argument("Problem_get_mip_settings requires a handle.");
   auto &prob = stored_problem(prhs[1]);
   const auto &m = prob.mip_settings;
-  const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus", "verbose_solver", "lr_max_nodes", "lr_root" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 8, fields);
+  const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus", "verbose_solver", "lr_max_nodes" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 7, fields);
   mxSetField(s, 0, "mip_gap", mxCreateDoubleScalar(m.mip_gap));
   mxSetField(s, 0, "time_limit_sec", mxCreateDoubleScalar(m.time_limit_sec));
   mxSetField(s, 0, "warm_start", mxCreateLogicalScalar(m.warm_start));
@@ -1294,7 +1285,6 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   mxSetField(s, 0, "mip_focus", mxCreateDoubleScalar(m.mip_focus));
   mxSetField(s, 0, "verbose_solver", mxCreateLogicalScalar(m.verbose_solver));
   mxSetField(s, 0, "lr_max_nodes", mxCreateDoubleScalar(static_cast<double>(m.lr_max_nodes)));
-  mxSetField(s, 0, "lr_root", mxCreateString(std::string(dtwc::name_of(dtwc::lr_root_names, m.lr_root)).c_str()));
   plhs[0] = s;
 }
 
@@ -1719,8 +1709,8 @@ static mxArray *execute_mex_run(dtwc::Config &config, const mxArray *source_mx, 
 /// Name, else `name` (the Dataset's), else as dtwc_cl names it (run_name). dtwc::apply checks every key on a Problem
 /// of no series before anything is read, so a bad value reads as apply says it, whatever the input (run's own check
 /// would name dtwc_cl's flags). The Result is stored under a handle before any output is made; the labels and
-/// medoids come back 1-based, the device as device_text writes it, the report '' under NoReport. MIP and LR-core's
-/// Kelley root solve on the HiGHS this MEX links: no external solver.
+/// medoids come back 1-based, the device as device_text writes it, the report '' under NoReport. MIP solves on the
+/// HiGHS this MEX links: no external solver.
 static void cmd_run(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   (void)nlhs;
