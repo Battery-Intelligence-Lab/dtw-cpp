@@ -300,7 +300,6 @@ public:
   auto size() const { return data_.size(); }
   /// Number of clusters.
   auto n_clusters() const { return Nc; }
-  [[deprecated("use n_clusters")]] auto cluster_size() const { return n_clusters(); }
 
   /// Mutable name access (owned names only). series_name(i) reads a name in
   /// every storage mode.
@@ -345,7 +344,6 @@ public:
   const std::vector<index_t> &medoids() const { return centroids_ind; }
 
   void refresh_distance_matrix();
-  [[deprecated("use refresh_distance_matrix")]] void refreshDistanceMatrix() { refresh_distance_matrix(); }
 
   // Getters and setters:
   /// The centroid of the cluster of i_p, i_p in [0, N). Unchecked like dist_by_ind:
@@ -356,24 +354,14 @@ public:
   /// `not_computed`: NaN reads an empty field or NaN as a pair never computed;
   /// Negative also every value below zero, as v1.0.0 wrote them (-1).
   void read_distance_matrix(const fs::path &distMat_path, core::NotComputed not_computed = core::NotComputed::NaN);
-  [[deprecated("use read_distance_matrix")]]
-  void readDistanceMatrix(const fs::path &p) { read_distance_matrix(p); }
 
   void set_n_clusters(index_t Nc_);
-  [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
 
   /// A Problem is clustered when it holds one label per series and one medoid per
   /// cluster. Every call that reads the whole clustering checks that once.
   /// @throws InvalidInput ("<who>: ... cluster it first") when it is not.
   void require_clustered(std::string_view who) const;
   void set_clusters(const std::vector<index_t> &candidate_centroids);
-  /// The v1.0.0 signature, kept so v1 code compiles; a braced list takes the
-  /// index_t overload.
-  [[deprecated("use set_clusters(const std::vector<index_t> &)")]]
-  void set_clusters(std::vector<int> &candidate_centroids)
-  {
-    set_clusters(std::vector<index_t>(candidate_centroids.begin(), candidate_centroids.end()));
-  }
   /// Publish a clustering: k = the number of medoids, which are distinct
   /// indices in [0, N), and one label in [0, k) per series. Anything else is
   /// InvalidInput and leaves the Problem unchanged.
@@ -530,7 +518,6 @@ public:
   void set_variant(core::DTWVariantParams params);
 
   data_t max_distance() const { return distMat.max(); }
-  [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
   /// The distance between series i and j, read from the matrix: O(1), no check
   /// and no computation, so parallel loops read it freely. Unchecked like
@@ -539,13 +526,6 @@ public:
   data_t dist_by_ind(index_t i, index_t j) const
   {
     return distMat.get(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
-  }
-  /// The v1.0.0 lookup, which computed a pair on demand: it fills the matrix on
-  /// its first call, then reads it.
-  [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j)
-  {
-    fill_distance_matrix();
-    return dist_by_ind(i, j);
   }
 
   /// The bound DTW distance function (float64), for methods that compute the
@@ -572,7 +552,6 @@ public:
   /// True when the matrix holds every pair under the current settings: after a
   /// fill, a complete read or load, or binding a complete mapped file. O(1).
   bool is_distance_matrix_filled() const { return filled_ && band == distance_.band; }
-  [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
   /// The distance matrix, on the heap or mapped, to read.
   const core::DistanceMatrix &distance_matrix() const { return distMat; }
@@ -618,41 +597,20 @@ public:
     const std::filesystem::path &cache_path, core::MetricType metric);
 
   void fill_distance_matrix();
-  [[deprecated("use fill_distance_matrix")]] void fillDistanceMatrix() { fill_distance_matrix(); }
 
   void print_distance_matrix() const;
-  [[deprecated("use print_distance_matrix")]] void printDistanceMatrix() const { print_distance_matrix(); }
 
-  // Canonical I/O owns behavior; retained 1.x names are deprecated forwarders.
   void write_distance_matrix(const std::string &file_name) const;
   void write_distance_matrix() const
   {
     write_distance_matrix(name_ + "_distanceMatrix.csv");
   }
-  [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix(const std::string &file_name) const
-  {
-    write_distance_matrix(file_name);
-  }
-  [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix() const { write_distance_matrix(); }
 
   void print_clusters() const;
-  [[deprecated("use print_clusters")]]
-  void printClusters() const { print_clusters(); }
   void write_clusters();
-  [[deprecated("use write_clusters")]]
-  void writeClusters() { write_clusters(); }
 
   void write_medoid_members(int iter, int rep = 0) const;
-  [[deprecated("use write_medoid_members")]]
-  void writeMedoidMembers(int iter, int rep = 0) const
-  {
-    write_medoid_members(iter, rep);
-  }
   void write_silhouettes();
-  [[deprecated("use write_silhouettes")]]
-  void writeSilhouettes() { write_silhouettes(); }
 
   // Initialisation of clusters:
   /// Runs init_fun with random_seed().
@@ -665,20 +623,15 @@ public:
   /// method converged within max_iter().
   core::ClusteringResult cluster();
   void cluster_by_mip();
-  [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
   void cluster_by_kmedoids_lloyd();
-  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsPAM() { cluster_by_kmedoids_lloyd(); }
 
   void cluster_and_process();
 
   // Auxiliary
   double find_total_cost();
-  [[deprecated("use find_total_cost")]] double findTotalCost() { return find_total_cost(); }
   void assign_clusters();
-  [[deprecated("use assign_clusters")]] void assignClusters() { assign_clusters(); }
 
   void calculate_medoids();
-  [[deprecated("use calculate_medoids")]] void calculateMedoids() { calculate_medoids(); }
 };
 
 /**

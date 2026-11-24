@@ -11,10 +11,11 @@ Python package `dtwcpp` and the MATLAB package `dtwc` are new in 2.0 (v1.0.0's
 source held an unpublished Python binding, which 2.0 does not carry over): start
 from [Tier 1](../../api/tier-1/).
 
-Most v1.0.0 code builds and runs unchanged. Every `Problem` and `DataLoader`
-method that 2.0 renamed keeps its v1.0.0 name as a `[[deprecated]]` alias that
-forwards to the new one, and `dtwc_cl` still reads v1.0.0's flag spellings,
-with a warning. What needs attention is the behaviour listed further down.
+`dtwc_cl` still reads v1.0.0's flag spellings, with a warning, so most
+command lines run unchanged. C++ code that calls a `Problem` or `DataLoader`
+method that 2.0 renamed stops compiling: the v1.0.0 names are gone, and the C++
+names table below gives the new one of each. What else needs attention is the
+behaviour listed further down.
 
 ## Building
 
@@ -49,7 +50,7 @@ with a warning. What needs attention is the behaviour listed further down.
 |---|---|
 | `Problem::set_numberOfClusters(n)`, `cluster_size()` | `set_n_clusters(k)`, `n_clusters()` |
 | `refreshDistanceMatrix`, `readDistanceMatrix`, `maxDistance`, `isDistanceMatrixFilled`, `fillDistanceMatrix`, `printDistanceMatrix`, `writeDistanceMatrix` | `refresh_distance_matrix`, `read_distance_matrix`, `max_distance`, `is_distance_matrix_filled`, `fill_distance_matrix`, `print_distance_matrix`, `write_distance_matrix` |
-| `distByInd(i, j)` | `dist_by_ind(i, j)`, which reads the filled matrix and computes nothing; the old name fills the whole matrix on its first call |
+| `distByInd(i, j)` | `dist_by_ind(i, j)`, which reads the filled matrix and computes nothing; the old name filled the whole matrix on its first call |
 | `printClusters`, `writeClusters`, `writeMedoidMembers`, `writeSilhouettes` | `print_clusters`, `write_clusters`, `write_medoid_members`, `write_silhouettes` |
 | `findTotalCost`, `assignClusters`, `calculateMedoids` | `find_total_cost`, `assign_clusters`, `calculate_medoids` |
 | `cluster_by_MIP()`, `cluster_by_kMedoidsPAM()` | `cluster_by_mip()`, `cluster_by_kmedoids_lloyd()` (Lloyd's k-medoids, as before) |

@@ -36,28 +36,6 @@ using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 using dtwc::test_support::ScratchDirectory;
 
-// This fixture deliberately compiles and executes the retained 1.x names.
-// Keep those calls local and warning-suppressed; ordinary repository code uses
-// the canonical 2.0 spellings.
-#if defined(__clang__)
-#  define DTWC_PUSH_NO_DEPRECATED \
-    _Pragma("clang diagnostic push") \
-    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
-#  define DTWC_POP_NO_DEPRECATED _Pragma("clang diagnostic pop")
-#elif defined(__GNUC__)
-#  define DTWC_PUSH_NO_DEPRECATED \
-    _Pragma("GCC diagnostic push") \
-    _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
-#  define DTWC_POP_NO_DEPRECATED _Pragma("GCC diagnostic pop")
-#elif defined(_MSC_VER)
-#  define DTWC_PUSH_NO_DEPRECATED \
-    __pragma(warning(push)) __pragma(warning(disable : 4996))
-#  define DTWC_POP_NO_DEPRECATED __pragma(warning(pop))
-#else
-#  define DTWC_PUSH_NO_DEPRECATED
-#  define DTWC_POP_NO_DEPRECATED
-#endif
-
 #ifndef DTWC_TEST_DATA_DIR
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
@@ -65,9 +43,8 @@ using dtwc::test_support::ScratchDirectory;
 namespace {
 fs::path dummy_data_path() { return fs::path{DTWC_TEST_DATA_DIR} / "dummy"; }
 
-// Row and column counts are index_t; the v1 spellings keep v1's int.
+// Row and column counts are index_t.
 using loader_setter_t = DataLoader &(DataLoader::*)(dtwc::index_t);
-using v1_loader_setter_t = DataLoader &(DataLoader::*)(int);
 
 static_assert(std::same_as<
               decltype(static_cast<loader_setter_t>(&DataLoader::start_column)),
@@ -75,15 +52,6 @@ static_assert(std::same_as<
 static_assert(std::same_as<
               decltype(static_cast<loader_setter_t>(&DataLoader::start_row)),
               loader_setter_t>);
-
-DTWC_PUSH_NO_DEPRECATED
-static_assert(std::same_as<
-              decltype(static_cast<v1_loader_setter_t>(&DataLoader::startColumn)),
-              v1_loader_setter_t>);
-static_assert(std::same_as<
-              decltype(static_cast<v1_loader_setter_t>(&DataLoader::startRow)),
-              v1_loader_setter_t>);
-DTWC_POP_NO_DEPRECATED
 
 }
 
@@ -179,50 +147,6 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
     REQUIRE_THROWS_AS(loader.load(), std::runtime_error);
   }
 }
-
-TEST_CASE("F21 canonical C++ loader names preserve legacy state",
-          "[DataLoader][f21][public-api]")
-{
-  DataLoader canonical;
-  DataLoader legacy;
-
-  REQUIRE(&canonical.start_column(3) == &canonical);
-  REQUIRE(canonical.startColumn() == 3);
-  REQUIRE(canonical.startRow() == 0);
-  REQUIRE(&canonical.start_row(7) == &canonical);
-  REQUIRE(canonical.startColumn() == 3);
-  REQUIRE(canonical.startRow() == 7);
-
-  DTWC_PUSH_NO_DEPRECATED
-  DataLoader *legacy_column_receiver = &legacy.startColumn(3);
-  DTWC_POP_NO_DEPRECATED
-  REQUIRE(legacy_column_receiver == &legacy);
-  REQUIRE(legacy.startColumn() == 3);
-  REQUIRE(legacy.startRow() == 0);
-
-  DTWC_PUSH_NO_DEPRECATED
-  DataLoader *legacy_row_receiver = &legacy.startRow(7);
-  DTWC_POP_NO_DEPRECATED
-  REQUIRE(legacy_row_receiver == &legacy);
-  REQUIRE(legacy.startColumn() == 3);
-  REQUIRE(legacy.startRow() == 7);
-  REQUIRE(canonical.startColumn() == legacy.startColumn());
-  REQUIRE(canonical.startRow() == legacy.startRow());
-
-  REQUIRE(&canonical.start_column(11).start_row(13) == &canonical);
-  REQUIRE(canonical.startColumn() == 11);
-  REQUIRE(canonical.startRow() == 13);
-
-  DTWC_PUSH_NO_DEPRECATED
-  DataLoader *legacy_chain_receiver = &legacy.startColumn(11).startRow(13);
-  DTWC_POP_NO_DEPRECATED
-  REQUIRE(legacy_chain_receiver == &legacy);
-  REQUIRE(legacy.startColumn() == 11);
-  REQUIRE(legacy.startRow() == 13);
-  REQUIRE(canonical.startColumn() == legacy.startColumn());
-  REQUIRE(canonical.startRow() == legacy.startRow());
-}
-
 
 namespace {
 
