@@ -70,13 +70,15 @@ class TestLoad:
 
     def test_a_dataset_refuses_the_options_it_would_ignore(self):
         """A Dataset keeps the options it was made with, so load(Dataset, ...) refuses
-        a keyword other than its default that differs from them, naming both values;
-        the Dataset's own runs, and a name is refused."""
+        a keyword given that differs from them, its default value included, naming both
+        values; the Dataset's own runs, and a name is refused."""
         ds = dtwcpp.load([[0.0], [1.0], [2.0]], skip_rows=1)
         assert dtwcpp.load(ds) is ds
         assert dtwcpp.load(ds, skip_rows=1) is ds
         with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and skip_rows=2 was given"):
             dtwcpp.load(ds, skip_rows=2)
+        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and skip_rows=0 was given"):
+            dtwcpp.load(ds, skip_rows=0)
         with pytest.raises(dtwcpp.InvalidInput, match=r"unexpected \['name'\]"):
             dtwcpp.load(ds, name="x")
 

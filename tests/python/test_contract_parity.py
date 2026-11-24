@@ -172,12 +172,14 @@ def test_cluster_signature_defaults():
 
 
 def test_load_signature_defaults():
-    """load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None)."""
+    """load(source, *, skip_cols=None, skip_rows=None, delimiter=None, name=None, dtype=None, ndim=None): None is
+    an option not given, which is its default for a new source (0, 0, inferred, float64, 1) and the Dataset's or
+    the Data's own beside one."""
     p = inspect.signature(dtwcpp.load).parameters
-    assert p["skip_cols"].default == 0
-    assert p["skip_rows"].default == 0
-    assert p["delimiter"].default is None
-    assert p["name"].default is None
+    for key in ("skip_cols", "skip_rows", "delimiter", "name", "dtype", "ndim"):
+        assert p[key].default is None, key
+    ds = dtwcpp.load([[0.0, 1.0]])
+    assert (ds.skip_cols, ds.skip_rows, ds.delimiter, ds.dtype, ds._ndim) == (0, 0, None, "float64", 1)
 
 
 def test_dtwclustering_constructor_param_set():
