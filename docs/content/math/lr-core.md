@@ -8,7 +8,7 @@ description: "Total unimodularity characterization, Geoffrion's theorem, Lagrang
 
 DTWC++ provides two exact $k$-medoids clustering paths:
 
-1. **`Method::LRCore` (`--method lrcore`)** — a solver-free Lagrangian relaxation, coordinate dual ascent / subgradient engine, Beasley reduced-cost variable fixer, and core-restricted $y$-space branch-and-bound solver. By default (`--lr-root subgradient`), `LRCore` requires zero external LP/MIP libraries; optionally (`--lr-root kelley`), a boxstep-stabilized Kelley cutting-plane root can run via HiGHS (`highspy` in Python).
+1. **`Method::LRCore` (`--method lrcore`)** — a solver-free Lagrangian relaxation, subgradient dual-ascent engine, Beasley reduced-cost variable fixer, and core-restricted $y$-space branch-and-bound solver. By default (`--lr-root subgradient`), `LRCore` requires zero external LP/MIP libraries; optionally (`--lr-root kelley`), a boxstep-stabilized Kelley cutting-plane root can run via HiGHS (`highspy` in Python).
 2. **`Method::MIP` (`--method mip`)** — solves the compact integer linear program directly with HiGHS or Gurobi, warm-started from FasterPAM.
 
 ---
@@ -94,7 +94,7 @@ On well-separated time-series clusters (Awasthi et al. 2015), $z_{\text{LP}}$ eq
 
 ## 4. Warm Start, Dual Ascent, Variable Fixing & Branch-and-Bound
 
-1. **Second-Nearest Medoid Warm Start & Dual Ascent:** Given FasterPAM's incumbent medoids $M$ with nearest and second-nearest distances $(d_1(j), d_2(j))$ for each series $j$, initializing $\mu_j^{(0)} = d_2(j)$ immediately places $L(\mu^{(0)})$ near $z_{\text{LP}}$, refined via Erlenkotter (`DUALOC`) coordinate dual ascent and damped Polyak subgradient updates $g_j = 1 - \sum_{i \in S_k(\mu)} \mathbb{I}[D_{ij} < \mu_j]$.
+1. **Second-Nearest Warm Start & Subgradient Dual Ascent:** The multipliers start at $\mu_j^{(0)} = d_2(j)$, the second-smallest entry of column $j$ of $D$ (the distance from series $j$ to its nearest other series: the smallest entry, $D_{jj} = 0$, is the series itself; $d_1(j)$ is used when $k = N$), which immediately places $L(\mu^{(0)})$ near $z_{\text{LP}}$. The root then ascends $L$ by damped Polyak subgradient steps along $g_j = 1 - \sum_{i \in S_k(\mu)} \mathbb{I}[D_{ij} < \mu_j]$, deflected against zig-zag, towards the best primal cost found so far (FasterPAM's incumbent seeds it). Each iteration repairs a primal solution from $S_k(\mu)$, and a local-search polish runs periodically.
 2. **Beasley Reduced-Cost Variable Fixing:** Let $\rho_{(k)}$ and $\rho_{(k+1)}$ denote the $k$-th and $(k+1)$-st smallest values of $\rho_i(\mu^*)$, and $U$ be the best primal incumbent cost:
    - Any candidate $i \notin S_k(\mu^*)$ with $L(\mu^*) + (\rho_i(\mu^*) - \rho_{(k)}) > U$ cannot appear in any optimal medoid set and is permanently **fixed closed ($y_i = 0$)**.
    - Any candidate $i \in S_k(\mu^*)$ with $L(\mu^*) + (\rho_{(k+1)} - \rho_i(\mu^*)) > U$ must appear in every optimal medoid set and is permanently **fixed open ($y_i = 1$)**.

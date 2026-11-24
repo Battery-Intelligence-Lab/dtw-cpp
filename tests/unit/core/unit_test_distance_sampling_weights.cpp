@@ -17,7 +17,7 @@
  * be exactly 0.0, and kmedoids_pp branches on `total <= 0.0`. Every literal below
  * is chosen so that each running partial sum is exactly representable in binary64,
  * which keeps the totals reassociation-invariant under the project's
- * `-fassociative-math` build (cmake/StandardProjectSettings.cmake:59-70).
+ * `-fassociative-math` build (`DTWC_FP_FLAGS` in cmake/StandardProjectSettings.cmake).
  *
  * Style note: inputs are named locals rather than inline braced-init-lists,
  * because a brace list does not protect its commas from preprocessor argument
@@ -118,7 +118,7 @@ TEST_CASE("distance_sampling_weights rejects a non-finite unselected distance",
           "[core][distance_sampling][f10][validation]")
 {
   // std::isfinite is meaningful here because the build deliberately omits
-  // -ffinite-math-only (cmake/StandardProjectSettings.cmake:59-70).
+  // -ffinite-math-only (`DTWC_FP_FLAGS` in cmake/StandardProjectSettings.cmake).
 
   SECTION("NaN")
   {

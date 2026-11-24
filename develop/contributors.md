@@ -1,9 +1,3 @@
----
-layout: default
-title: Contributors
-nav_order: 4
----
-
 # List of contributors
 
 If your pull request involving more than a one-line change is approved, your name will be added to the contributor list with links to the relevant PRs.

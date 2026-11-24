@@ -37,7 +37,7 @@ endforeach()
 # The umbrella header includes the libraries' headers.
 target_sources(dtwc++ INTERFACE FILE_SET HEADERS BASE_DIRS . FILES dtwc.hpp)
 
-# The third-party C the Arrow IPC reader runs: nanoarrow's IPC extension and flatcc
+# The third-party C the Arrow IPC reader runs: nanoarrow, its IPC extension and flatcc
 # (extern/nanoarrow lists them), lz4's library and zstd's decoder (fetched by
 # cmake/Dependencies.cmake). One object library, linked into dtwc_core: without the
 # project's warnings (their C set is the C++ one), position-independent (the wheel's
@@ -187,7 +187,7 @@ if(OpenMP_CXX_FOUND)
     # cl: its objects name vcomp themselves. clang-cl's name no runtime (only a link it
     # drives adds libomp), so it takes the else branch's target, as clang++ does.
     # PUBLIC on dtwc_core, so a consumer that links dtwc_core but not project_options
-    # (the Python module) still compiles its `#pragma omp` loops in parallel.
+    # (the MEX module, the examples) still compiles its `#pragma omp` loops in parallel.
     # project_options carries it too, for mip-solvers, which links that alone.
     target_compile_options(dtwc_core PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
     target_compile_options(dtwc_options INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)

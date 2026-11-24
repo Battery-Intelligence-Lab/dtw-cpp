@@ -71,9 +71,14 @@ jobs:
         run: cmake --build . --parallel 2
         working-directory: build_dir
 
+      # A UBSan report fails the test that reaches it (halt_on_error): the runtime otherwise prints and carries on. Not
+      # -fno-sanitize-recover, whose abort handlers never consult the suppressions (.github/ubsan.supp). Only the
+      # sanitized build reads UBSAN_OPTIONS.
       - name: cmake test
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
+        env:
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/.github/ubsan.supp
 
   # Phase-8 finding F9: with DTWC_ENABLE_ARROW defaulting to OFF (CMakeLists.txt:49)
   # and no workflow ever turning it on, tests/unit/test_io_readers.cpp self-SKIPped in
@@ -93,7 +98,7 @@ jobs:
 
       # Official Apache apt repository (https://arrow.apache.org/install/).
       #
-      # VERSION SKEW — deliberate, not an oversight. cmake/Dependencies.cmake:363-367
+      # VERSION SKEW — deliberate, not an oversight. The CPMAddPackage of Arrow in cmake/Dependencies.cmake
       # pins the CPM *source* build to Arrow 19.0.1; this apt path takes whatever the
       # repository currently serves (a much newer release). We do NOT pin the apt
       # version, for three reasons:

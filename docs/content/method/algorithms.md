@@ -1,6 +1,9 @@
 ---
 title: Clustering Algorithms
 weight: 4
+aliases:
+  - /method/mip/
+  - /method/k-medoids/
 ---
 
 # Clustering Algorithms
@@ -123,14 +126,28 @@ Hierarchical clustering requires the full distance matrix and has $$O(N^2)$$ mem
 
 Lloyd's algorithm is the iterative assignment-update approach commonly associated with k-means clustering. When adapted for k-medoids:
 
-1. **Assignment:** Assign each time series to its nearest medoid. Complexity: $$O(Nk)$$.
-2. **Update:** For each cluster, find the point that minimizes total within-cluster distance. Complexity: $$O(N^2)$$ in the worst case.
+1. **Initialisation:** Pick $$k$$ distinct series at random as the initial medoids (from the `--seed` generator). In C++, setting the `Problem`'s `init_fun` to `init::Kmeanspp` starts from k-medoids++ instead, which spreads the initial medoids apart and makes a poor local optimum less likely.
+2. **Assignment:** Assign each time series to its nearest medoid. Complexity: $$O(Nk)$$.
+3. **Update:** For each cluster, find the point that minimizes total within-cluster distance. Complexity: $$O(N^2)$$ in the worst case.
+4. **Repeat** the assignment and the update until the medoids no longer change (the algorithm has converged) or `--max-iter` iterations have run. With `--n-init` restarts, each from its own seed, the restart with the lowest total cost is kept.
 
 This is simpler than PAM but converges to a local minimum. FastPAM is generally preferred.
 
 ## Mixed-Integer Programming (MIP)
 
 DTW-C++ supports solving the k-medoids problem exactly via mixed-integer programming using Gurobi or HiGHS solvers. This finds the globally optimal solution but is computationally expensive for large datasets. In Python the HiGHS solve runs on `highspy`, a dependency of `dtwcpp`; the wheel is built without Gurobi.
+
+### MIP Formulation
+
+The model is the compact $$N^2$$-variable program on the distance matrix $$D$$ of the $$N$$ series. The binary $$x_{ij}$$ is 1 when series $$j$$ is assigned to medoid $$i$$, and $$x_{ii} = 1$$ makes series $$i$$ a medoid. It minimises the clustering cost $$\sum_i \sum_j D_{ij}\, x_{ij}$$ subject to
+
+1. exactly $$k$$ medoids: $$\sum_{i=1}^{N} x_{ii} = k$$;
+2. every series in exactly one cluster: $$\sum_{i=1}^{N} x_{ij} = 1$$ for all $$j$$;
+3. a series joins only a medoid's cluster: $$x_{ij} \le x_{ii}$$ for all $$i, j$$.
+
+In the optimal $$x$$, the diagonal entries equal to 1 are the medoids, and the 1s in a medoid's row are the members of its cluster. In the example below, the clusters are series 1, **2**, 5 and 3, **4** (medoids in bold):
+
+<p align="center"><img src="/method/cluster_matrix_formation4.svg" alt="A 5 by 5 binary matrix: row 2 has ones in columns 1, 2 and 5, row 4 has ones in columns 3 and 4, and every other entry is 0" width="50%"/></p>
 
 ### MIP Warm Start
 
