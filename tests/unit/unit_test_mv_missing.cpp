@@ -2,7 +2,7 @@
  * @file unit_test_mv_missing.cpp
  * @brief Unit tests for multivariate missing-data DTW (per-channel NaN handling).
  *
- * @details Covers dtwMissing_L_mv and dtwMissing_banded_mv with the zero-cost
+ * @details Covers dtwMissing_banded_mv with the zero-cost
  * philosophy: if channel d is NaN in either series at a timestep pair (i,j),
  * that channel contributes 0 to the pointwise cost. Other channels still
  * contribute normally.
@@ -31,8 +31,8 @@ TEST_CASE("MV Missing: no NaN matches standard MV DTW", "[mv][missing]")
 {
   double x[] = {1,2, 3,4, 5,6};
   double y[] = {2,3, 4,5, 6,7};
-  double d_std  = dtwc::dtwFull_L_mv(x, 3, y, 3, 2);
-  double d_miss = dtwc::dtwMissing_L_mv(x, 3, y, 3, 2);
+  double d_std  = dtwc::dtwBanded_mv(x, 3, y, 3, 2);
+  double d_miss = dtwc::dtwMissing_banded_mv(x, 3, y, 3, 2);
   REQUIRE_THAT(d_miss, WithinAbs(d_std, 1e-10));
 }
 
@@ -40,8 +40,8 @@ TEST_CASE("MV Missing: ndim=1 matches scalar missing DTW", "[mv][missing]")
 {
   std::vector<double> x = {1, NaN, 3};
   std::vector<double> y = {2, 3, 4};
-  double d_scalar = dtwc::dtwMissing_L(x, y);
-  double d_mv     = dtwc::dtwMissing_L_mv(x.data(), 3, y.data(), 3, 1);
+  double d_scalar = dtwc::dtwMissing_banded(x, y);
+  double d_mv     = dtwc::dtwMissing_banded_mv(x.data(), 3, y.data(), 3, 1);
   REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-10));
 }
 
@@ -50,10 +50,10 @@ TEST_CASE("MV Missing: all NaN = 0", "[mv][missing]")
   double x[] = {NaN, NaN, NaN, NaN};
   double y[] = {1.0, 2.0, 3.0, 4.0};
   // every channel in x is NaN so all per-timestep costs are 0
-  REQUIRE(dtwc::dtwMissing_L_mv(x, 2, y, 2, 2) == 0.0);
+  REQUIRE(dtwc::dtwMissing_banded_mv(x, 2, y, 2, 2) == 0.0);
   // and so when both series are all NaN (another buffer, so no same-pointer shortcut)
   double y_nan[] = {NaN, NaN};
-  REQUIRE(dtwc::dtwMissing_L_mv(x, 1, y_nan, 1, 2) == 0.0);
+  REQUIRE(dtwc::dtwMissing_banded_mv(x, 1, y_nan, 1, 2) == 0.0);
 }
 
 TEST_CASE("MV Missing: one channel NaN reduces distance", "[mv][missing]")
@@ -65,8 +65,8 @@ TEST_CASE("MV Missing: one channel NaN reduces distance", "[mv][missing]")
   double x_nan[]   = {1,NaN, 2,20};
   double y[]       = {1,100, 2,200};
 
-  double d_clean = dtwc::dtwMissing_L_mv(x_clean, 2, y, 2, 2);
-  double d_nan   = dtwc::dtwMissing_L_mv(x_nan,   2, y, 2, 2);
+  double d_clean = dtwc::dtwMissing_banded_mv(x_clean, 2, y, 2, 2);
+  double d_nan   = dtwc::dtwMissing_banded_mv(x_nan,   2, y, 2, 2);
 
   // NaN in channel 1 at t=0 contributes 0 instead of |10-100|=90, so d_nan < d_clean
   REQUIRE(d_nan < d_clean);
@@ -77,8 +77,8 @@ TEST_CASE("MV Missing: symmetry (NaN in x and y)", "[mv][missing]")
 {
   double x[] = {1,NaN, 3,4};
   double y[] = {NaN,2, 3,5};
-  double d1 = dtwc::dtwMissing_L_mv(x, 2, y, 2, 2);
-  double d2 = dtwc::dtwMissing_L_mv(y, 2, x, 2, 2);
+  double d1 = dtwc::dtwMissing_banded_mv(x, 2, y, 2, 2);
+  double d2 = dtwc::dtwMissing_banded_mv(y, 2, x, 2, 2);
   REQUIRE_THAT(d1, WithinAbs(d2, 1e-10));
 }
 
@@ -103,7 +103,7 @@ TEST_CASE("MV Missing: hand-computed L1 (ndim=2, 2 steps)", "[mv][missing]")
   // Expected result: 2
   double x[] = {1,NaN, 3,4};
   double y[] = {2,100, 3,5};
-  REQUIRE_THAT(dtwc::dtwMissing_L_mv(x, 2, y, 2, 2), WithinAbs(2.0, 1e-10));
+  REQUIRE_THAT(dtwc::dtwMissing_banded_mv(x, 2, y, 2, 2), WithinAbs(2.0, 1e-10));
 }
 
 TEST_CASE("MV Missing: hand-computed SquaredL2 (ndim=2, 2 steps)", "[mv][missing]")
@@ -124,7 +124,7 @@ TEST_CASE("MV Missing: hand-computed SquaredL2 (ndim=2, 2 steps)", "[mv][missing
   //   C(1,1) = min(1, 9218, 5) + 1 = 1 + 1 = 2
   double x[] = {1,NaN, 3,4};
   double y[] = {2,100, 3,5};
-  double d = dtwc::dtwMissing_L_mv(x, 2, y, 2, 2, -1.0, dtwc::core::MetricType::SquaredL2);
+  double d = dtwc::dtwMissing_banded_mv(x, 2, y, 2, 2, -1, -1.0, dtwc::core::MetricType::SquaredL2);
   REQUIRE_THAT(d, WithinAbs(2.0, 1e-10));
 }
 
@@ -132,15 +132,15 @@ TEST_CASE("MV Missing: empty series returns max", "[mv][missing][edge]")
 {
   double x[] = {1.0, 2.0};
   constexpr double maxVal = std::numeric_limits<double>::max();
-  REQUIRE(dtwc::dtwMissing_L_mv(x, 1, static_cast<double*>(nullptr), 0, 2) == maxVal);
-  REQUIRE(dtwc::dtwMissing_L_mv(static_cast<double*>(nullptr), 0, x, 1, 2) == maxVal);
+  REQUIRE(dtwc::dtwMissing_banded_mv(x, 1, static_cast<double*>(nullptr), 0, 2) == maxVal);
+  REQUIRE(dtwc::dtwMissing_banded_mv(static_cast<double*>(nullptr), 0, x, 1, 2) == maxVal);
 }
 
 TEST_CASE("MV Missing: same pointer same timesteps = 0", "[mv][missing][edge]")
 {
   double x[] = {1,NaN, 3,4, 5,6};
   // same-pointer identity shortcut should apply
-  REQUIRE(dtwc::dtwMissing_L_mv(x, 3, x, 3, 2) == 0.0);
+  REQUIRE(dtwc::dtwMissing_banded_mv(x, 3, x, 3, 2) == 0.0);
 }
 
 TEST_CASE("MV Missing banded: ndim=1 delegates to scalar missing banded", "[mv][missing][banded]")
@@ -201,7 +201,7 @@ TEST_CASE("dtwMissing_banded_mv actually restricts the warping path", "[mv][miss
   std::vector<double> x = {0,0, 0,0, 9,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0};
   std::vector<double> y = {0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 9,0, 0,0};
 
-  const double d_unbanded = dtwc::dtwMissing_L_mv<double>(
+  const double d_unbanded = dtwc::dtwMissing_banded_mv<double>(
       x.data(), 10, y.data(), 10, 2);
   const double d_banded1  = dtwc::dtwMissing_banded_mv<double>(
       x.data(), 10, y.data(), 10, 2, 1);
@@ -237,8 +237,7 @@ void require_missing_mv_l2_metric_contract()
   };
 
   const auto full = [&](dtwc::core::MetricType metric) {
-    return dtwc::dtwMissing_L_mv<T>(
-        x.data(), nsteps, y.data(), nsteps, ndim, T(-1), metric);
+    return dtwc::dtwMissing_banded_mv<T>(x.data(), nsteps, y.data(), nsteps, ndim, -1, T(-1), metric);
   };
   const auto banded = [&](dtwc::core::MetricType metric) {
     return dtwc::dtwMissing_banded_mv<T>(
@@ -256,15 +255,13 @@ void require_missing_mv_l2_metric_contract()
   // No-missing data must use the same L2 meaning as the ordinary MV API.
   const std::vector<T> clean_x = {T(0), T(0), T(0), T(0), T(0), T(0)};
   const std::vector<T> clean_y = {T(3), T(4), T(3), T(4), T(3), T(4)};
-  const T missing_l2 = dtwc::dtwMissing_L_mv<T>(
-      clean_x.data(), 3, clean_y.data(), 3, 2, T(-1), dtwc::core::MetricType::L2);
-  const T ordinary_l2 = dtwc::dtwFull_L_mv<T>(
-      clean_x.data(), 3, clean_y.data(), 3, 2, T(-1), dtwc::core::MetricType::L2);
+  const T missing_l2 = dtwc::dtwMissing_banded_mv<T>(clean_x.data(), 3, clean_y.data(), 3, 2, -1, T(-1),
+                                                     dtwc::core::MetricType::L2);
+  const T ordinary_l2 = dtwc::dtwBanded_mv<T>(clean_x.data(), 3, clean_y.data(), 3, 2, -1, T(-1), dtwc::core::MetricType::L2);
   CHECK(missing_l2 == T(15));
   CHECK(missing_l2 == ordinary_l2);
 
-  CHECK(dtwc::dtwMissing_L_mv<T>(
-      x.data(), nsteps, x.data(), nsteps, ndim, T(-1), dtwc::core::MetricType::L2) == T(0));
+  CHECK(dtwc::dtwMissing_banded_mv<T>(x.data(), nsteps, x.data(), nsteps, ndim, -1, T(-1), dtwc::core::MetricType::L2) == T(0));
 }
 
 } // namespace

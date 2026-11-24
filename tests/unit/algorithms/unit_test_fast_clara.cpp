@@ -457,7 +457,7 @@ TEST_CASE("FastCLARA: total_cost of a multivariate parent is its multivariate di
   for (int p = 0; p < N; ++p) {
     const index_t medoid = result.medoid_indices[static_cast<size_t>(result.labels[static_cast<size_t>(p)])];
     multivariate += distance(prob.series(p), prob.series(medoid));
-    flat_univariate += dtwc::dtwFull_L<data_t>(prob.series(p), prob.series(medoid));
+    flat_univariate += dtwc::dtwBanded(prob.series(p), prob.series(medoid));
   }
   REQUIRE_THAT(result.total_cost, WithinAbs(multivariate, 1e-9));
   REQUIRE(std::abs(multivariate - flat_univariate) > 1.0);

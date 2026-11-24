@@ -33,7 +33,7 @@ TEST_CASE("MV DTW: 2D known distance (L1)", "[mv][dtw]")
   //   C(1,1) = min(C(0,0), C(1,0), C(0,1)) + d(x1,y1) = min(2,2,6) + 2 = 4
   double x[] = {0,0, 1,1};
   double y[] = {1,1, 2,2};
-  REQUIRE_THAT(dtwc::dtwFull_L_mv(x, 2, y, 2, 2), WithinAbs(4.0, 1e-10));
+  REQUIRE_THAT(dtwc::dtwBanded_mv(x, 2, y, 2, 2), WithinAbs(4.0, 1e-10));
 }
 
 TEST_CASE("MV DTW SquaredL2: ndim=2 known value", "[mv][dtw]")
@@ -48,7 +48,7 @@ TEST_CASE("MV DTW SquaredL2: ndim=2 known value", "[mv][dtw]")
   // C(0,0)=2, C(1,0)=2, C(0,1)=10, C(1,1)=min(2,2,10)+2=4
   double x[] = {0,0, 1,1};
   double y[] = {1,1, 2,2};
-  double d = dtwc::dtwFull_L_mv(x, 2, y, 2, 2, -1.0, dtwc::core::MetricType::SquaredL2);
+  double d = dtwc::dtwBanded_mv(x, 2, y, 2, 2, -1, -1.0, dtwc::core::MetricType::SquaredL2);
   REQUIRE_THAT(d, WithinAbs(4.0, 1e-10));
 }
 
@@ -57,8 +57,8 @@ TEST_CASE("MV DTW: empty series returns max", "[mv][dtw][edge]")
   double x[] = {1.0, 2.0};
   constexpr double maxVal = std::numeric_limits<double>::max();
   // Pass nullptr with 0 steps to simulate empty series
-  REQUIRE(dtwc::dtwFull_L_mv(x, 2, static_cast<double*>(nullptr), 0, 2) == maxVal);
-  REQUIRE(dtwc::dtwFull_L_mv(static_cast<double*>(nullptr), 0, x, 2, 2) == maxVal);
+  REQUIRE(dtwc::dtwBanded_mv(x, 2, static_cast<double*>(nullptr), 0, 2) == maxVal);
+  REQUIRE(dtwc::dtwBanded_mv(static_cast<double*>(nullptr), 0, x, 2, 2) == maxVal);
 }
 
 TEST_CASE("derivative_transform_mv: ndim=1 unchanged", "[mv][ddtw]")
@@ -117,7 +117,7 @@ TEST_CASE("MV DTW: ndim 2, 5, 10 and 50 equal the oracle, full and banded", "[mv
           spec.band = band;
           spec.ndim = ndim;
           const double want = ts::dtw_oracle(spec, x, y);
-          const double got = band < 0 ? dtwc::dtwFull_L_mv(x.data(), nx, y.data(), ny, ndim, -1.0, metric)
+          const double got = band < 0 ? dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, ndim, -1, -1.0, metric)
                                       : dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, ndim, band, -1.0, metric);
           INFO("ndim " << ndim << ", band " << band << ", " << nx << "x" << ny << ": got " << got
                        << ", oracle " << want);

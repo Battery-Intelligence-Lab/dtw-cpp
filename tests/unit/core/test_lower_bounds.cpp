@@ -147,7 +147,7 @@ TEST_CASE("lb_keogh <= banded DTW on long random series", "[lower_bounds][lb_keo
       const double xy = dtwc::core::lb_keogh(x, ey);
       const double yx = dtwc::core::lb_keogh(y, ex);
       const double sym = dtwc::core::lb_keogh_symmetric(x, ex, y, ey);
-      const double dtw = dtwc::dtwBanded<double>(x, y, band);
+      const double dtw = dtwc::dtwBanded(x, y, band);
       INFO("pair " << p << " n=" << n << " band=" << band);
       REQUIRE(sym == std::max(xy, yx));
       // At band 0 the bound equals the diagonal DTW in exact arithmetic; the two
@@ -165,7 +165,7 @@ TEST_CASE("lb_keogh at extreme magnitudes", "[lower_bounds][lb_keogh]")
   const Series tiny = { 1e-15, -1e-15, 1e-15, -1e-15, 1e-15 };
   const double lb = lb_keogh_of(big, tiny, 2);
   REQUIRE(lb >= 0.0);
-  REQUIRE(lb <= dtwc::dtwBanded<double>(big, tiny, 2) * (1.0 + 1e-12));
+  REQUIRE(lb <= dtwc::dtwBanded(big, tiny, 2) * (1.0 + 1e-12));
 }
 
 TEST_CASE("lb_keogh takes the covered envelope prefix", "[lower_bounds][envelopes][sizes]")

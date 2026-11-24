@@ -70,7 +70,7 @@ behaviour listed further down.
 | `dtwc::Range`, `dtwc::Index`, `settings::isDebug` | none: write the loop (`for (std::size_t i = 0; i < n; ++i)`) |
 | `dtwc::randGenerator`, in `settings.hpp` | none: every function that draws takes its seed |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |
-| `dtwBanded`, `dtwFull`, `dtwFull_L` | the same names; the scalar type defaults to `double` (v1.0.0's `dtwBanded` defaulted to `float`), with new trailing defaulted parameters and span overloads |
+| `dtwFull(x, y)`, `dtwFull_L(x, y)` and `dtwBanded(x, y, band)` on `std::vector`s, with an explicit element type or without | `dtwBanded(x, y, band)`: band -1, the default, is `dtwFull` and `dtwFull_L`. `x` and `y` are `std::vector`s, `std::span`s, `std::array`s or C arrays of `float` or `double`, and the element type of the series is the type of the distance, so `dtwFull_L<double>(x, y)` is `dtwBanded(x, y)` (v1.0.0's `dtwBanded` defaulted to `float` where none was deduced); a pointer and a length pass as `std::span<const double>(p, n)`. `early_abandon` and `metric` follow the band |
 | `run(task, n, numMaxParallelWorkers = 32)` | the same name; the default is now `0`, every OpenMP thread, and a positive limit is applied (v1.0.0 used every OpenMP thread) |
 
 Counts of series and clusters, labels, medoids and indices are `index_t`
@@ -145,7 +145,7 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   `randGenerator`, and the lowest-cost repetition is kept (v1.0.0 kept the last).
   A medoid at distance 0 from another medoid (a duplicate series) keeps its own
   cluster, where v1.0.0 gave it to the first tied medoid and left its cluster
-  empty; a run that stops at `maxIter` assigns the series to its final medoids
+  empty; a run that stops at `max_iter` assigns the series to its final medoids
   before its cost is taken.
 - The band is the window |i − j| ≤ band for every pair. v1.0.0 centred it on
   the line joining the ends of two series of different lengths. In a `Problem`, a band

@@ -224,12 +224,12 @@ TEST_CASE("F15 production dense references equal an independent full-matrix DP",
   const auto full = dtwc::test_support::symmetric_zero_diagonal_matrix(
     series,
     [](const auto &left, const auto &right) {
-      return dtwc::dtwFull_L<double>(left, right);
+      return dtwc::dtwBanded(left, right);
     });
   const auto band0 = dtwc::test_support::symmetric_zero_diagonal_matrix(
     series,
     [](const auto &left, const auto &right) {
-      return dtwc::dtwBanded<double>(left, right, 0);
+      return dtwc::dtwBanded(left, right, 0);
     });
   const auto independent_full = independent_matrix(series, -1);
   const auto independent_band0 = independent_matrix(series, 0);

@@ -36,6 +36,7 @@
 #include "core/dtw_kernel.hpp"   // dtw_kernel_linear, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
 #include "core/dtw_options.hpp"  // core::validate
+#include "core/series.hpp"       // core::SeriesPair
 #include "warping.hpp"           // detail::require_finite
 
 namespace dtwc {
@@ -91,20 +92,24 @@ std::pair<std::vector<T> &, std::vector<T> &> soft_dtw_grad_bufs()
  * cells reduce to `predecessor + cost`, the hard accumulation
  * soft_dtw_gradient() uses there.
  *
- * @tparam T Floating point type (default: `settings::default_data_t`, currently `double`).
+ * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair),
+ *              a std::vector, std::span, std::array or C array of float or double.
  * @param x First time series.
  * @param y Second time series.
  * @param gamma Smoothing parameter, > 0 (unchecked). As gamma -> 0, result
  *              converges to standard DTW distance.
  * @return The Soft-DTW distance.
  */
-template <typename T = dtwc::settings::default_data_t>
-T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
+template <typename X, typename Y>
+  requires core::SeriesPair<X, Y>
+core::series_value_t<X> soft_dtw(const X &x, const Y &y, core::series_value_t<X> gamma = 1)
 {
+  using T = core::series_value_t<X>;
   // No shortcut for a series against itself: its Soft-DTW is not 0. An empty
   // series has no path: dtw_kernel_linear returns max().
-  const T *xs = x.data(), *ys = y.data();
-  std::size_t nx = x.size(), ny = y.size();
+  const std::span<const T> x_span{ x }, y_span{ y };
+  const T *xs = x_span.data(), *ys = y_span.data();
+  std::size_t nx = x_span.size(), ny = y_span.size();
   core::orient(xs, nx, ys, ny);
   return core::dtw_kernel_linear<T>(nx, ny, core::SpanL1Cost<T>{ xs, ys }, core::SoftCell<T>{ gamma });
 }
@@ -215,13 +220,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   return grad;
 }
 
-// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
-template <typename T = dtwc::settings::default_data_t>
-T soft_dtw(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
-{
-  return soft_dtw<T>(std::span<const T>{x}, std::span<const T>{y}, gamma);
-}
-
+// Vector convenience overload (vector -> span implicit conversion is non-deduced).
 template <typename T = dtwc::settings::default_data_t>
 std::vector<T> soft_dtw_gradient(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
 {

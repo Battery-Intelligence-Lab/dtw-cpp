@@ -184,7 +184,7 @@ TEST_CASE("cdist matches per-pair dtw oracle across rectangular, ragged, banded,
     REQUIRE(D_f32.size() == X.size() * Y.size());
     for (std::size_t i = 0; i < X.size(); ++i) {
       for (std::size_t j = 0; j < Y.size(); ++j) {
-        const float ref = dtwc::distance::dtw<float>(X_f32[i], Y_f32[j]);
+        const float ref = dtwc::distance::dtw(X_f32[i], Y_f32[j]);
         REQUIRE_THAT(D_f32[i * Y.size() + j], Catch::Matchers::WithinRel(static_cast<double>(ref), 1e-5));
       }
     }

@@ -22,7 +22,7 @@
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
-TEST_CASE("wdtwFull: g=0 gives weights all 0.5, hand-computed example", "[wdtw]")
+TEST_CASE("wdtwBanded, band -1: g=0 gives weights all 0.5, hand-computed example", "[wdtw]")
 {
   // With g=0, logistic w(k) = 1/(1+exp(0)) = 0.5 for all k. The full DP:
   //   C(0,0) = 0.5 * |1-2| = 0.5
@@ -35,17 +35,17 @@ TEST_CASE("wdtwFull: g=0 gives weights all 0.5, hand-computed example", "[wdtw]"
   //   C(1,2) = min(3.0, 1.0, 1.5) + 0.5*|2-4| = 1.0 + 1.0 = 2.0
   //   C(2,2) = min(2.0, 0.5, 1.0) + 0.5*|3-4| = 0.5 + 0.5 = 1.0
   std::vector<double> x{ 1, 2, 3 }, y{ 2, 3, 4 };
-  REQUIRE_THAT(wdtwFull<double>(x, y, 0.0), WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(wdtwBanded(x, y, -1, 0.0), WithinAbs(1.0, 1e-12));
 }
 
-TEST_CASE("wdtwFull: empty series returns maxValue", "[wdtw]")
+TEST_CASE("wdtwBanded, band -1: empty series returns maxValue", "[wdtw]")
 {
   constexpr double max_value = std::numeric_limits<double>::max();
   std::vector<double> x{ 1, 2, 3 }, empty{};
 
-  REQUIRE(wdtwFull<double>(x, empty, 0.05) == max_value);
-  REQUIRE(wdtwFull<double>(empty, x, 0.05) == max_value);
-  REQUIRE(wdtwFull<double>(empty, empty, 0.05) == max_value);
+  REQUIRE(wdtwBanded(x, empty, -1, 0.05) == max_value);
+  REQUIRE(wdtwBanded(empty, x, -1, 0.05) == max_value);
+  REQUIRE(wdtwBanded(empty, empty, -1, 0.05) == max_value);
 }
 
 // SpanWeightedL1Cost indexes weights[|row - col|], whose maximum is
@@ -61,10 +61,10 @@ TEST_CASE("wdtw: a weight array shorter than max(|x|, |y|) is rejected", "[wdtw]
   const std::span<const double> sw{ short_w };
   const std::span<const double> fw{ full_w };
 
-  CHECK_THROWS_AS(wdtwFull<double>(x.data(), x.size(), y.data(), y.size(), sw), InvalidInput);
-  CHECK_THROWS_AS(wdtwBanded<double>(x.data(), x.size(), y.data(), y.size(), sw, 2), InvalidInput);
-  CHECK_NOTHROW(wdtwFull<double>(x.data(), x.size(), y.data(), y.size(), fw));
-  CHECK_NOTHROW(wdtwBanded<double>(x.data(), x.size(), y.data(), y.size(), fw, 2));
+  CHECK_THROWS_AS(wdtwBanded(x, y, sw), InvalidInput);
+  CHECK_THROWS_AS(wdtwBanded(x, y, sw, 2), InvalidInput);
+  CHECK_NOTHROW(wdtwBanded(x, y, fw));
+  CHECK_NOTHROW(wdtwBanded(x, y, fw, 2));
 
   // Multivariate: the bound is in timesteps, not flat elements.
   const std::vector<double> xm = { 1, 10, 2, 20, 3, 30 };  // 3 steps x 2 channels
@@ -74,8 +74,8 @@ TEST_CASE("wdtw: a weight array shorter than max(|x|, |y|) is rejected", "[wdtw]
   const std::span<const double> smv{ short_mv };
   const std::span<const double> fmv{ full_mv };
 
-  CHECK_THROWS_AS(wdtwFull_mv<double>(xm.data(), 3, ym.data(), 3, 2, smv), InvalidInput);
+  CHECK_THROWS_AS(wdtwBanded_mv<double>(xm.data(), 3, ym.data(), 3, 2, smv), InvalidInput);
   CHECK_THROWS_AS(wdtwBanded_mv<double>(xm.data(), 3, ym.data(), 3, 2, smv, 1), InvalidInput);
-  CHECK_NOTHROW(wdtwFull_mv<double>(xm.data(), 3, ym.data(), 3, 2, fmv));
+  CHECK_NOTHROW(wdtwBanded_mv<double>(xm.data(), 3, ym.data(), 3, 2, fmv));
   CHECK_NOTHROW(wdtwBanded_mv<double>(xm.data(), 3, ym.data(), 3, 2, fmv, 1));
 }

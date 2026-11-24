@@ -5,8 +5,8 @@
  *        which runs the lanes, agrees with the per-pair fill.
  *
  * @details The oracle is the per-pair path the brute-force fill ran before the
- *          lanes: dtwBanded, plus dtwFull_L (the recurrence the lanes mirror,
- *          and what dtwBanded runs for band < 0) called directly for band < 0.
+ *          lanes: dtwBanded, and for band < 0 dtwBanded again with band -1 (the
+ *          recurrence the lanes mirror, which every negative band runs).
  *          The lanes and the per-pair kernel are different code, so a compiler
  *          that contracts a multiply-add into an FMA in one of them (GCC does by
  *          default) moves the last bits: they agree within the route bound of
@@ -19,7 +19,7 @@
 #include "Problem.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_options.hpp" // core::MetricType
-#include "warping.hpp"          // dtwFull_L, dtwBanded
+#include "warping.hpp"          // dtwBanded
 
 #include "../../support/dtw_route_bound.hpp"
 
@@ -85,10 +85,10 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   const auto lanes = lanes_of<T>(x, y, band, metric);
   int bad = 0;
   for (std::size_t w = 0; w < W; ++w) {
-    const T banded = dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric);
+    const T banded = dtwc::dtwBanded(x, y[w], band, T(-1), metric);
     bad += !dtw_routes_agree<T>(lanes[w], banded, n, n);
     if (band < 0) {
-      const T full = dtwc::dtwFull_L<T>(x, y[w], T(-1), metric);
+      const T full = dtwc::dtwBanded(x, y[w], -1, T(-1), metric);
       bad += !dtw_routes_agree<T>(lanes[w], full, n, n);
     }
   }
@@ -111,7 +111,7 @@ int ragged_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   const auto lanes = lanes_of<T>(x, y, band, metric);
   int bad = 0;
   for (std::size_t w = 0; w < W; ++w)
-    bad += !dtw_routes_agree<T>(lanes[w], dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric), x.size(),
+    bad += !dtw_routes_agree<T>(lanes[w], dtwc::dtwBanded(x, y[w], band, T(-1), metric), x.size(),
                                 y[w].size());
   return bad;
 }

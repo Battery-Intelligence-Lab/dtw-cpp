@@ -31,8 +31,8 @@ $$x'[0] = x[1] - x[0], \quad x'[n-1] = x[n-1] - x[n-2]$$
 std::vector<double> x = {1.0, 2.0, 3.0, 2.0, 1.0};
 std::vector<double> y = {1.0, 1.5, 3.0, 2.5, 1.0};
 
-// Full (unconstrained) DDTW
-double dist = dtwc::ddtwFull_L(x, y);
+// Full (unconstrained) DDTW: band -1, the default
+double dist = dtwc::ddtwBanded(x, y);
 
 // Banded DDTW with Sakoe-Chiba band
 double dist_banded = dtwc::ddtwBanded(x, y, /*band=*/2);
@@ -83,15 +83,15 @@ With float32 data (`--dtype float32` for `dtwc_cl`, `dtype="float32"` in Python)
 
 // With precomputed weights
 auto weights = dtwc::wdtw_weights<double>(/*max_dev=*/99, /*g=*/0.05);
-double dist = dtwc::wdtwFull(x, y, weights);
+double dist = dtwc::wdtwBanded(x, y, weights);  // band -1, the default: full
 double dist_banded = dtwc::wdtwBanded(x, y, weights, /*band=*/10);
 
 // Convenience: pass g parameter directly
-double dist2 = dtwc::wdtwFull(x, y, /*g=*/0.05);
+double dist2 = dtwc::wdtwBanded(x, y, /*band=*/-1, /*g=*/0.05);
 double dist3 = dtwc::wdtwBanded(x, y, /*band=*/10, /*g=*/0.05);
 
 // Multivariate (pointer + timestep count interface)
-double dist_mv = dtwc::wdtwFull_mv(x_ptr, nx, y_ptr, ny, ndim, /*g=*/0.05);
+double dist_mv = dtwc::wdtwBanded_mv(x_ptr, nx, y_ptr, ny, ndim, /*band=*/-1, /*g=*/0.05);
 double dist_mv_b = dtwc::wdtwBanded_mv(x_ptr, nx, y_ptr, ny, ndim, band, /*g=*/0.05);
 ```
 
@@ -129,14 +129,14 @@ where $$\omega$$ is the penalty. A diagonal step (no stretching) incurs no extra
 ```cpp
 #include <warping_adtw.hpp>
 
-// Full ADTW (linear-space, O(min(m,n)) memory)
-double dist = dtwc::adtwFull_L(x, y, /*penalty=*/0.1);
+// Full ADTW (band -1; linear-space, O(min(m,n)) memory)
+double dist = dtwc::adtwBanded(x, y, /*band=*/-1, /*penalty=*/0.1);
 
 // Banded ADTW
 double dist_banded = dtwc::adtwBanded(x, y, /*band=*/10, /*penalty=*/0.1);
 
 // Multivariate
-double dist_mv = dtwc::adtwFull_L_mv(x_ptr, nx, y_ptr, ny, ndim, /*penalty=*/0.1);
+double dist_mv = dtwc::adtwBanded_mv(x_ptr, nx, y_ptr, ny, ndim, /*band=*/-1, /*penalty=*/0.1);
 double dist_mv_b = dtwc::adtwBanded_mv(x_ptr, nx, y_ptr, ny, ndim, band, /*penalty=*/0.1);
 ```
 

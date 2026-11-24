@@ -99,8 +99,8 @@ TEST_CASE("IF-1: set_device(cpu) computes on the CPU", "[if1][device]")
   prob.set_device(Device::CPU, 3); // the CPU has no index
   CHECK(prob.device() == std::pair{ Device::CPU, 0 });
   prob.fill_distance_matrix();
-  // The fill runs the SIMD lanes; dtwFull_L is the per-pair kernel.
-  const double per_pair = dtwc::dtwFull_L<double>(prob.series(0), prob.series(1));
+  // The fill runs the SIMD lanes; dtwBanded is the per-pair kernel.
+  const double per_pair = dtwc::dtwBanded(prob.series(0), prob.series(1));
   CHECK(dtwc::test_support::dtw_routes_agree<double>(
     prob.dist_by_ind(0, 1), per_pair, prob.series(0).size(), prob.series(1).size()));
 }

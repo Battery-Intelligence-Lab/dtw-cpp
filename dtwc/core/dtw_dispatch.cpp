@@ -61,7 +61,7 @@ auto make_zero_cost(const DistanceConfig &c)
     };
   }
   return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(dtwMissing_banded<T>(x, y, band, T(-1), metric));
+    return normalize_public_distance(dtwMissing_banded(x, y, band, T(-1), metric));
   };
 }
 
@@ -73,8 +73,8 @@ auto make_interpolate(const DistanceConfig &c)
 {
   return [band = c.band, metric = c.metric](std::span<const T> x, std::span<const T> y) -> double {
     auto [x_buffer, y_buffer] = dtwc::detail::interpolate_bufs<T>();
-    return normalize_public_distance(dtwBanded<T>(interpolate_linear_into(x, x_buffer),
-                                                  interpolate_linear_into(y, y_buffer), band, T(-1), metric));
+    return normalize_public_distance(dtwBanded(interpolate_linear_into(x, x_buffer),
+                                               interpolate_linear_into(y, y_buffer), band, T(-1), metric));
   };
 }
 
@@ -101,7 +101,7 @@ auto make_arow(const DistanceConfig &c)
     };
   }
   return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(dtwAROW_banded<T>(x, y, band, metric));
+    return normalize_public_distance(dtwAROW_banded(x, y, band, metric));
   };
 }
 
@@ -126,7 +126,7 @@ auto make_standard(const DistanceConfig &c)
     };
   }
   return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(dtwBanded<T>(x, y, band, T(-1), metric));
+    return normalize_public_distance(dtwBanded(x, y, band, T(-1), metric));
   };
 }
 
@@ -146,7 +146,7 @@ auto make_ddtw(const DistanceConfig &c)
     };
   }
   return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(ddtwBanded<T>(x, y, band, metric));
+    return normalize_public_distance(ddtwBanded(x, y, band, metric));
   };
 }
 
@@ -200,7 +200,7 @@ auto make_adtw(const DistanceConfig &c)
     };
   }
   return [band, penalty](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(adtwBanded<T>(x, y, band, penalty));
+    return normalize_public_distance(adtwBanded(x, y, band, penalty));
   };
 }
 
@@ -216,7 +216,7 @@ auto make_soft_dtw(const DistanceConfig &c)
   // O(n·m) recurrence here.
   return [gamma = static_cast<T>(c.variant.sdtw_gamma)](std::span<const T> x,
                                                          std::span<const T> y) -> double {
-    return normalize_public_distance(soft_dtw<T>(x, y, gamma));
+    return normalize_public_distance(soft_dtw(x, y, gamma));
   };
 }
 
@@ -228,7 +228,7 @@ auto make_msm(const DistanceConfig &c)
 {
   const T cost = static_cast<T>(c.variant.msm_c);
   return [cost](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(msm_distance<T>(x, y, cost));
+    return normalize_public_distance(msm_distance(x, y, cost));
   };
 }
 
@@ -239,7 +239,7 @@ auto make_twe(const DistanceConfig &c)
   const T nu  = static_cast<T>(c.variant.twe_nu);
   const T lam = static_cast<T>(c.variant.twe_lambda);
   return [nu, lam](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(twe_distance<T>(x, y, nu, lam));
+    return normalize_public_distance(twe_distance(x, y, nu, lam));
   };
 }
 

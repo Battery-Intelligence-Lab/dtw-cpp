@@ -21,6 +21,7 @@ target_sources(dtwc_core
     msm.hpp
     portable_random.hpp
     public_distance.hpp
+    series.hpp
     sha256.hpp
     storage.hpp
     thread_scratch.hpp

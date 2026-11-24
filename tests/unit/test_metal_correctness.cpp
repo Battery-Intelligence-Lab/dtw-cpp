@@ -69,7 +69,7 @@ std::vector<double> cpu_distance_matrix(
   return dtwc::test_support::symmetric_zero_diagonal_matrix(
     series,
     [](const auto &left, const auto &right) {
-      return dtwc::dtwFull_L<double>(left, right);
+      return dtwc::dtwBanded(left, right);
     });
 }
 
@@ -79,7 +79,7 @@ std::vector<double> cpu_banded_matrix(
   return dtwc::test_support::symmetric_zero_diagonal_matrix(
     series,
     [band](const auto &left, const auto &right) {
-      return dtwc::dtwBanded<double>(left, right, band);
+      return dtwc::dtwBanded(left, right, band);
     });
 }
 
@@ -149,10 +149,9 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
             row.has_path ? registered : fixed_band::public_no_path_sentinel;
         // The CPU kernel on the same inputs is the reference for Metal's
         // geometry and for its unreachable-value sentinel (the Metal half of fixed-band GPU parity).
-        const double cpu = dtwc::dtwBanded<double>(
-            series[0], series[1], row.band, -1.0,
-            squared ? dtwc::core::MetricType::SquaredL2
-                    : dtwc::core::MetricType::L1);
+        const double cpu = dtwc::dtwBanded(series[0], series[1], row.band, -1.0,
+                                           squared ? dtwc::core::MetricType::SquaredL2
+                                                   : dtwc::core::MetricType::L1);
         REQUIRE(cpu == expected);
 
         dtwc::metal::MetalDistMatOptions opts;
@@ -217,7 +216,7 @@ TEST_CASE("Metal handles N=2 smallest possible matrix", "[metal]")
 
   REQUIRE(gpu.n == 2);
   // Two shifted ramps: DTW L1 distance should be small (aligned by warping).
-  double d_cpu = dtwc::dtwFull_L<double>(series[0], series[1]);
+  double d_cpu = dtwc::dtwBanded(series[0], series[1]);
   REQUIRE_THAT(gpu.matrix[0 * 2 + 1], WithinRel(d_cpu, 1e-4) || WithinAbs(d_cpu, 1e-3));
 }
 

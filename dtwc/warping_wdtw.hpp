@@ -30,6 +30,7 @@
 #include "warping.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
+#include "core/series.hpp"
 #include "base/error.hpp"
 
 #include <algorithm> // std::max
@@ -77,38 +78,22 @@ namespace detail {
 } // namespace detail
 
 // ---------------------------------------------------------------------------
-// Scalar WDTW — full matrix / banded, with precomputed weights
+// Scalar WDTW — banded, with precomputed weights
 // ---------------------------------------------------------------------------
 
-template <typename data_t>
-data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                  std::type_identity_t<std::span<const data_t>> weights,
-                  int band = settings::DEFAULT_BAND)
+/// WDTW of two series (core::SeriesPair) under `weights`, which must hold max(|x|, |y|) entries (InvalidInput
+/// otherwise; wdtw_weights builds them). A negative band, the default, is unconstrained.
+template <typename X, typename Y>
+  requires core::SeriesPair<X, Y>
+core::series_value_t<X> wdtwBanded(const X &x, const Y &y,
+                                   std::type_identity_t<std::span<const core::series_value_t<X>>> weights,
+                                   int band = settings::DEFAULT_BAND)
 {
-  detail::require_wdtw_weight_span(weights.size(), nx, ny);
-  return core::run_dtw<core::SpanWeightedL1Cost>(x, nx, y, ny, band, core::StandardCell{}, data_t(-1), weights.data());
-}
-
-template <typename data_t>
-data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                std::type_identity_t<std::span<const data_t>> weights)
-{
-  return wdtwBanded<data_t>(x, nx, y, ny, weights, -1);
-}
-
-template <typename data_t>
-data_t wdtwFull(std::span<const data_t> x, std::span<const data_t> y,
-                std::type_identity_t<std::span<const data_t>> weights)
-{
-  return wdtwFull(x.data(), x.size(), y.data(), y.size(), weights);
-}
-
-template <typename data_t>
-data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
-                  std::type_identity_t<std::span<const data_t>> weights,
-                  int band = settings::DEFAULT_BAND)
-{
-  return wdtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), weights, band);
+  using data_t = core::series_value_t<X>;
+  const std::span<const data_t> xs{ x }, ys{ y };
+  detail::require_wdtw_weight_span(weights.size(), xs.size(), ys.size());
+  return core::run_dtw<core::SpanWeightedL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
+                                                 core::StandardCell{}, data_t(-1), weights.data());
 }
 
 // ---------------------------------------------------------------------------
@@ -148,64 +133,18 @@ namespace detail {
   }
 } // namespace detail
 
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                  int band, data_t g)
+/// WDTW of two series (core::SeriesPair) under the logistic weights of steepness `g` (wdtw_weights), cached per thread.
+template <typename X, typename Y>
+  requires core::SeriesPair<X, Y>
+core::series_value_t<X> wdtwBanded(const X &x, const Y &y, int band, core::series_value_t<X> g)
 {
-  const auto max_len = std::max(nx, ny);
+  using data_t = core::series_value_t<X>;
+  const std::span<const data_t> xs{ x }, ys{ y };
+  const auto max_len = std::max(xs.size(), ys.size());
   if (max_len == 0) return std::numeric_limits<data_t>::max();
   const int max_dev = static_cast<int>(max_len) - 1;
   const auto &w = detail::cached_wdtw_weights<data_t>(max_dev, g);
-  return wdtwBanded(x, nx, y, ny, std::span<const data_t>{ w }, band);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
-                  int band, data_t g)
-{
-  return wdtwBanded(x.data(), x.size(), y.data(), y.size(), band, g);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                data_t g)
-{
-  return wdtwBanded<data_t>(x, nx, y, ny, -1, g);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwFull(std::span<const data_t> x, std::span<const data_t> y, data_t g)
-{
-  return wdtwFull(x.data(), x.size(), y.data(), y.size(), g);
-}
-
-// Vector convenience overloads
-template <typename data_t>
-data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                std::type_identity_t<std::span<const data_t>> weights)
-{
-  return wdtwFull<data_t>(std::span<const data_t>{ x }, std::span<const data_t>{ y }, weights);
-}
-
-template <typename data_t>
-data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  std::type_identity_t<std::span<const data_t>> weights,
-                  int band = settings::DEFAULT_BAND)
-{
-  return wdtwBanded<data_t>(std::span<const data_t>{ x }, std::span<const data_t>{ y }, weights, band);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  int band, data_t g)
-{
-  return wdtwBanded<data_t>(std::span<const data_t>{ x }, std::span<const data_t>{ y }, band, g);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y, data_t g)
-{
-  return wdtwFull<data_t>(std::span<const data_t>{ x }, std::span<const data_t>{ y }, g);
+  return wdtwBanded(xs, ys, std::span<const data_t>{ w }, band);
 }
 
 // ---------------------------------------------------------------------------
@@ -218,34 +157,22 @@ data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
                      size_t ndim, std::type_identity_t<std::span<const data_t>> weights,
                      int band = settings::DEFAULT_BAND)
 {
-  if (ndim == 1) return wdtwBanded<data_t>(x, nx_steps, y, ny_steps, weights, band);
+  if (ndim == 1)
+    return wdtwBanded(std::span<const data_t>(x, nx_steps), std::span<const data_t>(y, ny_steps), weights, band);
   detail::require_wdtw_weight_span(weights.size(), nx_steps, ny_steps);
   return core::run_dtw<core::SpanMVWeightedL1Cost>(x, nx_steps, y, ny_steps, band, core::StandardCell{}, data_t(-1), weights.data(), ndim);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                   size_t ndim, std::type_identity_t<std::span<const data_t>> weights)
-{
-  return wdtwBanded_mv<data_t>(x, nx_steps, y, ny_steps, ndim, weights, -1);
 }
 
 template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, int band = settings::DEFAULT_BAND, data_t g = 0.05)
 {
-  if (ndim == 1) return wdtwBanded<data_t>(x, nx_steps, y, ny_steps, band, g);
+  if (ndim == 1)
+    return wdtwBanded(std::span<const data_t>(x, nx_steps), std::span<const data_t>(y, ny_steps), band, g);
   const size_t max_steps = std::max(nx_steps, ny_steps);
   const int max_dev = (max_steps > 0) ? static_cast<int>(max_steps - 1) : 0;
   const auto &w = detail::cached_wdtw_weights<data_t>(max_dev, g);
   return wdtwBanded_mv(x, nx_steps, y, ny_steps, ndim, std::span<const data_t>{ w }, band);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                   size_t ndim, data_t g = 0.05)
-{
-  return wdtwBanded_mv<data_t>(x, nx_steps, y, ny_steps, ndim, -1, g);
 }
 
 } // namespace dtwc

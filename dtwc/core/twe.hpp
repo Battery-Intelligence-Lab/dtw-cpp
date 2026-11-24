@@ -36,6 +36,7 @@
 
 #include "../base/settings.hpp"
 #include "dtw_kernel.hpp" // orient
+#include "series.hpp"     // SeriesPair
 
 #include <algorithm>
 #include <cmath>
@@ -115,18 +116,14 @@ T twe_distance(const T *x, std::size_t nx, const T *y, std::size_t ny,
   return curr[nb];
 }
 
-template <typename T = dtwc::settings::default_data_t>
-T twe_distance(std::span<const T> x, std::span<const T> y,
-               T nu = T(0.001), T lambda = T(1))
+/// TWE distance of two series (SeriesPair: a std::vector, std::span, std::array or C array of float or double).
+template <typename X, typename Y>
+  requires SeriesPair<X, Y>
+series_value_t<X> twe_distance(const X &x, const Y &y, series_value_t<X> nu = 0.001, series_value_t<X> lambda = 1)
 {
-  return twe_distance<T>(x.data(), x.size(), y.data(), y.size(), nu, lambda);
-}
-
-template <typename T = dtwc::settings::default_data_t>
-T twe_distance(const std::vector<T> &x, const std::vector<T> &y,
-               T nu = T(0.001), T lambda = T(1))
-{
-  return twe_distance<T>(x.data(), x.size(), y.data(), y.size(), nu, lambda);
+  using T = series_value_t<X>;
+  const std::span<const T> xs{ x }, ys{ y };
+  return twe_distance<T>(xs.data(), xs.size(), ys.data(), ys.size(), nu, lambda);
 }
 
 } // namespace dtwc::core

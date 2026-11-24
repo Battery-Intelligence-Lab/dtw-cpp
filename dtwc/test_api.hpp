@@ -12,7 +12,7 @@
  *     it returns `available=false` with a non-empty `reason` and NEVER throws.
  *
  *   - `gpu()` executes a tiny REAL GPU kernel (a small DTW distance matrix) and
- *     validates it against a CPU oracle (`dtwc::dtwFull_L`) to within
+ *     validates it against a CPU oracle (`dtwc::dtwBanded`, band -1) to within
  *     `detail::kGpuOracleTol`. Fields: `available, backend, device_name,
  *     validated, pass, reason, hybrid, hybrid_reason` (the last two say of device
  *     `cpu+gpu` what `available` and `reason` say of `gpu`). When no GPU backend is compiled in — or the
@@ -33,7 +33,7 @@
 
 #pragma once
 
-#include "dtwc.hpp" // CPU oracle (dtwc::dtwFull_L / core::MetricType) + conditional cuda/metal decls
+#include "dtwc.hpp" // CPU oracle (dtwc::dtwBanded / core::MetricType) + conditional cuda/metal decls
 
 #include <algorithm>
 #include <cmath>
@@ -99,7 +99,7 @@ inline std::vector<std::vector<double>> gpu_probe_series()
 
 /// @brief Max abs deviation of a GPU-filled matrix from the CPU oracle, NaN when an
 ///        entry is NaN (one the GPU never wrote), which then fails every tolerance.
-///        CPU oracle = full (band=-1) L1 DTW via the LIVE public `dtwc::dtwFull_L`.
+///        CPU oracle = full (band=-1) L1 DTW via the LIVE public `dtwc::dtwBanded`.
 inline double gpu_matrix_max_abs_error(const std::vector<std::vector<double>> &series,
                                        const dtwc::core::DistanceMatrix &gpu_matrix)
 {
@@ -108,7 +108,7 @@ inline double gpu_matrix_max_abs_error(const std::vector<std::vector<double>> &s
   for (std::size_t i = 0; i < N; ++i)
     for (std::size_t j = i + 1; j < N; ++j) {
       const double oracle =
-        dtwc::dtwFull_L<double>(series[i], series[j], -1.0, dtwc::core::MetricType::L1);
+        dtwc::dtwBanded(series[i], series[j], -1, -1.0, dtwc::core::MetricType::L1);
       const double error = std::abs(gpu_matrix.get(i, j) - oracle);
       if (std::isnan(error)) return error; // std::max would drop it
       max_abs = std::max(max_abs, error);

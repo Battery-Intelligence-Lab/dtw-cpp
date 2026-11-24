@@ -308,7 +308,7 @@ TEST_CASE(
   // coerced to radius zero, whose bound 2 exceeded the true distance 0.
   const Series x = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
   const Series y = { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1 };
-  REQUIRE(dtwc::dtwFull_L<double>(x, y) == 0.0);
+  REQUIRE(dtwc::dtwBanded(x, y) == 0.0);
   REQUIRE(production_bounds(x, y, 0, x.size()).symmetric_l1 == 2.0);
   REQUIRE(production_bounds(x, y, 1, x.size()).symmetric_l1 == 1.0);
   REQUIRE(
@@ -337,7 +337,7 @@ TEST_CASE(
     dtwc::core::lb_keogh(
       y.data(), y.size(), upper_x_negative.data(), lower_x_negative.data()));
   REQUIRE(negative_bound == 0.0);
-  REQUIRE(negative_bound <= dtwc::dtwFull_L<double>(x, y));
+  REQUIRE(negative_bound <= dtwc::dtwBanded(x, y));
 
   // TADPole deliberately replaces a negative full-DTW request with global
   // envelopes. Its pruning ledger is the reachability proof.
@@ -367,7 +367,7 @@ TEST_CASE(
   // full-window LB (0,1).
   const Series separated_a = { 0.0, 0.0 };
   const Series separated_b = { 2.0, 2.0 };
-  REQUIRE(dtwc::dtwFull_L<double>(separated_a, separated_b) == 4.0);
+  REQUIRE(dtwc::dtwBanded(separated_a, separated_b) == 4.0);
   REQUIRE(
     production_bounds(separated_a, separated_b, 2, 2).symmetric_l1
     == 4.0);

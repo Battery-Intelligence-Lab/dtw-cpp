@@ -39,6 +39,7 @@
 
 #include "../base/settings.hpp"
 #include "dtw_kernel.hpp" // orient
+#include "series.hpp"     // SeriesPair
 
 #include <algorithm>
 #include <cmath>
@@ -110,16 +111,14 @@ T msm_distance(const T *x, std::size_t nx, const T *y, std::size_t ny, T c = T(1
   return curr[nb - 1];
 }
 
-template <typename T = dtwc::settings::default_data_t>
-T msm_distance(std::span<const T> x, std::span<const T> y, T c = T(1))
+/// MSM distance of two series (SeriesPair: a std::vector, std::span, std::array or C array of float or double).
+template <typename X, typename Y>
+  requires SeriesPair<X, Y>
+series_value_t<X> msm_distance(const X &x, const Y &y, series_value_t<X> c = 1)
 {
-  return msm_distance<T>(x.data(), x.size(), y.data(), y.size(), c);
-}
-
-template <typename T = dtwc::settings::default_data_t>
-T msm_distance(const std::vector<T> &x, const std::vector<T> &y, T c = T(1))
-{
-  return msm_distance<T>(x.data(), x.size(), y.data(), y.size(), c);
+  using T = series_value_t<X>;
+  const std::span<const T> xs{ x }, ys{ y };
+  return msm_distance<T>(xs.data(), xs.size(), ys.data(), ys.size(), c);
 }
 
 } // namespace dtwc::core

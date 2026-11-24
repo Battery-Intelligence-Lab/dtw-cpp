@@ -399,9 +399,9 @@ TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
   REQUIRE(prob.distance_matrix().is_mapped());
   // The fill may run the SIMD lanes, the free function the per-pair kernel.
   REQUIRE(test_support::dtw_routes_agree<data_t>(
-    prob.dist_by_ind(0, 1), distance::dtw<data_t>(x, y, -1, core::MetricType::SquaredL2),
+    prob.dist_by_ind(0, 1), distance::dtw(x, y, -1, core::MetricType::SquaredL2),
     x.size(), y.size()));
-  REQUIRE(prob.dist_by_ind(0, 1) != distance::dtw<data_t>(x, y));
+  REQUIRE(prob.dist_by_ind(0, 1) != distance::dtw(x, y));
 #endif
 }
 

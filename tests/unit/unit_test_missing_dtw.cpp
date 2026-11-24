@@ -2,7 +2,7 @@
  * @file unit_test_missing_dtw.cpp
  * @brief Unit tests for DTW with missing data (ZeroCost and Interpolate).
  *
- * @details Tests for dtwMissing_L and dtwMissing_banded
+ * @details Tests for dtwMissing_banded
  * which handle NaN values in time series by treating missing pairs as zero cost.
  *
  * Reference: Yurtman, Soenen, Meert & Blockeel (2023), "Estimating DTW Distance
@@ -29,38 +29,38 @@ using namespace dtwc;
 
 static constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
 
-TEST_CASE("dtwMissing_L: identical series gives zero", "[missing_dtw]")
+TEST_CASE("dtwMissing_banded, band -1: identical series gives zero", "[missing_dtw]")
 {
   std::vector<double> x{ 1, 2, 3, 4, 5 };
-  REQUIRE_THAT(dtwMissing_L<double>(x, x), WithinAbs(0.0, 1e-15));
+  REQUIRE_THAT(dtwMissing_banded(x, x), WithinAbs(0.0, 1e-15));
 }
 
-TEST_CASE("dtwMissing_L: single-element series", "[missing_dtw]")
+TEST_CASE("dtwMissing_banded, band -1: single-element series", "[missing_dtw]")
 {
   std::vector<double> x{ 5.0 };
   std::vector<double> y{ 3.0 };
   std::vector<double> y_nan{ NaN };
 
-  REQUIRE_THAT(dtwMissing_L<double>(x, y), WithinAbs(2.0, 1e-12));
-  REQUIRE_THAT(dtwMissing_L<double>(x, y_nan), WithinAbs(0.0, 1e-15));
+  REQUIRE_THAT(dtwMissing_banded(x, y), WithinAbs(2.0, 1e-12));
+  REQUIRE_THAT(dtwMissing_banded(x, y_nan), WithinAbs(0.0, 1e-15));
 }
 
-TEST_CASE("dtwMissing_L: early abandon triggers correctly", "[missing_dtw]")
+TEST_CASE("dtwMissing_banded, band -1: early abandon triggers correctly", "[missing_dtw]")
 {
   std::vector<double> x{ 1, 2, 3, 4, 5 };
   std::vector<double> y{ 100, 200, 300, 400, 500 };
   constexpr double maxValue = std::numeric_limits<double>::max();
 
   // With a small threshold, early abandon should kick in
-  const auto result = dtwMissing_L<double>(x, y, 10.0);
+  const auto result = dtwMissing_banded(x, y, -1, 10.0);
   REQUIRE(result == maxValue);
 
   // With no threshold, should return the actual distance
-  const auto full = dtwMissing_L<double>(x, y, -1.0);
+  const auto full = dtwMissing_banded(x, y, -1, -1.0);
   REQUIRE(full < maxValue);
 }
 
-TEST_CASE("dtwMissing_L: hand-computed nonzero result with NaN", "[missing_dtw]")
+TEST_CASE("dtwMissing_banded, band -1: hand-computed nonzero result with NaN", "[missing_dtw]")
 {
   // x = {1, 2}, y = {NaN, 5}
   // C(0,0) = 0 (y[0]=NaN)
@@ -70,7 +70,7 @@ TEST_CASE("dtwMissing_L: hand-computed nonzero result with NaN", "[missing_dtw]"
   std::vector<double> x{ 1, 2 };
   std::vector<double> y{ NaN, 5 };
 
-  REQUIRE_THAT(dtwMissing_L<double>(x, y), WithinAbs(3.0, 1e-12));
+  REQUIRE_THAT(dtwMissing_banded(x, y), WithinAbs(3.0, 1e-12));
 }
 
 // An all-NaN series under MissingStrategy::Interpolate must be rejected by
@@ -113,17 +113,17 @@ TEST_CASE("ZeroCost kernels equal the recurrence for every NaN pattern, in both 
       for (const bool swapped : { false, true }) {
         const auto& a = swapped ? y : x;
         const auto& b = swapped ? x : y;
-        CHECK(dtwMissing_L<double>(a, b, -1, metric) == want(-1));
+        CHECK(dtwMissing_banded(a, b, -1, -1, metric) == want(-1));
         // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
         for (const int band : { -1, 0, 2, 100 })
-          CHECK(ts::same_distance(dtwMissing_banded<double>(a, b, band, -1, metric), want(band)));
+          CHECK(ts::same_distance(dtwMissing_banded(a, b, band, -1, metric), want(band)));
       }
     }
   });
   CHECK(pairs > 500);
 }
 
-TEST_CASE("dtwMissing_L SquaredL2: a missing last step costs nothing, hand-computed", "[missing_dtw]")
+TEST_CASE("dtwMissing_banded SquaredL2, band -1: a missing last step costs nothing, hand-computed", "[missing_dtw]")
 {
   // x = {3, NaN}, y = {1, 2}
   // C(0,0) = (3-1)^2 = 4
@@ -132,17 +132,17 @@ TEST_CASE("dtwMissing_L SquaredL2: a missing last step costs nothing, hand-compu
   // C(1,1) = min(4, 4, 5) + 0 = 4   [x[1] is NaN]
   std::vector<double> x = { 3.0, NaN };
   std::vector<double> y = { 1.0, 2.0 };
-  REQUIRE_THAT(dtwMissing_L<double>(x, y, -1, core::MetricType::SquaredL2), WithinAbs(4.0, 1e-12));
+  REQUIRE_THAT(dtwMissing_banded(x, y, -1, -1, core::MetricType::SquaredL2), WithinAbs(4.0, 1e-12));
 }
 
-TEST_CASE("dtwMissing_L: an empty series gives the no-path sentinel", "[missing_dtw]")
+TEST_CASE("dtwMissing_banded: an empty series gives the no-path sentinel", "[missing_dtw]")
 {
   std::vector<double> x{ 1.0, 2.0 };
   std::vector<double> empty{};
   constexpr double max_value = std::numeric_limits<double>::max();
 
-  REQUIRE(dtwMissing_L<double>(empty, x) == max_value);
-  REQUIRE(dtwMissing_L<double>(x, empty) == max_value);
-  REQUIRE(dtwMissing_banded<double>(x, empty, 2) == max_value);
-  REQUIRE(dtwMissing_banded<double>(empty, x, 2) == max_value);
+  REQUIRE(dtwMissing_banded(empty, x) == max_value);
+  REQUIRE(dtwMissing_banded(x, empty) == max_value);
+  REQUIRE(dtwMissing_banded(x, empty, 2) == max_value);
+  REQUIRE(dtwMissing_banded(empty, x, 2) == max_value);
 }

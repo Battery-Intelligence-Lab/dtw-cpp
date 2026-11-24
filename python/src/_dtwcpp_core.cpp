@@ -718,7 +718,7 @@ NB_MODULE(_dtwcpp_core, m)
     const auto c = distance_config(variant, band, metric, missing_strategy, wdtw_g, adtw_penalty, sdtw_gamma,
                                    msm_c, twe_nu, twe_lambda);
     nb::gil_scoped_release release;
-    return dtwc::distance::dtw<double>(std::span<const double>(x.data(), x.size()),
+    return dtwc::distance::dtw(std::span<const double>(x.data(), x.size()),
                                        std::span<const double>(y.data(), y.size()), c.variant, c.band,
                                        c.metric, c.missing); }, "x"_a, "y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g, "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda,
         "DTW-family distance of two float64 series (dtwc::distance::dtw).\n\n"

@@ -97,14 +97,14 @@ dtwc::cuda::CUDADistMatResult medoid_distances(
       [](size_t count, const std::function<void(size_t)> &task) { dtwc::run_openmp(task, count); }, consume);
 }
 
-/// Compute the full NxN CPU distance matrix using dtwFull_L (L1 metric).
+/// Compute the full NxN CPU distance matrix using dtwBanded with band -1 (L1 metric).
 std::vector<double> cpu_distance_matrix(
     const std::vector<std::vector<double>> &series)
 {
   return dtwc::test_support::symmetric_zero_diagonal_matrix(
     series,
     [](const auto &left, const auto &right) {
-      return dtwc::dtwFull_L<double>(left, right);
+      return dtwc::dtwBanded(left, right);
     });
 }
 
@@ -123,7 +123,7 @@ std::vector<double> cpu_fp32_distance_matrix(
   return dtwc::test_support::symmetric_zero_diagonal_matrix(
     rounded,
     [](const auto &left, const auto &right) {
-      return static_cast<double>(dtwc::dtwFull_L<float>(left, right));
+      return static_cast<double>(dtwc::dtwBanded(left, right));
     });
 }
 
@@ -134,7 +134,7 @@ std::vector<double> cpu_banded_distance_matrix(
   return dtwc::test_support::symmetric_zero_diagonal_matrix(
     series,
     [band](const auto &left, const auto &right) {
-      return dtwc::dtwBanded<double>(left, right, band);
+      return dtwc::dtwBanded(left, right, band);
     });
 }
 
@@ -677,8 +677,7 @@ TEST_CASE("CUDA global-memory wavefront matches the host kernel with a band and 
     for (size_t j = 0; j < i; ++j) {
       CAPTURE(i, j);
       CHECK_THAT(squared.matrix[i * series.size() + j],
-                 WithinRel(dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
-                                                   dtwc::core::MetricType::SquaredL2),
+                 WithinRel(dtwc::dtwBanded(series[i], series[j], -1, -1.0, dtwc::core::MetricType::SquaredL2),
                            1e-10));
     }
 }
@@ -1204,7 +1203,7 @@ TEST_CASE("test_warp_kernel_many_pairs_short_series", "[cuda][warp]")
   for (size_t k = 0; k < 25; ++k) {
     size_t i = k;
     size_t j = N - 1 - k;
-    double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j]);
+    double cpu_d = dtwc::dtwBanded(series[i], series[j]);
     double gpu_d = gpu_result.matrix[i * N + j];
     INFO("k=" << k << " i=" << i << " j=" << j);
     REQUIRE_THAT(gpu_d, WithinRel(cpu_d, 1e-10));
@@ -1232,8 +1231,7 @@ TEST_CASE("test_warp_kernel_squared_l2_short_series", "[cuda][warp]")
   REQUIRE(gpu_result.n == N);
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = i + 1; j < N; ++j) {
-      double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
-                                              dtwc::core::MetricType::SquaredL2);
+      double cpu_d = dtwc::dtwBanded(series[i], series[j], -1, -1.0, dtwc::core::MetricType::SquaredL2);
       INFO("i=" << i << " j=" << j);
       REQUIRE_THAT(gpu_result.matrix[i * N + j],
                    WithinRel(cpu_d, 1e-10));
@@ -1393,8 +1391,7 @@ TEST_CASE("GPU matches CPU with squared-L2 metric", "[cuda]")
   // CPU reference with squared L2
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = i + 1; j < N; ++j) {
-      double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
-                                              dtwc::core::MetricType::SquaredL2);
+      double cpu_d = dtwc::dtwBanded(series[i], series[j], -1, -1.0, dtwc::core::MetricType::SquaredL2);
       INFO("i=" << i << " j=" << j);
       REQUIRE_THAT(gpu_result.matrix[i * N + j],
                    WithinRel(cpu_d, 1e-10));
@@ -1432,7 +1429,7 @@ TEST_CASE("GPU handles variable-length series", "[cuda]")
   // Compare with CPU
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = i + 1; j < N; ++j) {
-      double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j]);
+      double cpu_d = dtwc::dtwBanded(series[i], series[j]);
       double gpu_d = gpu_result.matrix[i * N + j];
       INFO("i=" << i << " j=" << j);
       REQUIRE_THAT(gpu_d, WithinRel(cpu_d, 1e-10));
@@ -1458,7 +1455,7 @@ TEST_CASE("GPU single pair (N=2)", "[cuda]")
   opts.precision = dtwc::GpuPrecision::FP64;
   auto result = gpu_fill(series, opts);
 
-  double cpu_d = dtwc::dtwFull_L<double>(series[0], series[1]);
+  double cpu_d = dtwc::dtwBanded(series[0], series[1]);
   REQUIRE(result.n == 2);
   REQUIRE(result.matrix[0 * 2 + 1] == Catch::Approx(cpu_d).epsilon(1e-10));
   REQUIRE(result.matrix[1 * 2 + 0] == Catch::Approx(cpu_d).epsilon(1e-10));
@@ -1713,8 +1710,7 @@ TEST_CASE("test_regtile_kernel_squared_l2_L80", "[cuda][regtile]")
   REQUIRE(gpu_result.n == N);
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = i + 1; j < N; ++j) {
-      double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
-                                              dtwc::core::MetricType::SquaredL2);
+      double cpu_d = dtwc::dtwBanded(series[i], series[j], -1, -1.0, dtwc::core::MetricType::SquaredL2);
       INFO("i=" << i << " j=" << j);
       REQUIRE_THAT(gpu_result.matrix[i * N + j],
                    WithinRel(cpu_d, 1e-10));
@@ -1774,8 +1770,8 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
     auto check_row = [&](size_t i) {
       for (size_t j = 0; j < i; ++j) {
         const double host = fp64
-            ? dtwc::dtwFull_L<double>(series[i], series[j])
-            : static_cast<double>(dtwc::dtwFull_L<float>(rounded[i], rounded[j]));
+            ? dtwc::dtwBanded(series[i], series[j])
+            : static_cast<double>(dtwc::dtwBanded(rounded[i], rounded[j]));
         mismatches[i] += matrix.get(i, j) != host;
       }
       mismatches[i] += matrix.get(i, i) != 0.0;
@@ -1831,7 +1827,7 @@ TEST_CASE("CUDA fills over two launches match the host kernel in the regtile and
   std::vector<size_t> mismatches(N, 0);
   auto check_row = [&](size_t i) {
     for (size_t j = 0; j < i; ++j)
-      mismatches[i] += matrix.get(i, j) != dtwc::dtwFull_L<double>(series[i], series[j]);
+      mismatches[i] += matrix.get(i, j) != dtwc::dtwBanded(series[i], series[j]);
     mismatches[i] += matrix.get(i, i) != 0.0;
   };
   dtwc::run_openmp(check_row, N);
@@ -1863,7 +1859,7 @@ TEST_CASE("GPU stress test (100 series x 200 length)", "[cuda]")
   for (size_t k = 0; k < 20; ++k) {
     size_t i = k;
     size_t j = N - 1 - k;
-    double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j]);
+    double cpu_d = dtwc::dtwBanded(series[i], series[j]);
     double gpu_d = gpu_result.matrix[i * N + j];
     INFO("k=" << k << " i=" << i << " j=" << j);
     REQUIRE_THAT(gpu_d, WithinRel(cpu_d, 1e-10));
@@ -1901,10 +1897,8 @@ TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
     for (size_t i = 0; i < series.size(); ++i)
       for (size_t j = i + 1; j < series.size(); ++j) {
         const double oracle = band < 0
-          ? dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
-                                    dtwc::core::MetricType::SquaredL2)
-          : dtwc::dtwBanded<double>(series[i], series[j], band, -1.0,
-                                    dtwc::core::MetricType::SquaredL2);
+          ? dtwc::dtwBanded(series[i], series[j], -1, -1.0, dtwc::core::MetricType::SquaredL2)
+          : dtwc::dtwBanded(series[i], series[j], band, -1.0, dtwc::core::MetricType::SquaredL2);
         REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)), WithinRel(oracle, 1e-9));
       }
   }
@@ -1933,7 +1927,7 @@ TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
       prob.fill_distance_matrix();
       for (size_t i = 0; i < series.size(); ++i)
         for (size_t j = i + 1; j < series.size(); ++j) {
-          const double oracle = dtwc::distance::dtw<double>(
+          const double oracle = dtwc::distance::dtw(
             series[i], series[j], band, dtwc::core::MetricType::SquaredL2);
           if (precision == dtwc::GpuPrecision::FP64)
             REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)), WithinRel(oracle, 1e-9));
@@ -2006,10 +2000,10 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
         std::transform(x.begin(), x.end(), xf.begin(), [](double v) { return static_cast<float>(v); });
         std::transform(y.begin(), y.end(), yf.begin(), [](double v) { return static_cast<float>(v); });
         CHECK(dtwc::test_support::dtw_routes_agree<float>(
-            d[i * k + m], dtwc::dtwBanded<float>(xf, yf, band), x.size(), y.size()));
+            d[i * k + m], dtwc::dtwBanded(xf, yf, band), x.size(), y.size()));
       } else {
         CHECK(dtwc::test_support::dtw_routes_agree<double>(
-            d[i * k + m], dtwc::dtwBanded<double>(x, y, band), x.size(), y.size()));
+            d[i * k + m], dtwc::dtwBanded(x, y, band), x.size(), y.size()));
       }
     }
   CHECK(d[4 * k + 0] == 0.0);
@@ -2063,7 +2057,7 @@ TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch"
           const auto &x = series[first + i];
           for (size_t m = 0; m < k; ++m)
             mismatches[first + i] += !dtwc::test_support::dtw_routes_agree<double>(
-                d[i * k + m], dtwc::dtwFull_L<double>(x, medoids[m]), x.size(), medoids[m].size());
+                d[i * k + m], dtwc::dtwBanded(x, medoids[m]), x.size(), medoids[m].size());
         };
         dtwc::run_openmp(check, count);
       });

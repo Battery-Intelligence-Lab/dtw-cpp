@@ -139,33 +139,33 @@ double wrapper_for(DTWVariant variant, Span x, Span y, int band)
 {
   const dtwc::core::DTWVariantParams d;
   switch (variant) {
-  case DTWVariant::Standard: return dtwc::dtwBanded<double>(x, y, band, -1.0, MetricType::L1);
-  case DTWVariant::DDTW: return dtwc::ddtwBanded<double>(x, y, band, MetricType::L1);
-  case DTWVariant::WDTW: return dtwc::wdtwBanded<double>(x, y, band, d.wdtw_g);
-  case DTWVariant::ADTW: return dtwc::adtwBanded<double>(x, y, band, d.adtw_penalty);
-  case DTWVariant::SoftDTW: return dtwc::soft_dtw<double>(x, y, d.sdtw_gamma);
-  case DTWVariant::MSM: return dtwc::core::msm_distance<double>(x, y, d.msm_c);
+  case DTWVariant::Standard: return dtwc::dtwBanded(x, y, band, -1.0, MetricType::L1);
+  case DTWVariant::DDTW: return dtwc::ddtwBanded(x, y, band, MetricType::L1);
+  case DTWVariant::WDTW: return dtwc::wdtwBanded(x, y, band, d.wdtw_g);
+  case DTWVariant::ADTW: return dtwc::adtwBanded(x, y, band, d.adtw_penalty);
+  case DTWVariant::SoftDTW: return dtwc::soft_dtw(x, y, d.sdtw_gamma);
+  case DTWVariant::MSM: return dtwc::core::msm_distance(x, y, d.msm_c);
   case DTWVariant::TWE:
-    return dtwc::core::twe_distance<double>(x, y, d.twe_nu, d.twe_lambda);
+    return dtwc::core::twe_distance(x, y, d.twe_nu, d.twe_lambda);
   }
   return 0.0;
 }
 
 double zero_cost_wrapper(Span x, Span y, int band)
 {
-  return dtwc::dtwMissing_banded<double>(x, y, band, -1.0, MetricType::L1);
+  return dtwc::dtwMissing_banded(x, y, band, -1.0, MetricType::L1);
 }
 
 double arow_wrapper(Span x, Span y, int band)
 {
-  return dtwc::dtwAROW_banded<double>(x, y, band, MetricType::L1);
+  return dtwc::dtwAROW_banded(x, y, band, MetricType::L1);
 }
 
 double interpolate_wrapper(Span x, Span y, int band)
 {
   std::vector<double> x_buffer, y_buffer;
-  return dtwc::dtwBanded<double>(dtwc::interpolate_linear_into(x, x_buffer),
-                                 dtwc::interpolate_linear_into(y, y_buffer), band, -1.0, MetricType::L1);
+  return dtwc::dtwBanded(dtwc::interpolate_linear_into(x, x_buffer),
+                         dtwc::interpolate_linear_into(y, y_buffer), band, -1.0, MetricType::L1);
 }
 
 std::vector<float> narrow(Span s)
@@ -203,61 +203,61 @@ std::vector<Entry> checked_entry_points()
 
   std::vector<Entry> e;
   e.push_back({"distance::dtw L1", false,
-               [](Span x, Span y, int b) { return d::dtw<double>(x, y, b, MetricType::L1); },
+               [](Span x, Span y, int b) { return d::dtw(x, y, b, MetricType::L1); },
                variant_wrapper(DTWVariant::Standard)});
   e.push_back({"distance::dtw SquaredL2", false,
-               [](Span x, Span y, int b) { return d::dtw<double>(x, y, b, MetricType::SquaredL2); },
+               [](Span x, Span y, int b) { return d::dtw(x, y, b, MetricType::SquaredL2); },
                [](Span x, Span y, int b) {
-                 return dtwc::dtwBanded<double>(x, y, b, -1.0, MetricType::SquaredL2);
+                 return dtwc::dtwBanded(x, y, b, -1.0, MetricType::SquaredL2);
                }});
   e.push_back({"distance::dtw<float>", false,
                [](Span x, Span y, int b) {
                  const auto xf = narrow(x), yf = narrow(y);
                  const bool self = x.data() == y.data() && x.size() == y.size();
-                 return static_cast<double>(d::dtw<float>(
+                 return static_cast<double>(d::dtw(
                    std::span<const float>{xf}, std::span<const float>{self ? xf : yf}, b,
                    MetricType::L1));
                },
                [](Span x, Span y, int b) {
                  const auto xf = narrow(x), yf = narrow(y);
-                 return static_cast<double>(dtwc::dtwBanded<float>(
+                 return static_cast<double>(dtwc::dtwBanded(
                    std::span<const float>{xf}, std::span<const float>{yf}, b, -1.0f,
                    MetricType::L1));
                }});
   e.push_back({"distance::ddtw", false,
-               [](Span x, Span y, int b) { return d::ddtw<double>(x, y, b); },
+               [](Span x, Span y, int b) { return d::ddtw(x, y, b); },
                variant_wrapper(DTWVariant::DDTW)});
   e.push_back({"distance::wdtw", false,
-               [g = defaults.wdtw_g](Span x, Span y, int b) { return d::wdtw<double>(x, y, b, g); },
+               [g = defaults.wdtw_g](Span x, Span y, int b) { return d::wdtw(x, y, b, g); },
                variant_wrapper(DTWVariant::WDTW)});
   e.push_back({"distance::adtw", false,
                [p = defaults.adtw_penalty](Span x, Span y, int b) {
-                 return d::adtw<double>(x, y, b, p);
+                 return d::adtw(x, y, b, p);
                },
                variant_wrapper(DTWVariant::ADTW)});
   e.push_back({"distance::soft_dtw", false,
-               [g = defaults.sdtw_gamma](Span x, Span y, int) { return d::soft_dtw<double>(x, y, g); },
+               [g = defaults.sdtw_gamma](Span x, Span y, int) { return d::soft_dtw(x, y, g); },
                variant_wrapper(DTWVariant::SoftDTW)});
   e.push_back({"distance::msm", false,
-               [c = defaults.msm_c](Span x, Span y, int) { return d::msm<double>(x, y, c); },
+               [c = defaults.msm_c](Span x, Span y, int) { return d::msm(x, y, c); },
                variant_wrapper(DTWVariant::MSM)});
   e.push_back({"distance::twe", false,
                [nu = defaults.twe_nu, lambda = defaults.twe_lambda](Span x, Span y, int) {
-                 return d::twe<double>(x, y, nu, lambda);
+                 return d::twe(x, y, nu, lambda);
                },
                variant_wrapper(DTWVariant::TWE)});
   e.push_back({"distance::missing", true,
-               [](Span x, Span y, int b) { return d::missing<double>(x, y, b); },
+               [](Span x, Span y, int b) { return d::missing(x, y, b); },
                zero_cost_wrapper});
   e.push_back({"distance::arow", true,
-               [](Span x, Span y, int b) { return d::arow<double>(x, y, b); },
+               [](Span x, Span y, int b) { return d::arow(x, y, b); },
                arow_wrapper});
 
   for (std::size_t i = 0; i < std::size(variants); ++i) {
     const DTWVariant v = variants[i];
     e.push_back({std::string("distance::dtw(params) ") + variant_names[i] + " / Error", false,
                  [v](Span x, Span y, int b) {
-                   return d::dtw<double>(x, y, params_for(v), b, MetricType::L1,
+                   return d::dtw(x, y, params_for(v), b, MetricType::L1,
                                          MissingStrategy::Error);
                  },
                  variant_wrapper(v)});
@@ -275,7 +275,7 @@ std::vector<Entry> checked_entry_points()
     const MissingStrategy strategy = s.strategy;
     e.push_back({std::string("distance::dtw(params) Standard / ") + s.name, true,
                  [strategy](Span x, Span y, int b) {
-                   return d::dtw<double>(x, y, params_for(DTWVariant::Standard), b,
+                   return d::dtw(x, y, params_for(DTWVariant::Standard), b,
                                          MetricType::L1, strategy);
                  },
                  s.oracle});
@@ -498,17 +498,17 @@ TEST_CASE("FX-15: an invalid parameter is reported before non-finite data",
     return "no dtwc::InvalidInput";
   };
 
-  CHECK(message([&] { return d::wdtw<double>(x, y, -1, bad); })
+  CHECK(message([&] { return d::wdtw(x, y, -1, bad); })
         == "WDTW g must be finite and non-negative.");
-  CHECK(message([&] { return d::adtw<double>(x, y, -1, bad); })
+  CHECK(message([&] { return d::adtw(x, y, -1, bad); })
         == "ADTW penalty must be finite and non-negative.");
-  CHECK(message([&] { return d::soft_dtw<double>(x, y, bad); })
+  CHECK(message([&] { return d::soft_dtw(x, y, bad); })
         == "Soft-DTW gamma must be finite and positive.");
-  CHECK(message([&] { return d::msm<double>(x, y, bad); })
+  CHECK(message([&] { return d::msm(x, y, bad); })
         == "MSM c must be finite and positive.");
-  CHECK(message([&] { return d::twe<double>(x, y, bad, 1.0); })
+  CHECK(message([&] { return d::twe(x, y, bad, 1.0); })
         == "TWE nu must be finite and positive.");
-  CHECK(message([&] { return d::twe<double>(x, y, 0.001, bad); })
+  CHECK(message([&] { return d::twe(x, y, 0.001, bad); })
         == "TWE lambda must be finite and positive.");
   CHECK(message([&] { return dtwc::soft_dtw_gradient<double>(x, y, bad).front(); })
         == "Soft-DTW gamma must be finite and positive.");
@@ -531,11 +531,11 @@ TEST_CASE("FX-15: the diagnostic names the fix", "[fx15][nonfinite][message]")
     return "no exception";
   };
 
-  CHECK(message([&] { return dtwc::distance::dtw<double>(x, nan_y); })
+  CHECK(message([&] { return dtwc::distance::dtw(x, nan_y); })
         == "distance::dtw: y[1] is NaN. NaN is a missing value only to the "
            "missing-data distances (missing, arow, or a ZeroCost, AROW or "
            "Interpolate missing strategy): use one of those, or remove it.");
-  CHECK(message([&] { return dtwc::distance::missing<double>(x, inf_y); })
+  CHECK(message([&] { return dtwc::distance::missing(x, inf_y); })
         == "distance::missing: y[2] is -inf. Distances are defined on finite "
            "values only: replace or remove it (NaN marks a missing value for "
            "the missing-data distances).");

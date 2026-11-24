@@ -80,17 +80,6 @@ TEST_CASE("ddtw equivalence to manual derivative + dtwBanded", "[ddtw][ddtwBande
   auto dx = derivative_transform(x);
   auto dy = derivative_transform(y);
 
-  REQUIRE_THAT(ddtwBanded(x, y, -1), WithinAbs(dtwBanded<double>(dx, dy, -1), 1e-12));
-  REQUIRE_THAT(ddtwBanded(x, y, 2), WithinAbs(dtwBanded<double>(dx, dy, 2), 1e-12));
-}
-
-TEST_CASE("ddtwFull_L equivalence to manual derivative + dtwFull_L", "[ddtw][ddtwFull_L]")
-{
-  std::vector<double> x{ 1, 3, 5, 2, 4 };
-  std::vector<double> y{ 2, 4, 1, 5, 3 };
-
-  auto dx = derivative_transform(x);
-  auto dy = derivative_transform(y);
-
-  REQUIRE_THAT(ddtwFull_L(x, y), WithinAbs(dtwFull_L<double>(dx, dy), 1e-12));
+  REQUIRE_THAT(ddtwBanded(x, y, -1), WithinAbs(dtwBanded(dx, dy, -1), 1e-12));
+  REQUIRE_THAT(ddtwBanded(x, y, 2), WithinAbs(dtwBanded(dx, dy, 2), 1e-12));
 }

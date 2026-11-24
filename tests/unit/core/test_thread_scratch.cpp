@@ -207,11 +207,11 @@ TEST_CASE("dtwc::run gives every thread's scratch back as it starts and when it 
 
   // WDTW's cached weights are emptied with the max_dev and g they were built for: the next call builds them again.
   const auto pair = walks(2, 40);
-  const double wdtw = dtwc::wdtwBanded<double>(pair[0], pair[1], -1, 0.05);
+  const double wdtw = dtwc::wdtwBanded(pair[0], pair[1], -1, 0.05);
   REQUIRE(all_threads_bytes() > 0);
   dtwc::core::release_thread_scratch();
   CHECK(all_threads_bytes() == 0);
-  CHECK(dtwc::wdtwBanded<double>(pair[0], pair[1], -1, 0.05) == wdtw);
+  CHECK(dtwc::wdtwBanded(pair[0], pair[1], -1, 0.05) == wdtw);
 
   // Barycenter DP and Soft-DTW thread_local workspaces are registered on closed_list and freed on release.
   dtwc::Problem bary_prob{ "bary_scratch" };

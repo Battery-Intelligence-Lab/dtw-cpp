@@ -269,16 +269,21 @@ disp([dtwc.distance.dtw(x, y), dtwc.distance.dtw(x, y, 'Band', 2), ...
       dtwc.distance.dtw(x, y, 'Variant', 'msm', 'MsmC', 0.5)]);
 ```
 
-The per-pair kernels behind these functions (`dtwBanded`, `dtwFull`,
-`dtwFull_L` and the variants' in `warping*.hpp`) stay public in C++. They check
+The per-pair kernels behind these functions (`dtwBanded` and the variants'
+`ddtwBanded`, `wdtwBanded`, `adtwBanded`, `dtwMissing_banded`, `dtwAROW_banded`,
+`soft_dtw` in `warping*.hpp`) stay public in C++. A band of -1, their default, is
+full DTW. A series is a `std::vector`, `std::span`, `std::array` or C array of
+`float` or `double`, and the element type is the type of the distance, so
+`dtwc::dtwBanded(a, b)` and `dtwc::dtwBanded(a, b, band)` work for vectors of
+either; a pointer and a length pass as `std::span<const double>(p, n)`. They check
 nothing: they are what the fills call in their inner loop, so their caller checks
 the input first.
 
 ## Precision
 
 Series are stored and computed in `double` unless asked otherwise:
-`dtwc::data_t` and the distance functions' default template argument are
-`double`, and every `dtype` defaults to `float64`. Float32 is an opt-in that
+`dtwc::data_t` is `double`, the distance functions compute in the element type
+of the series they are given, and every `dtype` defaults to `float64`. Float32 is an opt-in that
 halves the memory the series take, one word where data is loaded: Tier 1's
 `load(..., dtype)` (MATLAB `'Dtype'`), `DataLoader::dtype(core::Precision::Float32)`
 and `dtwc_cl --dtype float32`; or a C++ `Data` built from
@@ -289,7 +294,7 @@ float32 load holds no double copy and gives the same series in every language;
 float32 data in memory alone stays `double`. A float32 series' recurrence runs in
 float, so results can differ from the float64 ones. Python's `Data.series(i)`
 reads a series of either precision; `p_vec` holds the float64 ones.
-`dtwc::distance::dtw<float>(...)` returns a `float`.
+`dtwc::distance::dtw(x, y)` on `std::vector<float>` series returns a `float`.
 
 The distance matrix has a value type of its own, `matrix_dtype`, `float64` by
 default whatever the series' type: C++ `Problem::set_matrix_dtype` and
