@@ -222,8 +222,9 @@ has none) and is off by default; a failure once the GPU has begun is a `DeviceEr
 In Python, `device="hpc"` or `"hpc:gpu"` submits the run as one `job.toml` and
 returns a `Result` holding the labels, medoids and run report; `fallback=True` with it is `InvalidInput`
 (the run is remote, with no local CPU to fall back to); `gpu_device` (`"a100"`, `"a6000"`,
-`"l40s"`, `"h100"`) picks the GPU of an `hpc:gpu` run. `upload_input=True` sends the local file or
-folder a path names with the job, which otherwise reads an absolute path on the cluster
+`"l40s"`, `"h100"`) picks the GPU of an `hpc:gpu` run, and another device refuses it. `upload_input=True`
+sends the local file or folder a path names with the job (another device refuses it), which otherwise reads an
+absolute path on the cluster
 ([SLURM](../../getting-started/slurm/)); `output` receives the downloaded files, and `checkpoint` and
 `checkpoint_interval` are refused, since the cluster's run is its own.
 
