@@ -45,7 +45,7 @@ void MIP_clustering_byGurobi(Problem &prob)
       throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
 
     // The model the HiGHS backend solves: N*N binaries, x[f, p] at f*N + p, the diagonal x[f, f] opening f.
-    const auto pmedian = mip::build_p_median_model(prob);
+    auto pmedian = mip::build_p_median_model(prob);
     std::unique_ptr<GRBVar[]> w{ model.addVars(pmedian.num_col, GRB_BINARY) };
     model.set(GRB_DoubleAttr_Obj, w.get(), pmedian.col_cost.data(), pmedian.num_col);
 
@@ -78,6 +78,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     // Warm start: FastPAM's clustering, which the model carries when MIPSettings::warm_start is set
     if (!pmedian.start.empty())
       model.set(GRB_DoubleAttr_Start, w.get(), pmedian.start.data(), pmedian.num_col);
+    pmedian = {}; // Gurobi holds its own copy now: the model's N²-sized arrays go before the solve
 
     if (prob.mip_settings.verbose_solver || prob.verbose())
       std::cout << "Finished setting up the MILP problem." << '\n';

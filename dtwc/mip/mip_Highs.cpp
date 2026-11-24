@@ -128,7 +128,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
     std::cout << "HiGHS MIP solver starting." << '\n';
 
 #ifdef DTWC_ENABLE_HIGHS
-  const auto model = mip::build_p_median_model(prob);
+  auto model = mip::build_p_median_model(prob);
   Highs highs;
 
   mip::set_highs_option(highs, "mip_rel_gap", prob.mip_settings.mip_gap, "HiGHS");
@@ -154,6 +154,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
     sol.value_valid = true;
     highs.setSolution(sol);
   }
+  model = {}; // HiGHS holds its own copy now: the model's N²-sized arrays go before the solve
 
   return_status = highs.run();
   if (return_status != HighsStatus::kOk)

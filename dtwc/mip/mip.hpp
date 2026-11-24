@@ -49,8 +49,8 @@ struct PMedianModel
   std::vector<double> start; ///< FastPAM's clustering as a MIP start; empty unless MIPSettings::warm_start.
 };
 
-/// Fill prob's distance matrix and build its model. HiGHS indexes with `int`, so a
-/// model with more than INT_MAX nonzeros (3N² − N) is SolverError, before the fill.
+/// Fill prob's distance matrix and build its model. The model indexes with `int`, as HiGHS
+/// and Gurobi read it, so one with more than INT_MAX nonzeros (3N² − N) is SolverError, before the fill.
 /// With MIPSettings::warm_start it computes a FastPAM incumbent start via `fast_pam_solve`
 /// without mutating @p prob.
 PMedianModel build_p_median_model(Problem &prob);
