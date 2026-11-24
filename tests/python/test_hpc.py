@@ -275,9 +275,10 @@ def _packaged_job():
 def _isolated_slurm_wrapper(tmp_path):
     """A checkout-shaped sandbox behind local SSH/transfer/sbatch executables.
 
-    ``project`` holds the real scripts/slurm/ (forwarder and job files), a copy
-    of the packaged python/dtwcpp/_slurm/, a dtwc/ tree and a run directory
-    ``run/`` holding a job.toml, so the forwarder runs as in a clone;
+    ``project`` holds the real scripts/slurm/ (the checkout's entry point and
+    the job files), a copy of the packaged python/dtwcpp/_slurm/, a dtwc/ tree
+    and a run directory ``run/`` holding a job.toml, so the entry point runs as
+    in a clone;
     ``wrapper.parents[2]`` is that checkout, whose .env and results/ the
     wrapper uses. The remote holds the builds submit-job runs.
     """
@@ -1103,40 +1104,6 @@ class TestPackagedWrapper:
             assert capture.read_text(encoding="utf-8").splitlines()[-1] == (
                 "scripts/slurm/jobs/ucr_benchmark_cpu.slurm"
             )
-
-    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
-    @pytest.mark.parametrize(
-        "command", ["upload", "submit-smoke cpu", "submit-benchmark-gpu"],
-    )
-    def test_source_commands_refuse_to_run_outside_a_checkout(
-        self, tmp_path, command,
-    ):
-        """An installed wrapper has no source tree to send. It says so before
-        any SSH or transfer, even when DTWC_REPO_ROOT names a checkout."""
-        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
-        checkout = wrapper.parents[2]
-        installed = tmp_path / "venv/lib/python3.12/site-packages/dtwcpp/_slurm"
-        shutil.copytree(checkout / "python/dtwcpp/_slurm", installed)
-        called = tmp_path / "called.txt"
-        for tool in ("ssh", "scp", "rsync"):
-            (fake_bin / tool).write_text(
-                "#!/usr/bin/env bash\nprintf called > \"$CALLED\"\nexit 97\n",
-                encoding="utf-8", newline="\n",
-            )
-        command_line = (
-            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
-            f"export CALLED={shlex.quote(_bash_path(called))}; "
-            f"export DTWC_REPO_ROOT={shlex.quote(_bash_path(checkout))}; "
-            f"exec bash {shlex.quote(_bash_path(installed / 'slurm_remote.sh'))} "
-            f"{command}"
-        )
-        completed = subprocess.run(
-            ["bash", "-c", command_line], cwd=tmp_path, check=False,
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-        assert completed.returncode != 0
-        assert "source checkout" in completed.stderr, completed.stderr
-        assert not called.exists()
 
 
 class TestLocalRoundTrip:

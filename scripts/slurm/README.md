@@ -7,8 +7,8 @@ General-purpose scripts for building and testing DTWC++ on SLURM-managed HPC clu
 | File | Purpose |
 |------|---------|
 | `env.example` | Configuration template -- copy to `.env` at project root |
-| `slurm_remote.sh` | SSH/rsync remote helper: upload, build, submit, download. Forwards to `python/dtwcpp/_slurm/slurm_remote.sh` with this checkout as the project |
-| `../../python/dtwcpp/_slurm/` | The wrapper, `cluster_generic.slurm` (runs a `job.toml`) and `gpu_devices.txt` (the GPU requests), shipped in the wheel so `device="hpc"` needs no checkout |
+| `slurm_remote.sh` | SSH/rsync remote helper, this checkout's entry point: `upload`, `build`, `submit-smoke` and `submit-benchmark-*` send this checkout's files and are here; every other command runs `python/dtwcpp/_slurm/slurm_remote.sh` with this checkout as the project |
+| `../../python/dtwcpp/_slurm/` | The wrapper behind `device="hpc"` (`test`, `submit-job`, `status`, `download`, `download-cluster`, `ssh`, `interactive`), `cluster_generic.slurm` (runs a `job.toml`) and `gpu_devices.txt` (the GPU requests), shipped in the wheel so `device="hpc"` needs no checkout |
 | `build-arc.sh` | Multi-profile CMake build script (6 hardware targets) |
 | `../../benchmarks/verify_results.py` | Compare clustering output against UCR ground truth (in benchmarks/) |
 | `../../benchmarks/convert_ucr.py` | Convert UCR TSV files to Parquet format (in benchmarks/) |
