@@ -319,7 +319,9 @@ def load(source, *, skip_cols=None, skip_rows=None, delimiter=None, name=None, d
     interleaved, so its length is a multiple of ``ndim``, and an array of shape
     ``(n_series, n_steps, ndim)`` takes it too; an Arrow IPC file gives its own in
     its schema metadata, and one given above 1 that differs is refused when the
-    file is read, as is one that differs from a :class:`Data`'s own.
+    file is read, as is one that differs from a :class:`Data`'s own. An ``ndim``
+    above 1 makes :func:`cluster` read a path into memory, so an Arrow IPC file,
+    which carries its own, streams under ``ram_limit`` only if ``ndim`` is left out.
     A Dataset passes through with the options it was made with: one given that
     differs raises :class:`dtwcpp.InvalidInput` naming both values, its default
     value included, one equal to it runs, and ``name`` is refused.

@@ -24,9 +24,11 @@ function ds = load(source, varargin)
 %   Ndim     : the features per time step of a multivariate series (default 1,
 %              univariate): each series holds its steps interleaved, [t0f0 t0f1
 %              t1f0 ...], so its length is a multiple of Ndim. An Arrow IPC file
-%              gives its own Ndim in its schema metadata; one given here that
-%              differs from it is refused when the file is read. dtwc.cluster
-%              takes a series' Ndim from its Dataset.
+%              gives its own Ndim in its schema metadata; one given above 1 that
+%              differs from it is refused when the file is read. An Ndim above 1
+%              makes dtwc.cluster read a path into memory, so an Arrow IPC file,
+%              which carries its own, streams under RamLimit only if Ndim is left
+%              out. dtwc.cluster takes a series' Ndim from its Dataset.
 %
 %   Nothing is read here. ds.as_series() reads a path once and keeps its series,
 %   which dtwc.cluster takes for Parquet; dtwc.cluster hands any other path to C++

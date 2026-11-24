@@ -124,8 +124,10 @@ clusters as multivariate from its path and as univariate series from `as_series(
   `1`, the default, being univariate: each series holds its steps interleaved,
   `[t0f0 t0f1 t1f0 ...]`, so its length is a multiple of `ndim`,
   and a Python array of shape `(n_series, n_steps, ndim)` takes it too. An Arrow IPC file gives its
-  own in its schema metadata: one given for a file whose metadata gives another `ndim` above 1 is
-  `InvalidInput` when the file is read, and given none, the series take the file's. A Python `Data`
+  own in its schema metadata: one given above 1 for a file whose metadata gives another `ndim` above 1 is
+  `InvalidInput` when the file is read, and given none, the series take the file's. An `ndim` above 1
+  makes `cluster()` read a path into memory, so an Arrow IPC file, which carries its own, streams under
+  `ram_limit` (MATLAB `RamLimit`) only if `ndim` is left out. A Python `Data`
   carries its own: one given that differs is refused. `cluster()` takes it from its `Dataset`:
   `cluster(load(X, ndim=2), k)`.
 - Each series has a name, which the result files carry: `1`, `2`, ... for the
