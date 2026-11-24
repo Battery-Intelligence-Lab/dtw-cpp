@@ -136,6 +136,10 @@ gpu-precision = "auto"
 # share a run used). Any other device refuses a forced share.
 gpu-share = -1
 
+# A GPU request the run cannot honour runs on the CPU instead of failing, with one
+# line on stderr and the run report saying why (default false: it fails).
+fallback = false
+
 # --- Precomputed distance matrix ---
 # Uncomment to load a precomputed distance matrix:
 # dist-matrix = "path/to/distance_matrix.csv"

@@ -462,8 +462,8 @@ public:
   {
     static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>);
     if (indices.empty()) return Data{};
-    // fast_clara rejects a scalar column before streaming and samples indices
-    // from [0, logical_series_count()).
+    // run's plan_parquet_load rejects a scalar column before streaming, and the
+    // stream samples indices from [0, logical_series_count()).
     assert(rows_are_series());
     for ([[maybe_unused]] const auto index : indices)
       assert(index >= 0 && index < logical_series_count());

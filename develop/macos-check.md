@@ -70,7 +70,7 @@ TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band with
     dtwc::metal::MetalDistMatOptions opts;
     opts.band = route.band;
     const auto gpu = gpu_fill(series, opts);
-    const double cpu = dtwc::dtwBanded<double>(series[0], series[1], route.band);
+    const double cpu = dtwc::dtwBanded(series[0], series[1], route.band);
     INFO("kernel=" << gpu.kernel_used << " longer=" << route.longer << " band=" << route.band);
     REQUIRE(gpu.kernel_used == route.kernel_name);
     REQUIRE(cpu == fixed_band::public_no_path_sentinel);

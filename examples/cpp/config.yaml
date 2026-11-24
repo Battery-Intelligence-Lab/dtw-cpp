@@ -98,6 +98,9 @@ gpu-precision: auto
 # cpu+gpu only: the GPU's share of the work; -1 measures it, [0, 1] forces it.
 gpu-share: -1
 
+# A GPU request the run cannot honour runs on the CPU instead of failing.
+fallback: false
+
 # --- Checkpointing ---
 # checkpoint: ./checkpoints
 # checkpoint-interval: 0   # rows between saves; 0 = once, at the end

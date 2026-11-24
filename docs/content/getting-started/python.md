@@ -341,7 +341,7 @@ prob.fill_distance_matrix()        # on the GPU
 prob.set_device("cpu")             # back to the CPU
 ```
 
-Unsupported settings on a GPU `Problem` (e.g. `prob.set_variant(dtwcpp.DTWVariant.WDTW)`) raise `dtwcpp.DeviceError` naming the setting when distances are computed; they never run on the CPU instead.
+Unsupported settings on a GPU `Problem` (e.g. `prob.set_variant(dtwcpp.DTWVariant.WDTW)`) raise `dtwcpp.DeviceError` naming the setting when distances are computed; they run on the CPU instead only on a `Problem` given `fallback=True`.
 
 ## I/O utilities
 
@@ -358,6 +358,9 @@ save_dataset_csv(data, "timeseries.csv", names=["s0", "s1", "s2"])
 # Load: returns (data, names)
 data, names = load_dataset_csv("timeseries.csv")
 ```
+
+With `names`, the first line is a header that `load_dataset_csv` reads back as the names; `dtwcpp.load` and `dtwc_cl`
+read such a file only with `skip_rows=1` (`--skip-rows 1`), and then number the series instead of naming them.
 
 ### HDF5 (requires h5py)
 

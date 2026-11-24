@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.26)
 # Three libraries and one name for consumers:
 #   dtwc_core  the algorithms, the session, the text reader and the result
 #              writers;
-#   dtwc_io    the readers that need Arrow C++ (Parquet, and FastCLARA streaming
-#              from Parquet), in a build with Arrow: the one library Arrow links;
+#   dtwc_io    the readers that need Arrow C++ (the Parquet reader), in a build
+#              with Arrow: the one library Arrow links;
 #   dtwc_cli   the command line: cli::bind and its config files (CLI11, fkYAML),
 #              dtwc::run and the Tier-1 facade (api.cpp) that runs it: what the
 #              Python module and the MEX link, in a build without Arrow.
