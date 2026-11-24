@@ -318,8 +318,9 @@ std::string to_config_text(const Config &config)
   return text;
 }
 
-Config parse_config(Config config, const std::vector<std::pair<std::string, std::string>> &pairs)
+Config parse_config(const std::vector<std::pair<std::string, std::string>> &pairs)
 {
+  Config config;
   if (pairs.empty()) return config;
   std::string text;
   for (const auto &[name, value] : pairs) {
@@ -343,11 +344,6 @@ Config parse_config(Config config, const std::vector<std::pair<std::string, std:
     throw InvalidInput(error.what());
   }
   return config;
-}
-
-Config parse_config(const std::vector<std::pair<std::string, std::string>> &pairs)
-{
-  return parse_config(Config{}, pairs);
 }
 
 } // namespace dtwc

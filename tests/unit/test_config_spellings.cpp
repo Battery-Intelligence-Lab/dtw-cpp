@@ -369,9 +369,9 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
     CHECK(values_of(dtwc::to_config_text(parse_args({ "--config", toml, "--Nc", "9", "-k", "2" }))).at("n-clusters")
           == "2");
   }
-  dtwc::Config off; // a base that turned both off, which "false" turns back on
-  off.report = off.mip.warm_start = false;
-  const auto on = dtwc::parse_config(off, { { "no_report", "false" }, { "no_warm_start", "false" } });
+  const auto off = dtwc::parse_config({ { "no_report", "true" }, { "no_warm_start", "true" } });
+  CHECK((!off.report && !off.mip.warm_start)); // the negated flags: "true" turns the setting off
+  const auto on = dtwc::parse_config({ { "no_report", "false" }, { "no_warm_start", "false" } });
   CHECK((on.report && on.mip.warm_start));
 
   CHECK_THROWS_MATCHES(dtwc::parse_config({ { "max_iterations", "5" } }), dtwc::InvalidInput,

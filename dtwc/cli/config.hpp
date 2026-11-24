@@ -58,7 +58,4 @@ std::string to_config_text(const Config &config);
 /// @throws InvalidInput for an unknown key or a value CLI11 rejects.
 Config parse_config(const std::vector<std::pair<std::string, std::string>> &pairs);
 
-/// Apply `(key, value)` overrides onto an existing `base` Config through `cli::bind()`.
-Config parse_config(Config base, const std::vector<std::pair<std::string, std::string>> &pairs);
-
 } // namespace dtwc

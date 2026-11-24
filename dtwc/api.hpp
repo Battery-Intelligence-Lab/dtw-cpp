@@ -62,7 +62,6 @@ public:
 private:
   friend Dataset load(const std::filesystem::path &, index_t, index_t, char, std::string_view, core::Precision);
   friend Dataset load(series_type, index_t, index_t, char, std::string_view, core::Precision);
-  friend Result cluster(Dataset &&, index_t, std::string_view, int, std::string_view, int);
   friend Result cluster(Dataset &&, const Config &);
   friend std::vector<double> cdist(const Dataset &, const Dataset &, const Config &);
 
