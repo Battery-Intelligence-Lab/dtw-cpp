@@ -935,8 +935,8 @@ NB_MODULE(_dtwcpp_core, m)
          "Raises InvalidInput (a ValueError) if any series has incompatible size.");
 
   // Arrow C Data interface ingest with no Python list conversion; the Data owns
-  // a copy of the values. Consumes the PyCapsule protocol `__arrow_c_array__`
-  // (polars / DuckDB / pyarrow / pandas) via the vendored nanoarrow — NO pyarrow
+  // a copy of the values. Consumes the PyCapsule protocol `__arrow_c_array__` or
+  // `__arrow_c_stream__` (polars / DuckDB / pyarrow / pandas) via the vendored nanoarrow — NO pyarrow
   // dependency. Each list element becomes one (univariate) series; see
   // dtwc::io::data_from_arrow for accepted layouts.
   m.def("data_from_arrow_c_array", [](nb::object obj, const std::string &dtype) -> dtwc::Data {
@@ -991,8 +991,8 @@ NB_MODULE(_dtwcpp_core, m)
     return data; }, "obj"_a, "dtype"_a = std::string("float64"),
         "Build a Data object from an Arrow C Data interface source (no Python list\n"
         "conversion, no pyarrow; the Data owns a copy). `obj` must implement\n"
-        "__arrow_c_array__ over a list/large_list of float32/float64 (each element\n"
-        "one series) or a struct containing one.\n"
+        "__arrow_c_array__ or __arrow_c_stream__ over a list/large_list of\n"
+        "float32/float64 (each element one series) or a struct containing one.\n"
         "dtype 'float32' stores each value rounded to float.");
 
   // =========================================================================
