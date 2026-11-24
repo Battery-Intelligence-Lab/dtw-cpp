@@ -82,9 +82,11 @@ only when there is no file; its C++ result is `[[nodiscard]]`. A loaded matrix i
 held in RAM; a `Problem` whose matrix was mapped lets go of the mapping.
 
 The fingerprint includes the `Problem`'s metric (`prob.set_metric(...)`, L1 by
-default). `save_checkpoint(prob, path, metric)` and
-`load_checkpoint(prob, path, metric)` tag or expect an explicit metric instead,
-for a matrix that something other than the `Problem` computed.
+default). A matrix that something other than the `Problem` computed is saved
+under the metric it was computed with: set that metric first (a change of metric
+drops the matrix), put the matrix in (C++: `resize` the matrix
+`writable_distance_matrix()` returns to the number of series, then set its pairs;
+Python and MATLAB: `set_distance_matrix(D)`), then save.
 
 ### CheckpointOptions
 
@@ -152,15 +154,19 @@ prob.fill_distance_matrix()
 dtwcpp.save_checkpoint(prob, "./checkpoints")
 ```
 
-The optional `metric` argument mirrors the CLI's `--metric` and is part of the
-fingerprint, so a matrix written under one metric is refused by a run using
+The `Problem`'s metric (`set_distance(metric=...)`, as the CLI's `--metric`) is part of
+the fingerprint, so a matrix written under one metric is refused by a run using
 another:
 
 ```python
-dtwcpp.save_checkpoint(prob, "./ckpt_sq", dtwcpp.MetricType.SquaredL2)
+prob.set_distance(metric="squared_euclidean")
+prob.fill_distance_matrix()
+dtwcpp.save_checkpoint(prob, "./ckpt_sq")
 
-dtwcpp.load_checkpoint(prob, "./ckpt_sq")                              # InvalidInput
-dtwcpp.load_checkpoint(prob, "./ckpt_sq", dtwcpp.MetricType.SquaredL2)  # True
+prob.set_distance(metric="l1")                  # drops the matrix
+dtwcpp.load_checkpoint(prob, "./ckpt_sq")       # InvalidInput
+prob.set_distance(metric="squared_euclidean")
+dtwcpp.load_checkpoint(prob, "./ckpt_sq")       # True
 ```
 
 Both functions release the GIL. `load_checkpoint` replaces the `Problem`'s

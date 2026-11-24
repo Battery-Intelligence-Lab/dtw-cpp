@@ -1892,7 +1892,8 @@ TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
     prob.set_band(band);
     prob.set_gpu_precision(dtwc::GpuPrecision::FP64);
     prob.set_device(dtwc::Device::GPU);
-    prob.use_mmap_distance_matrix(cache, dtwc::core::MetricType::SquaredL2);
+    prob.set_metric(dtwc::core::MetricType::SquaredL2);
+    prob.use_mmap_distance_matrix(cache);
     prob.fill_distance_matrix();
     for (size_t i = 0; i < series.size(); ++i)
       for (size_t j = i + 1; j < series.size(); ++j) {

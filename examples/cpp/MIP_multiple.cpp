@@ -34,7 +34,6 @@ int main(int argc, char **argv)
 
   // prob.read_distance_matrix("../matlab/DTWdist_band_all.csv"); // Comment out if recalculating the matrix.
   prob.fill_distance_matrix();
-  prob.write_distance_matrix();
   // prob.print_distance_matrix();
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << prob.distance().band << "\n\n\n";
@@ -47,8 +46,8 @@ int main(int argc, char **argv)
     std::cout << "\n\nClustering by MIP for Number of clusters : " << nc << '\n';
     prob.set_n_clusters(nc); // Nc = number of clusters.
     prob.cluster_by_mip();         // Uses MILP to do clustering.
-    prob.write_clusters();
-    prob.write_silhouettes();
+    // The files dtwc_cl writes, one folder for each number of clusters.
+    dtwc::detail::write_result_files(prob, prob.output_folder() / ("Nc_" + std::to_string(nc)), true, &std::cout);
   }
 
   std::cout << "Finished all tasks " << clk << "\n";

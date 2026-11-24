@@ -12,7 +12,7 @@
  *   - get_name / p_vec guarded storage they do not own only with assert, so
  *     a Release build read past an empty vector.
  *   - (POSIX) a write that fails after the file was opened (full disk,
- *     quota) left a truncated Tier-1 or run artefact behind a reported success.
+ *     quota) left a truncated result file behind a reported success.
  *     RLIMIT_FSIZE reproduces it in-process, restored on scope exit: a forked
  *     child would enter OpenMP again, which libgomp does not support after fork.
  * @author Volkan Kumtepeli
@@ -218,40 +218,43 @@ TEST_CASE("F25: get_name and p_vec refuse storage they do not own, in Release to
   }
 }
 
-TEST_CASE("F25: the Problem writers name series in every storage mode",
+TEST_CASE("F25: the result writer names series in every storage mode",
           "[problem][f25][io]")
 {
-  // They read names through get_name, which a view does not own: the writers
-  // read past an empty vector for a view (set_view_data, an mmap store).
+  // It reads names through series_name, which every storage mode answers; get_name
+  // returns an owned name, which a view (set_view_data, an mmap store) does not have.
   ScratchDirectory dir{ "f25_writers" };
   const std::vector<std::vector<double>> owner{ { 0, 1, 2 }, { 0, 1, 3 }, { 9, 8, 9 } };
   std::vector<std::span<const double>> spans(owner.begin(), owner.end());
   dtwc::Problem view("f25_writer");
   view.set_view_data(dtwc::Data(std::move(spans), { "alpha", "beta", "gamma" }, 1));
-  view.set_output_folder(dir.path);
   view.set_n_clusters(2);
   view.centroids_ind = { 0, 2 };
   view.clusters_ind = { 0, 0, 1 };
-  view.write_clusters();
-  const auto text = read_text(dir.path / "f25_writer_Nc_2.csv");
-  CHECK_THAT(text, ContainsSubstring("alpha,gamma"));
-  CHECK_THAT(text, ContainsSubstring("beta,alpha"));
-  CHECK_THAT(text, ContainsSubstring("gamma,gamma"));
+  dtwc::detail::write_result_files(view, dir.path, false);
+  const auto labels = read_text(dir.path / "f25_writer_labels.csv");
+  CHECK_THAT(labels, ContainsSubstring("alpha,0"));
+  CHECK_THAT(labels, ContainsSubstring("beta,0"));
+  CHECK_THAT(labels, ContainsSubstring("gamma,1"));
+  const auto medoids = read_text(dir.path / "f25_writer_medoids.csv");
+  CHECK_THAT(medoids, ContainsSubstring("0,0,alpha"));
+  CHECK_THAT(medoids, ContainsSubstring("1,2,gamma"));
 }
 
 TEST_CASE("B-05: an output folder that cannot be created is an IOError",
           "[problem][b05][io]")
 {
-  // A child of a regular file cannot be created on any platform. The run
-  // artefacts are the first thing cluster_and_process writes, so it fails there.
+  // A child of a regular file cannot be created on any platform. The labels are the
+  // first file the writer opens, so it fails there.
   ScratchDirectory dir{ "b05_uncreatable" };
   const auto blocker = dir.path / "blocker";
   write_text(blocker, "not a directory\n");
   auto prob = six_series("b05_uncreatable");
   prob.set_n_clusters(2);
-  prob.set_output_folder(blocker / "deep" / "nested" / "path");
+  prob.cluster();
 
-  REQUIRE_THROWS_AS(prob.cluster_and_process(), dtwc::IOError);
+  REQUIRE_THROWS_AS(dtwc::detail::write_result_files(prob, blocker / "deep" / "nested" / "path", false),
+                    dtwc::IOError);
 }
 
 #ifndef _WIN32
@@ -315,23 +318,5 @@ TEST_CASE("B-05: Result::save reports a write that fails after the file opened",
   // Control: the same save succeeds without the limit.
   REQUIRE_NOTHROW(result.save(out));
   CHECK(fs::file_size(out / "series_labels.csv") > 1024);
-}
-
-TEST_CASE("B-05: a run artefact write that fails after the file opened is an IOError",
-          "[problem][b05][io]")
-{
-  // cluster_and_process() writes the per-repetition medoids first; its writer
-  // checked only the open, so the truncation went unnoticed. 600-character
-  // names put one medoid line above the 1024-byte limit.
-  ScratchDirectory dir{ "b05_artefacts" };
-  auto prob = six_series("b05");
-  for (int i = 0; i < 6; ++i)
-    prob.get_name(static_cast<std::size_t>(i)) = std::string(600, 'n') + std::to_string(i);
-  prob.set_output_folder(dir.path);
-  prob.set_n_clusters(2);
-
-  FileSizeLimit limit(1024);
-  REQUIRE_THROWS_MATCHES(prob.cluster_and_process(), dtwc::IOError,
-                         MessageMatches(ContainsSubstring("b05medoids_rep_0.csv")));
 }
 #endif

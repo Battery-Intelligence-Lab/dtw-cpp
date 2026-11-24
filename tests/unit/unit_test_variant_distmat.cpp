@@ -242,15 +242,16 @@ TEST_CASE("Problem mmap warmstart fingerprints every distance configuration dime
     {
       Problem original{"cache_metric"};
       original.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
-      original.use_mmap_distance_matrix(cache, core::MetricType::L1);
+      original.use_mmap_distance_matrix(cache);
       original.fill_distance_matrix();
       REQUIRE(original.dist_by_ind(0, 1) >= 0.0);
     }
 
     Problem changed{"cache_metric"};
     changed.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
+    changed.set_metric(core::MetricType::SquaredL2);
     REQUIRE_THROWS_WITH(
-      changed.use_mmap_distance_matrix(cache, core::MetricType::SquaredL2),
+      changed.use_mmap_distance_matrix(cache),
       Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
   }
 #endif
@@ -384,15 +385,16 @@ TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
-  // Binding a squared-L2 cache sets the Problem's metric, which the
-  // CPU kernels take, so the fill computes in it (it was refused as
-  // external-fill-only while the CPU computed L1 only).
+  // A squared-L2 Problem's cache: the CPU kernels take the Problem's metric,
+  // so the fill computes in it (it was refused as external-fill-only while
+  // the CPU computed L1 only).
   const ScratchDirectory cache_dir{ "mmap_external_metric" };
   const fs::path cache = cache_dir.path / "distances.dtwcache";
   Problem prob{"cache_metric"};
   const std::vector<data_t> x{0.0, 1.0, 2.0}, y{0.0, 3.0, 5.0}; // L1 5, squared L2 11
   prob.set_data(make_data({x, y}));
-  prob.use_mmap_distance_matrix(cache, core::MetricType::SquaredL2);
+  prob.set_metric(core::MetricType::SquaredL2);
+  prob.use_mmap_distance_matrix(cache);
   REQUIRE(prob.metric() == core::MetricType::SquaredL2);
 
   prob.fill_distance_matrix();

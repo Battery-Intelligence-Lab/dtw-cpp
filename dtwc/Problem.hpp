@@ -100,13 +100,15 @@ std::string describe(const core::FillSplit &fill);
 namespace detail {
 
 /**
- * @brief Write a clustered Problem's result files into `directory`, which is created if missing.
+ * @brief Write a clustered Problem's result files into `directory`, which is created if missing: the one writer of
+ *        them, which dtwc_cl and Result::save call and a caller that holds a Problem may too.
  *
  * `<name>_labels.csv` and `<name>_medoids.csv`, then, when the distance matrix is filled,
  * `<name>_distance_matrix.csv` and, for k > 1, `<name>_silhouettes.csv`. An undefined silhouette is a
  * warning on stderr; any other failure propagates. A Problem without series (a streamed run: RAM-limited
  * Parquet or Arrow IPC) names its series by `streamed_names`, the reader's names (else `series_<i>`), and has
- * no matrix or silhouettes to write.
+ * no matrix or silhouettes to write. A Problem that holds no clustering gets label and medoid files of no rows:
+ * cluster it first (Problem::cluster, Problem::set_result).
  *
  * @param complete  true (Result::save of a run held in RAM, the Python save): fill the matrix first, so all
  *                  four files are written, and throw InvalidInput after the labels and medoids when the
@@ -196,9 +198,6 @@ private:
   algorithms::Linkage linkage_{ algorithms::Linkage::Average };
   std::size_t ram_limit_{ 0 }; ///< bytes; 0: core::available_memory() when the matrix is filled
   bool verbose_{ false };
-  /// Run-artifact files (per-repetition medoids, best-repetition record) belong
-  /// to cluster_and_process(); cluster() itself is side-effect free.
-  bool persist_run_artifacts_{ false };
   path_t output_folder_{ "./results/" }; //!< Relative to the working directory; set_output_folder.
   std::string name_{};
   Data data_;
@@ -239,11 +238,7 @@ private:
   /// refused (core::refuse_float32_range, its value computed again in double). A float64 matrix is not scanned.
   void refuse_float32_overflow(size_t r0, size_t r1);
 
-  friend bool load_checkpoint(Problem &prob, const std::string &path,
-                              core::MetricType metric);
-
-  void writeBestRep(int best_rep);
-  void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
+  friend bool load_checkpoint(Problem &prob, const std::string &path);
 
   /// An empty series has no finite DTW distance to anything: unrejected, it would
   /// cluster with DBL_MAX distances.
@@ -342,8 +337,8 @@ public:
 
   // Getters and setters:
   /// The centroid of the cluster of i_p, i_p in [0, N). Unchecked like dist_by_ind:
-  /// write_clusters and the bindings call it per series, so a caller that cannot
-  /// vouch for the clustering calls require_clustered() once first.
+  /// the bindings call it per series, so a caller that cannot vouch for the
+  /// clustering calls require_clustered() once first.
   index_t centroid_of(index_t i_p) const { return centroids_ind[clusters_ind[i_p]]; }
 
   /// `not_computed`: NaN reads an empty field or NaN as a pair never computed;
@@ -561,13 +556,9 @@ public:
   }
 
   /// Full data-plus-distance-semantics identity used by durable checkpoints,
-  /// for this Problem's metric(). Names and clustering outputs are
+  /// metric() included. Names and clustering outputs are
   /// intentionally excluded because they do not affect any stored distance.
   core::DistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
-  /// The same identity for distances computed with `metric`, which may differ
-  /// from metric() only for a matrix a producer outside this Problem filled.
-  core::DistanceMatrix::fingerprint_type distance_checkpoint_identity(
-    core::MetricType metric) const;
   /// Map the distance matrix to the `.dtwm` file `cache_path`, bound to this
   /// Problem's exact data and distance settings, metric() included. An existing
   /// file is reopened with the distances it holds (InvalidInput if they are for
@@ -577,27 +568,12 @@ public:
   /// setter and set_data detach the file. Call refresh_distance_matrix() before
   /// editing series values in place.
   void use_mmap_distance_matrix(const std::filesystem::path &cache_path);
-  /// Bind a cache for `metric`, which becomes this Problem's metric as with
-  /// set_metric: the cache and every distance computed into it share it. A
-  /// bind that throws leaves the metric and the matrix unchanged.
-  void use_mmap_distance_matrix(
-    const std::filesystem::path &cache_path, core::MetricType metric);
 
   void fill_distance_matrix();
 
   void print_distance_matrix() const;
 
-  void write_distance_matrix(const std::string &file_name) const;
-  void write_distance_matrix() const
-  {
-    write_distance_matrix(name_ + "_distanceMatrix.csv");
-  }
-
   void print_clusters() const;
-  void write_clusters();
-
-  void write_medoid_members(int iter, int rep = 0) const;
-  void write_silhouettes();
 
   // Initialisation of clusters:
   /// Runs init_fun with random_seed().
@@ -611,8 +587,6 @@ public:
   core::ClusteringResult cluster();
   void cluster_by_mip();
   void cluster_by_kmedoids_lloyd();
-
-  void cluster_and_process();
 
   // Auxiliary
   double find_total_cost();

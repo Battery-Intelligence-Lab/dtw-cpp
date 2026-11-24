@@ -673,12 +673,6 @@ double Problem::pair_distance(std::size_t i, std::size_t j) const
 core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity() const
 {
-  return distance_checkpoint_identity(distance_.metric);
-}
-
-core::DistanceMatrix::fingerprint_type
-Problem::distance_checkpoint_identity(core::MetricType metric) const
-{
   // The precision the distances are computed in: the series' on the CPU, the
   // GPU's on a GPU. Not the device: FP64 on a CPU and on a GPU differ by
   // rounding, so either's cache serves the other (and GPU 0's serves GPU 1),
@@ -702,7 +696,7 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   FingerprintHash configuration;
   static constexpr char configuration_domain[] = "dtwc-distance-cache-configuration-v2";
   configuration.update(configuration_domain, sizeof(configuration_domain) - 1);
-  hash_enum(configuration, metric);
+  hash_enum(configuration, distance_.metric);
   hash_u64(configuration, static_cast<std::uint64_t>(static_cast<std::int64_t>(distance_.band)));
   hash_enum(configuration, distance_.variant.variant);
   hash_double(configuration, distance_.variant.wdtw_g);
@@ -748,29 +742,15 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
 
 void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
 {
-  use_mmap_distance_matrix(cache_path, distance_.metric);
-}
-
-void Problem::use_mmap_distance_matrix(
-  const std::filesystem::path &cache_path, core::MetricType metric)
-{
   // Every check, the identity and the mapping come before any change: a bind
-  // that fails leaves this Problem's metric and matrix as they were.
-  auto candidate = distance_;
-  candidate.metric = metric;
-  validate_distance(candidate, data_);
+  // that fails leaves this Problem's matrix as it was.
+  validate_distance(distance_, data_);
   // map() checks an existing file's magic, version, length, N and fingerprint
   // before any of its distances can be read.
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
-                                          distance_checkpoint_identity(metric), matrix_dtype_);
+                                          distance_checkpoint_identity(), matrix_dtype_);
   // A warm start holds every pair.
   const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix");
-  if (distance_.metric != metric) { // new semantics, as in set_metric
-    distance_.metric = metric;
-    clusters_ind.clear();
-    centroids_ind.clear();
-    rebind_dtw_fn();
-  }
   distMat = std::move(mapped);
   filled_ = distMat.size() > 0 && complete;
 }
@@ -1528,27 +1508,6 @@ core::ClusteringResult Problem::cluster()
   return result;
 }
 
-/**
- * @brief Executes the clustering process and additional post-processing tasks.
- * @details Performs clustering, then prints and writes the cluster results, including silhouettes, to files.
- */
-void Problem::cluster_and_process()
-{
-  // cluster() is side-effect free by contract; the heuristic run artifacts
-  // (per-repetition medoids, best-repetition record) belong to this entry point.
-  struct ArtifactScope
-  {
-    bool &flag;
-    explicit ArtifactScope(bool &f) : flag{ f } { flag = true; }
-    ~ArtifactScope() { flag = false; }
-  } artifact_scope{ persist_run_artifacts_ };
-  cluster();
-  print_clusters();
-  write_distance_matrix();
-  write_clusters();
-  write_silhouettes();
-}
-
 void Problem::cluster_by_mip()
 {
   // A negative `mip_gap` would otherwise reach HiGHS as an out-of-domain option
@@ -1668,7 +1627,6 @@ void Problem::cluster_by_kmedoids_lloyd()
 
     auto oldmedoids = centroids_ind;
     bool converged = false;
-    std::vector<std::vector<index_t>> centroids_all;
     int actual_iters = 0;
     const int iteration_limit = max_iter();
     for (int i = 0; i < iteration_limit; i++) {
@@ -1678,8 +1636,6 @@ void Problem::cluster_by_kmedoids_lloyd()
         for (auto medoid : centroids_ind)
           std::cout << series_name(medoid) << ' ';
       }
-      if (persist_run_artifacts_)
-        centroids_all.push_back(centroids_ind);
 
       assign_clusters();
       if (verbose_) {
@@ -1704,8 +1660,6 @@ void Problem::cluster_by_kmedoids_lloyd()
     const double total_cost = find_total_cost();
     if (verbose_)
       std::cout << "Procedure is completed with cost: " << total_cost << '\n';
-    if (persist_run_artifacts_)
-      writeMedoids(centroids_all, i_rand, total_cost);
 
     last_iterations_ = actual_iters;
     if (verbose_) {
@@ -1728,9 +1682,7 @@ void Problem::cluster_by_kmedoids_lloyd()
   centroids_ind = std::move(best_medoids);
   clusters_ind = std::move(best_labels);
   last_iterations_ = best_iterations;
-  if (persist_run_artifacts_)
-    writeBestRep(best_rep);
-  else if (verbose_)
+  if (verbose_)
     std::cout << "Best repetition: " << best_rep << '\n';
 }
 

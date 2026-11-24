@@ -219,20 +219,6 @@ std::optional<std::string> f22_read_bytes(
   };
 }
 
-std::string f22_normalize_crlf(std::string_view text)
-{
-  std::string normalized;
-  normalized.reserve(text.size());
-  for (std::size_t index = 0; index < text.size(); ++index) {
-    if (text[index] == '\r'
-        && index + 1 < text.size()
-        && text[index + 1] == '\n')
-      continue;
-    normalized.push_back(text[index]);
-  }
-  return normalized;
-}
-
 } // namespace
 
 // ===========================================================================
@@ -281,12 +267,6 @@ std::string matrix_csv(Problem &problem)
     for (int j = 0; j < 6; ++j)
       out << problem.dist_by_ind(i, j) << (j == 5 ? '\n' : ',');
   return out.str();
-}
-
-std::string file_text(const fs::path &path)
-{
-  return f22_normalize_crlf(
-    f22_read_bytes(path).value_or("<missing " + path.filename().string() + ">"));
 }
 
 } // namespace
@@ -364,34 +344,9 @@ TEST_CASE("Problem and DataLoader entry points match hand oracles",
           return f22_capture_stdout(
             [&] { p.print_distance_matrix(); }); },
         std::string{ f22_distance_stdout } },
-      { "write_distance_matrix(name)", true,
-        [](Problem &p, const fs::path &dir) {
-          p.fill_distance_matrix();
-          p.write_distance_matrix("explicit.csv");
-          return file_text(dir / "explicit.csv"); },
-        std::string{ f22_distance_stdout } },
-      { "write_distance_matrix()", true, [](Problem &p, const fs::path &dir) {
-          p.fill_distance_matrix();
-          p.write_distance_matrix();
-          return file_text(dir / "f22_asymmetric_distanceMatrix.csv"); },
-        std::string{ f22_distance_stdout } },
       { "print_clusters", true, [](Problem &p, const fs::path &) {
           return f22_capture_stdout([&] { p.print_clusters(); }); },
         std::string{ f22_clusters_stdout } },
-      { "write_clusters", true, [](Problem &p, const fs::path &dir) {
-          p.write_clusters();
-          return file_text(dir / "f22_asymmetric_Nc_2.csv"); },
-        "Cluster centroids:\ns1,s4\n\nData,its cluster\ns0,s1\ns1,s1\ns2,s1\ns3,s4\ns4,s4\ns5,s4\n"
-        "Procedure is completed with cost: 69\n" },
-      { "write_medoid_members", true, [](Problem &p, const fs::path &dir) {
-          p.write_medoid_members(7, 3);
-          return file_text(dir / "medoidMembers_Nc_2_rep_3_iter_7.csv"); },
-        "s0,s1,s2,\ns3,s4,s5,\n" },
-      { "write_silhouettes", true, [](Problem &p, const fs::path &dir) {
-          p.write_silhouettes();
-          return file_text(dir / "f22_asymmetric_silhouettes_Nc_2.csv"); },
-        "Silhouettes:\ns0,0.915385\ns1,0.928571\ns2,0.857143\ns3,-0.0311111\ns4,0.415584\n"
-        "s5,0.455017\n" },
       { "find_total_cost", true, [](Problem &p, const fs::path &) {
           return obs(p.find_total_cost()); },
         "69 " },

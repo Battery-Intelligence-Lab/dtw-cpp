@@ -510,16 +510,6 @@ auto load_folder(const Tpath &folder_path, const LoadOptions &opts = {})
   return std::pair(std::move(p_vec), std::move(p_names));
 }
 
-/// Positional-arg overload retained for backwards compatibility; delegates to
-/// the LoadOptions-based form.
-template <typename T, typename Tpath>
-auto load_folder(const Tpath &folder_path, index_t Ndata, int verbose = 1,
-                 index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
-{
-  return load_folder<T>(folder_path,
-                        LoadOptions{ Ndata, verbose, start_row, start_col, delimiter });
-}
-
 /// Load one-series-per-row batch data from `file_path`, returning `{series, 1_based_names}`.
 template <typename T>
 auto load_batch_file(const fs::path &file_path, const LoadOptions &opts = {})
@@ -549,16 +539,6 @@ auto load_batch_file(const fs::path &file_path, const LoadOptions &opts = {})
     std::cout << p_vec.size() << " time-series data are read.\n";
 
   return std::pair(std::move(p_vec), std::move(p_names));
-}
-
-/// Positional-arg overload retained for backwards compatibility; delegates to
-/// the LoadOptions-based form.
-template <typename T>
-auto load_batch_file(const fs::path &file_path, index_t Ndata, int verbose = 1,
-                     index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
-{
-  return load_batch_file<T>(file_path,
-                            LoadOptions{ Ndata, verbose, start_row, start_col, delimiter });
 }
 
 } // namespace dtwc

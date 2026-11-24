@@ -17,7 +17,6 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/pair.h>
-#include <nanobind/stl/optional.h>   // save_checkpoint / load_checkpoint: the metric is optional
 #include <nanobind/stl/shared_ptr.h> // _run hands dtwcpp._mip.solve the run's own Problem, to co-own
 
 #ifdef _OPENMP
@@ -1002,7 +1001,8 @@ NB_MODULE(_dtwcpp_core, m)
                  "available memory, or a cgroup's limit. It sizes the slabs in which a\n"
                  "mapped matrix (use_mmap_distance_matrix) is filled.")
     .def_prop_rw("name", &dtwc::Problem::name, &dtwc::Problem::set_name)
-    .def_prop_rw("output_folder", &dtwc::Problem::output_folder, &dtwc::Problem::set_output_folder, "Output folder for results written by the write_* methods.")
+    .def_prop_rw("output_folder", &dtwc::Problem::output_folder, &dtwc::Problem::set_output_folder, "The Problem's output folder, ./results/ by default. The Problem writes no file itself: pass this or any\n"
+                  "directory to write_result_files.")
     .def_prop_ro("clusters_ind", labels_of, nb::rv_policy::move, "Cluster label of each series, an int64 array. Read-only: set_result is the write route.")
     .def_prop_ro("centroids_ind", medoids_of, nb::rv_policy::move, "Medoid series indices, an int64 array. Read-only: set_result is the write route.")
     .def("set_result", &dtwc::Problem::set_result, "result"_a,
@@ -1123,20 +1123,21 @@ NB_MODULE(_dtwcpp_core, m)
       p.calculate_medoids(); })
     // ---- I/O ----
     .def("print_clusters", &dtwc::Problem::print_clusters)
-    .def("write_clusters", [](dtwc::Problem &p) {
-      nb::gil_scoped_release release;
-      p.write_clusters(); },
-         "Write the cluster-assignment CSV.\n\n"
-         "Raises InvalidInput if the Problem holds no clustering.")
-    .def("write_medoid_members", &dtwc::Problem::write_medoid_members, "iter"_a, "rep"_a = 0)
-    .def("write_distance_matrix", [](const dtwc::Problem &p) {
-      nb::gil_scoped_release release;
-      p.write_distance_matrix(); })
-    .def("write_silhouettes", [](dtwc::Problem &p) {
-      nb::gil_scoped_release release;
-      p.write_silhouettes(); }, "Write per-series silhouette scores.")
     .def("__repr__", [](const dtwc::Problem &p) { return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
                                                          + ", k=" + std::to_string(p.n_clusters()) + ")"; });
+
+  m.def("write_result_files", [](dtwc::Problem &prob, const std::filesystem::path &directory) {
+          prob.require_clustered("write_result_files"); // before any file is opened: a refusal leaves none behind
+          nb::gil_scoped_release release;
+          dtwc::detail::write_result_files(prob, directory, true); },
+        "prob"_a, "directory"_a,
+        "Write the result files dtwc_cl writes, into directory (created if it is missing):\n"
+        "<name>_labels.csv, <name>_medoids.csv, <name>_distance_matrix.csv and, for k > 1,\n"
+        "<name>_silhouettes.csv. A distance matrix not yet filled is filled first.\n\n"
+        "Raises InvalidInput if the Problem holds no clustering, and IOError for a file\n"
+        "that cannot be written in full.\n\n"
+        "MUTATES `prob` when it fills the matrix: do not run it concurrently with any\n"
+        "other method on the same Problem (see the Problem class docstring).");
 
   // =========================================================================
   // dtwc::run, the run dtwc_cl makes: _run and its _Result (C++ dtwc::Result)
@@ -1344,39 +1345,27 @@ NB_MODULE(_dtwcpp_core, m)
              + ", enabled=" + (o.enabled ? "True" : "False") + ")";
     });
 
-  m.def("save_checkpoint", [](const dtwc::Problem &prob, const std::string &path, std::optional<dtwc::core::MetricType> metric) {
+  m.def("save_checkpoint", [](const dtwc::Problem &prob, const std::string &path) {
     // An N^2 write; `prob` is const here and the writer only reads it.
     nb::gil_scoped_release release;
-    if (metric)
-      dtwc::save_checkpoint(prob, path, *metric);
-    else
-      dtwc::save_checkpoint(prob, path); // the Problem's own metric, as the C++ and the CLI
+    dtwc::save_checkpoint(prob, path);
   },
         "prob"_a,
         "path"_a,
-        "metric"_a = nb::none(),
         "Save the distance matrix to <path>/<name>.dtwm ('distances' for an\n"
         "unnamed Problem), replacing any previous checkpoint there. The\n"
         "directory is created if it does not exist; IOError if it cannot be.\n\n"
-        "`metric` is the pointwise metric the stored distances were computed\n"
-        "with. It is part of the identity fingerprint, so a SquaredL2 matrix is\n"
-        "no longer accepted by a later L1 load. Absent (None), the Problem's\n"
-        "own metric, as the CLI's checkpoint records it; name it only for a\n"
-        "matrix that was filled outside this Problem.");
+        "The Problem's metric is part of the identity fingerprint, so a SquaredL2\n"
+        "matrix is not accepted by a later L1 load.");
 
-  m.def("load_checkpoint", [](dtwc::Problem &prob, const std::string &path, std::optional<dtwc::core::MetricType> metric) {
+  m.def("load_checkpoint", [](dtwc::Problem &prob, const std::string &path) {
         nb::gil_scoped_release release;
-        return metric ? dtwc::load_checkpoint(prob, path, *metric) : dtwc::load_checkpoint(prob, path); }, "prob"_a, "path"_a, "metric"_a = nb::none(),
+        return dtwc::load_checkpoint(prob, path); }, "prob"_a, "path"_a,
         "Load <path>/<name>.dtwm into the Problem's distance matrix.\n\n"
         "Returns True when loaded, False only when there is no such file.\n"
         "Raises InvalidInput for a checkpoint of other series or other\n"
-        "distance settings, and IOError for a file that is not a whole .dtwm\n"
-        "file; neither changes the Problem.\n\n"
-        "`metric` is the pointwise metric THIS run computes with: a checkpoint\n"
-        "written under a different metric does not match the identity\n"
-        "fingerprint (InvalidInput). Absent (None), the Problem's own metric,\n"
-        "as the CLI loads; name it only for a matrix that was filled outside\n"
-        "this Problem.\n\n"
+        "distance settings (the metric included), and IOError for a file that is\n"
+        "not a whole .dtwm file; neither changes the Problem.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");
 

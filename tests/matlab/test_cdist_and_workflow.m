@@ -1,5 +1,5 @@
 function tests = test_cdist_and_workflow
-%TEST_CDIST_AND_WORKFLOW MATLAB tests for dtwc.cdist and for the files dtwc.cluster writes.
+%TEST_CDIST_AND_WORKFLOW MATLAB tests for dtwc.distance.cdist and for the files dtwc.cluster writes.
 %
 %   Exercises rectangular cross-collection DTW distances (column-major MATLAB
 %   matrices, cell arrays, Band, Metric, Variant, MatrixDtype='float32') and
@@ -27,7 +27,7 @@ function test_cdist_rectangular_and_self_match_oracle(testCase)
     X = randn(5, 12);
     Y = 2 + randn(11, 12);
 
-    D = dtwc.cdist(X, Y, 'Band', 3, 'Metric', 'squared_euclidean');
+    D = dtwc.distance.cdist(X, Y, 'Band', 3, 'Metric', 'squared_euclidean');
     verifySize(testCase, D, [5 11]);
     verifyClass(testCase, D, 'double');
     for i = 1:size(X, 1)
@@ -37,17 +37,17 @@ function test_cdist_rectangular_and_self_match_oracle(testCase)
         end
     end
 
-    % Self-cdist (Y = []) matches dtwc.cdist(X, X, ...)
+    % Self-cdist (Y = []) matches dtwc.distance.cdist(X, X, ...)
     D_self = dtwc.distance.cdist(X, [], 'Band', 3, 'Metric', 'squared_euclidean');
-    D_xx = dtwc.cdist(X, X, 'Band', 3, 'Metric', 'squared_euclidean');
+    D_xx = dtwc.distance.cdist(X, X, 'Band', 3, 'Metric', 'squared_euclidean');
     verifyEqual(testCase, D_self, D_xx, 'RelTol', 1e-12);
 
     % Empty non-omitted Y collections return [n_X, 0] rather than triggering self-cdist
-    verifySize(testCase, dtwc.cdist(X, zeros(0, 12)), [5 0]);
-    verifySize(testCase, dtwc.cdist(X, {}), [5 0]);
+    verifySize(testCase, dtwc.distance.cdist(X, zeros(0, 12)), [5 0]);
+    verifySize(testCase, dtwc.distance.cdist(X, {}), [5 0]);
 
     % Float32 output matrix
-    D_f32 = dtwc.cdist(X, Y, 'Band', 3, 'Metric', 'squared_euclidean', 'MatrixDtype', 'float32');
+    D_f32 = dtwc.distance.cdist(X, Y, 'Band', 3, 'Metric', 'squared_euclidean', 'MatrixDtype', 'float32');
     verifyClass(testCase, D_f32, 'single');
     verifyEqual(testCase, D_f32, single(D));
 end
@@ -55,7 +55,7 @@ end
 function test_cdist_ragged_cells_and_multivariate(testCase)
     X_cell = {[0 1 2 1], [3 3.5 4 4.2 3.8 3.1]};
     Y_cell = {[0.2 0.9 1.8 1.2 0.5], [3.1 3.6 3.9 4.1], [-1 -2 -1.5]};
-    D = dtwc.cdist(X_cell, Y_cell, 'Variant', 'wdtw', 'WdtwG', 0.07);
+    D = dtwc.distance.cdist(X_cell, Y_cell, 'Variant', 'wdtw', 'WdtwG', 0.07);
     verifySize(testCase, D, [2 3]);
     for i = 1:numel(X_cell)
         for j = 1:numel(Y_cell)
@@ -68,7 +68,7 @@ function test_cdist_ragged_cells_and_multivariate(testCase)
     rng(23);
     X_mv = randn(4, 12);
     Y_mv = randn(3, 12);
-    D_mv = dtwc.cdist(X_mv, Y_mv, 'Ndim', 2, 'MvMode', 'dependent', 'Band', 2);
+    D_mv = dtwc.distance.cdist(X_mv, Y_mv, 'Ndim', 2, 'MvMode', 'dependent', 'Band', 2);
     verifySize(testCase, D_mv, [4 3]);
 
     % dtwc.cluster clusters a Dataset in its Ndim: what Tier 2 gives the series at 2 values a step, not what 1
@@ -143,9 +143,9 @@ function test_cluster_writes_the_files_and_checkpoint_it_is_asked_for(testCase)
     end
     verifyError(testCase, @() dtwc.load(ds, 'SkipRows', 0), 'dtwc:invalidArgument');
     verifySameHandle(testCase, dtwc.load(ds, 'SkipRows', 1), ds);
-    verifyError(testCase, @() dtwc.cdist(ds, 'Dtype', 'float32'), 'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc.distance.cdist(ds, 'Dtype', 'float32'), 'dtwc:invalidArgument');
     ds32 = dtwc.load(csv_file, 'SkipRows', 1, 'SkipCols', 1, 'Dtype', 'float32', 'Name', 'sensor');
-    verifyError(testCase, @() dtwc.cdist(ds32, 'Dtype', 'float64'), 'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc.distance.cdist(ds32, 'Dtype', 'float64'), 'dtwc:invalidArgument');
 
     % dtwc.load and dtwc.cluster take a Dataset by the same rule: a Dtype that differs is refused, naming
     % both values, at its default too; the same one, or none, runs.

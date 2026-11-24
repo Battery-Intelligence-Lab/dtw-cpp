@@ -20,8 +20,6 @@
 
 #pragma once
 
-#include "core/dtw_options.hpp"
-
 #include <filesystem>
 #include <string>
 
@@ -58,11 +56,6 @@ std::filesystem::path checkpoint_path(const Problem &prob, const std::string &di
 ///         if the Problem holds no series, or a matrix of another size.
 void save_checkpoint(const Problem &prob, const std::string &path);
 
-/// As above, tagged with `metric`, the pointwise metric the stored distances
-/// were computed with. It may differ from prob.metric() only for a matrix a
-/// producer outside this Problem filled; prefer the two-argument form.
-void save_checkpoint(const Problem &prob, const std::string &path, core::MetricType metric);
-
 /// Read checkpoint_path(prob, path) into the Problem's distance matrix, in RAM
 /// (a mapped matrix is let go of; its file is left as it is).
 /// @return false, with the Problem unchanged, only when there is no such file.
@@ -71,11 +64,5 @@ void save_checkpoint(const Problem &prob, const std::string &path, core::MetricT
 ///         (matrix_dtype), or a distance that is ±inf; IOError if it is not a
 ///         whole `.dtwm` file (short, foreign, another version, wrong length).
 [[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path);
-
-/// As above, but expecting distances computed with `metric`, which may differ
-/// from prob.metric() only for a matrix a producer outside this Problem fills;
-/// prefer the two-argument form.
-[[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path,
-                                   core::MetricType metric);
 
 } // namespace dtwc

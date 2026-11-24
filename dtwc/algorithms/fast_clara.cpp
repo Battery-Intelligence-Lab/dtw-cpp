@@ -99,21 +99,12 @@ namespace detail {
 
   void validate_clara_request(const Problem &prob, const CLARAOptions &opts)
   {
-    // Caller-controlled fields, before a Parquet reader is opened or any other
-    // I/O. Dataset-size validation follows against the selected source.
+    // Caller-controlled fields, before any other work. Dataset-size validation
+    // follows against the series.
     validate_clara_controls(opts, "fast_clara");
     if (opts.gpu_share != -1.0 && prob.device().first != Device::CPU_GPU)
       throw InvalidInput(
         dtwc::detail::share_ignored_message("fast_clara", "the assignment pass", prob.device().first));
-    if (opts.force_parquet_streaming
-        && (opts.ram_limit_bytes == 0 || opts.parquet_path.empty()))
-      throw InvalidInput(
-        "fast_clara: force_parquet_streaming requires ram_limit_bytes and "
-        "parquet_path.");
-    if (opts.force_parquet_streaming && prob.size() != 0)
-      throw InvalidInput(
-        "fast_clara: force_parquet_streaming requires a settings-only Problem "
-        "without resident series.");
   }
 
   void validate_streaming_clara_plan(
@@ -391,16 +382,6 @@ std::string describe(const core::HybridSplit &split, std::size_t n_points)
 core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 {
   detail::validate_clara_request(prob, opts);
-  // The core reads no Parquet: fast_clara_parquet (dtwc_io) streams it.
-  if (opts.force_parquet_streaming)
-    throw IOError(
-      "fast_clara: force_parquet_streaming requires a build with Parquet support.");
-  if (opts.ram_limit_bytes > 0 && !opts.parquet_path.empty())
-    throw InvalidInput(
-      "fast_clara: parquet_path with ram_limit_bytes asks to stream the series from "
-      "Parquet, which algorithms::fast_clara_parquet does (dtwc_cl --ram-limit, in a "
-      "build with Parquet); fast_clara clusters the Problem's own series. Clear "
-      "parquet_path, or call fast_clara_parquet.");
 
   const auto plan = detail::resolve_clara_plan(prob.size(), opts, "fast_clara");
   const index_t N = plan.n_points;

@@ -723,15 +723,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
     method = resolved;
     stream_payload = planned.route == Route::Streamed;
-    if (stream_payload) {
-      clara.ram_limit_bytes = planned.data_cap();
-      clara.parquet_path = input;
-      clara.parquet_column = config.column;
-      clara.parquet_skip_cols = config.skip_cols;
-      clara.parquet_skip_rows = config.skip_rows;
-      clara.use_float32 = f32;
-      clara.force_parquet_streaming = true;
-    }
+    if (stream_payload) clara.ram_limit_bytes = planned.data_cap();
     plan_clara();
     if (stream_payload) check_stream("Parquet", "Parquet metadata", resident);
     stage.note("Parquet metadata");
@@ -985,10 +977,24 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       streamed_names = ipc->series_names(clara.ram_limit_bytes - 2 * n_series * sizeof(index_t)); // beside the labels
     } else {
 #ifdef DTWC_HAS_PARQUET
-      result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : cluster_in_ram();
-      if (stream_payload)
+      if (stream_payload) {
+        // As for Arrow IPC, the Problem holds no series: FastCLARA reads the file's row groups.
+        const bool f32 = config.dtype == core::Precision::Float32;
+        {
+          const io::ParquetChunkReader reader(input, config.column, config.skip_cols, config.skip_rows);
+          const auto plan = resolve_clara_plan(reader.logical_series_count(), clara, "fast_clara");
+          if (config.verbose)
+            std::cout << "FastCLARA: streaming from Parquet (" << reader.logical_series_count() << " rows, "
+                      << reader.num_row_groups() << " row groups, ~" << reader.estimated_resident_bytes(f32) / (1ULL << 20)
+                      << " MB resident estimate)\n";
+          result = f32 ? algorithms::detail::fast_clara_chunked<true>(prob, clara, reader, plan)
+                       : algorithms::detail::fast_clara_chunked<false>(prob, clara, reader, plan);
+        }
         streamed_names =
           io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
+      } else {
+        result = cluster_in_ram();
+      }
 #else
       result = cluster_in_ram();
 #endif

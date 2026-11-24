@@ -1,8 +1,8 @@
 /**
  * @file fast_clara_stream.hpp
  * @brief FastCLARA over series read piece by piece from a file, on any reader of its pieces: Parquet's row groups
- *        (io::ParquetChunkReader, fast_clara_parquet.cpp in dtwc_io) and Arrow IPC's record batches (io::IpcFile, the
- *        core's), each instantiation's assignment the same code.
+ *        (io::ParquetChunkReader, dtwc_io's) and Arrow IPC's record batches (io::IpcFile, the core's), each
+ *        instantiation's assignment the same code.
  * @author Volkan Kumtepeli
  */
 

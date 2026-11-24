@@ -56,6 +56,8 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 
 #if defined(DTWC_HAS_PARQUET)
 #include <parquet/arrow/writer.h>
+#include <algorithms/detail/fast_clara_plan.hpp>
+#include <algorithms/detail/fast_clara_stream.hpp>
 #include <algorithms/fast_clara.hpp>
 #include <api.hpp>
 #include <cli/config.hpp>
@@ -138,6 +140,18 @@ void write_parquet(const std::filesystem::path &path,
                                      parquet::WriterProperties::Builder().memory_pool(pool)->build())
             .ok());
   REQUIRE(out->Close().ok());
+}
+
+/// FastCLARA streamed from the Parquet file `path` a row group at a time, within `limit` bytes: the stream dtwc_cl's
+/// run makes of a file that does not fit its RAM limit. `prob` holds no series.
+dtwc::core::ClusteringResult streamed_from_parquet(dtwc::Problem &prob, dtwc::algorithms::CLARAOptions options,
+                                                   const std::filesystem::path &path, const std::string &column,
+                                                   std::size_t limit)
+{
+  const dtwc::io::ParquetChunkReader reader(path, column);
+  options.ram_limit_bytes = limit;
+  const auto plan = dtwc::algorithms::detail::resolve_clara_plan(reader.logical_series_count(), options, "fast_clara");
+  return dtwc::algorithms::detail::fast_clara_chunked<false>(prob, options, reader, plan);
 }
 
 // Build a List<Float32> array from ragged series.
@@ -241,17 +255,6 @@ TEST_CASE("Parquet chunk metadata preserves scalar-column series semantics",
     CHECK(reader.logical_series_count() == 1);
     CHECK(reader.estimated_resident_bytes(false) > 0);
   }
-
-  dtwc::Problem settings_only{"scalar_stream_defense"};
-  dtwc::algorithms::CLARAOptions options;
-  options.n_clusters = 1;
-  options.sample_size = 1;
-  options.ram_limit_bytes = 1;
-  options.parquet_path = tmp;
-  options.parquet_column = "v";
-  CHECK_THROWS_WITH(
-    dtwc::algorithms::fast_clara_parquet(settings_only, options),
-    Catch::Matchers::ContainsSubstring("scalar column is one time series"));
   std::filesystem::remove(tmp);
 }
 
@@ -586,14 +589,8 @@ TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
   auto schema = arrow::schema({ arrow::field("data", arrow::list(arrow::float64())) });
   auto tmp = tmpdir() / "clara_streaming.parquet";
   write_parquet(tmp, arrow::Table::Make(schema, { make_list_f64(series) }));
-  options.ram_limit_bytes = 1u << 20;
-  options.parquet_path = tmp;
-  options.parquet_column = "data";
-  // Series that fit the limit are the Problem's own: fast_clara_parquet is fast_clara then.
-  CHECK(dtwc::algorithms::fast_clara_parquet(in_ram, options).labels == expected.labels);
-  options.force_parquet_streaming = true;
   dtwc::Problem settings_only{"clara_streamed"};
-  const auto streamed = dtwc::algorithms::fast_clara_parquet(settings_only, options);
+  const auto streamed = streamed_from_parquet(settings_only, options, tmp, "data", 1u << 20);
   std::filesystem::remove(tmp);
 
   CHECK(streamed.medoid_indices == expected.medoid_indices);
@@ -611,9 +608,8 @@ TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
     columns.push_back(unwrap(column.Finish()));
   }
   write_parquet(tmp, arrow::Table::Make(arrow::schema(fields), columns), 16);
-  options.parquet_column.clear();
   dtwc::Problem rows_settings{"clara_rows_streamed"};
-  const auto rows_streamed = dtwc::algorithms::fast_clara_parquet(rows_settings, options);
+  const auto rows_streamed = streamed_from_parquet(rows_settings, options, tmp, "", 1u << 20);
   std::filesystem::remove(tmp);
   CHECK(rows_streamed.medoid_indices == expected.medoid_indices);
   CHECK(rows_streamed.labels == expected.labels);
@@ -686,13 +682,9 @@ TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
 
     dtwc::Problem streamed{ "streamed" };
     streamed.set_band(poison.band);
-    auto stream = options;
-    stream.parquet_path = path;
-    stream.parquet_column = "series";
     // Beside one decode, two batches of a row group fit: the next decodes while one is assigned.
-    stream.ram_limit_bytes = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192;
-    stream.force_parquet_streaming = true;
-    CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
+    const std::size_t limit = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192;
+    CHECK_THROWS_MATCHES(streamed_from_parquet(streamed, options, path, "series", limit), dtwc::InvalidInput,
                          Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(poison.says)));
   }
   std::filesystem::remove(path);
@@ -781,12 +773,8 @@ TEST_CASE("Parquet: the stream refuses the first row it reads, the in-RAM run th
 
     dtwc::Problem streamed{ "streamed" };
     streamed.set_missing_strategy(c.missing);
-    auto stream = options;
-    stream.parquet_path = path;
-    stream.parquet_column = "series";
-    stream.ram_limit_bytes = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192; // a row group a batch
-    stream.force_parquet_streaming = true;
-    CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
+    const std::size_t limit = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192; // a row group a batch
+    CHECK_THROWS_MATCHES(streamed_from_parquet(streamed, options, path, "series", limit), dtwc::InvalidInput,
                          Catch::Matchers::Message(
                            text(rows[c.stream_row], c.stream_row, "fast_clara", c.missing, c.stream_row == c.entirely_nan)));
   }
@@ -824,13 +812,9 @@ TEST_CASE("Parquet: a stream's decoding stays within the reader's decode price",
   options.n_samples = 2;
   options.random_seed = 5;
   dtwc::Problem in_ram{ "in_ram" };
-  auto stream = options;
-  stream.parquet_path = path;
-  stream.parquet_column = "series";
-  stream.ram_limit_bytes = std::size_t{ 64 } << 20; // a batch of all 8 groups: 16 MiB of values decoding at once
-  stream.force_parquet_streaming = true;
   dtwc::Problem streamed{ "streamed" };
-  const auto result = dtwc::algorithms::fast_clara_parquet(streamed, stream);
+  // A limit that fits a batch of all 8 groups: 16 MiB of values decoding at once.
+  const auto result = streamed_from_parquet(streamed, options, path, "series", std::size_t{ 64 } << 20);
   CHECK(pool->max_memory() <= decode);
 
   in_ram.set_data(dtwc::io::read_arrow(path, "series"));

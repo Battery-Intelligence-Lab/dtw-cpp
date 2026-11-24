@@ -150,7 +150,8 @@ TEST_CASE("Metal squared-L2 cache via Problem::fill_distance_matrix", "[metal][m
                               { "s0", "s1", "s2", "s3", "s4", "s5" } });
     prob.set_band(band);
     prob.set_device(dtwc::Device::GPU);
-    prob.use_mmap_distance_matrix(cache, dtwc::core::MetricType::SquaredL2);
+    prob.set_metric(dtwc::core::MetricType::SquaredL2);
+    prob.use_mmap_distance_matrix(cache);
     prob.fill_distance_matrix();
 
     for (size_t i = 0; i < series.size(); ++i) {

@@ -66,6 +66,8 @@ from dtwcpp._dtwcpp_core import (
     save_checkpoint,
     load_checkpoint,
     CheckpointOptions,
+    # The files dtwc_cl writes, for a clustered Problem
+    write_result_files,
 )
 
 from dtwcpp._dtwcpp_core import device as _core_device
@@ -212,7 +214,6 @@ from dtwcpp._api import (
     load,
     cluster,
     Result,
-    plot,
 )
 
 # Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
@@ -313,12 +314,13 @@ __all__ = [
     "derivative_transform", "z_normalize",
     "compute_distance_matrix", "cdist",
     "device",
-    "Dataset", "load", "cluster", "Result", "plot",
+    "Dataset", "load", "cluster", "Result",
     "distance",
     "gpu_available", "gpu_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
     "save_checkpoint", "load_checkpoint",
     "CheckpointOptions",
+    "write_result_files",
     "DTWClustering",
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",

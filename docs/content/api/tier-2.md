@@ -131,7 +131,7 @@ seed of the repetition it starts, `random_seed() + r`.
 | computed? | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` |
 | the matrix | `distance_matrix()`: the packed `core::DistanceMatrix` | `distance_matrix()`: an N×N array, float64 or float32 | `distance_matrix()`: an N×N matrix, `double` or `single` |
 | set it | `writable_distance_matrix()` | `set_distance_matrix(D)` | `set_distance_matrix(D)` |
-| CSV in, out | `read_distance_matrix(path, not_computed)`, `write_distance_matrix()` | `read_distance_matrix(path, not_computed="nan")`, `write_distance_matrix()` | `read_distance_matrix(path, 'NotComputed', 'nan')` |
+| CSV in | `read_distance_matrix(path, not_computed)` | `read_distance_matrix(path, not_computed="nan")` | `read_distance_matrix(path, 'NotComputed', 'nan')` |
 | forget it | `refresh_distance_matrix()` | `refresh_distance_matrix()` | `refresh_distance_matrix()` |
 | largest distance | `max_distance()` | `max_distance()` | `max_distance()` |
 
@@ -155,12 +155,18 @@ Tier 1's `cluster()` also weighs the memory plan) with the `Problem`'s
 settings and returns a `ClusteringResult` (MATLAB: a struct) of `labels`,
 `medoid_indices`, `total_cost`, `iterations` and `converged`; the labels and
 medoids are also kept in the `Problem` (`labels()`, `medoids()`). `set_result`
-hands a `Problem` a clustering made elsewhere, so the scores and writers read it.
-`write_clusters()`, `write_silhouettes()` and `write_medoid_members(iter, rep)`
-write into `output_folder()` (`./results/`), `print_clusters()` prints, and
-`find_total_cost()`, `assign_clusters()` and `calculate_medoids()` are the steps
-of Lloyd's k-medoids. A method or score that needs a clustering raises
-`InvalidInput` on a `Problem` that holds none.
+hands a `Problem` a clustering made elsewhere, so the scores and the result writer read it.
+`print_clusters()` prints, and `find_total_cost()`, `assign_clusters()` and
+`calculate_medoids()` are the steps of Lloyd's k-medoids. A method or score that
+needs a clustering raises `InvalidInput` on a `Problem` that holds none.
+
+A clustered `Problem` has one writer of result files, the one `dtwc_cl` and Tier 1's
+`Result.save` use: `<name>_labels.csv`, `<name>_medoids.csv`, `<name>_distance_matrix.csv`
+(the file `read_distance_matrix` reads) and, for k > 1, `<name>_silhouettes.csv`, into a
+directory created if it is missing. C++ `dtwc::detail::write_result_files(prob, directory,
+true)` and Python `write_result_files(prob, directory)` fill the matrix first when it is not
+filled, as `save` does; C++ `dtwc::io::write_csv(prob.distance_matrix(), path)` writes the
+matrix alone. MATLAB writes the files from the result of `dtwc.cluster`: `res.save(directory)`.
 
 ## Algorithms
 

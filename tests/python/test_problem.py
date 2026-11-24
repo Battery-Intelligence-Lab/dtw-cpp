@@ -166,8 +166,7 @@ class TestClusterFirst:
     _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
     _CALLS = {
         "find_total_cost": lambda p: p.find_total_cost(),
-        "write_clusters": lambda p: p.write_clusters(),
-        "write_medoid_members": lambda p: p.write_medoid_members(0),
+        "write_result_files": lambda p: dtwcpp.write_result_files(p, p.output_folder),
         "calculate_medoids": lambda p: p.calculate_medoids(),
         "silhouette": dtwcpp.silhouette,
         "inertia": dtwcpp.inertia,
@@ -220,8 +219,9 @@ class TestClusterFirst:
         p.set_n_clusters(2)
         p.cluster()
         assert p.find_total_cost() >= 0.0
-        p.write_clusters()
-        assert [f.name for f in tmp_path.iterdir()] == ["first_Nc_2.csv"]
+        dtwcpp.write_result_files(p, p.output_folder)
+        assert sorted(f.name for f in tmp_path.iterdir()) == [
+            "first_distance_matrix.csv", "first_labels.csv", "first_medoids.csv", "first_silhouettes.csv"]
 
 
 

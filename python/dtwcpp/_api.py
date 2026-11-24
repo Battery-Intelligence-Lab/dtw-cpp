@@ -659,8 +659,3 @@ def cluster(data, k, **keys):
         return result
     return _run_local(data, config, eff, backend, output=output, checkpoint=checkpoint,
                       checkpoint_interval=checkpoint_interval)
-
-
-def plot(result, **kwargs):
-    """Top-level alias for ``result.plot(...)``."""
-    return result.plot(**kwargs)
