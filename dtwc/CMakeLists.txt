@@ -187,7 +187,7 @@ if(OpenMP_CXX_FOUND)
     # cl: its objects name vcomp themselves. clang-cl's name no runtime (only a link it
     # drives adds libomp), so it takes the else branch's target, as clang++ does.
     # PUBLIC on dtwc_core, so a consumer that links dtwc_core but not project_options
-    # (the Python module) still compiles its `#pragma omp` loops in parallel.
+    # (the MEX module, the examples) still compiles its `#pragma omp` loops in parallel.
     # project_options carries it too, for mip-solvers, which links that alone.
     target_compile_options(dtwc_core PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
     target_compile_options(dtwc_options INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
