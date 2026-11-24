@@ -70,9 +70,10 @@ static Problem make_clara_problem(int N)
 }
 
 // ===========================================================================
-// The invariants of a FastCLARA result for N = 100, 60 and 50 (k = 3, the auto
-// sample size): labels in [0, k), valid and distinct medoids, each medoid in its
-// own cluster, total_cost the recomputed cost.
+// The invariants of a FastCLARA result for N = 100, 60 and 50 (k = 3, samples of
+// N / 2 series, so that CLARA's own sampling and assignment run; the auto size is
+// N here, the FastPAM fallback): labels in [0, k), valid and distinct medoids,
+// each medoid in its own cluster, total_cost the recomputed cost.
 // ===========================================================================
 TEST_CASE("FastCLARA result invariants and cost consistency", "[fast_clara]")
 {
@@ -84,9 +85,11 @@ TEST_CASE("FastCLARA result invariants and cost consistency", "[fast_clara]")
     algorithms::CLARAOptions opts;
     opts.n_clusters = k;
     opts.n_samples = 3;
+    opts.sample_size = N / 2;
     opts.random_seed = 42;
 
     const auto result = algorithms::fast_clara(prob, opts);
+    REQUIRE_FALSE(prob.is_distance_matrix_filled()); // only the fallback fills the parent's matrix
 
     REQUIRE(result.labels.size() == static_cast<size_t>(N));
     for (index_t label : result.labels) {
@@ -105,7 +108,7 @@ TEST_CASE("FastCLARA result invariants and cost consistency", "[fast_clara]")
     for (int c = 0; c < k; ++c)
       REQUIRE(result.labels[result.medoid_indices[c]] == c);
 
-    prob.fill_distance_matrix(); // dist_by_ind reads the matrix; a no-op where the run filled it
+    prob.fill_distance_matrix(); // dist_by_ind reads the matrix, which the sampling run left unfilled
     double recomputed_cost = 0.0;
     for (int p = 0; p < N; ++p)
       recomputed_cost += prob.dist_by_ind(p, result.medoid_indices[result.labels[p]]);
