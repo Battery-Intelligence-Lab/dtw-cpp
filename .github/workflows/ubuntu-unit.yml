@@ -93,7 +93,7 @@ jobs:
 
       # Official Apache apt repository (https://arrow.apache.org/install/).
       #
-      # VERSION SKEW — deliberate, not an oversight. cmake/Dependencies.cmake:363-367
+      # VERSION SKEW — deliberate, not an oversight. The CPMAddPackage of Arrow in cmake/Dependencies.cmake
       # pins the CPM *source* build to Arrow 19.0.1; this apt path takes whatever the
       # repository currently serves (a much newer release). We do NOT pin the apt
       # version, for three reasons:
