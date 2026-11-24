@@ -579,7 +579,6 @@ function test_find_total_cost_before_clustering_is_an_error(testCase)
 %   an access violation (R2024b, 0xc0000005) that ended the MATLAB session. Sizing
 %   the Problem with set_n_clusters is not clustering it.
     h = int_problem(testCase);   % filled, never clustered
-    dtwc_mex('Problem_set_output_folder', h, tempdir);
     verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
     dtwc_mex('Problem_set_n_clusters', h, 2);
     err = [];

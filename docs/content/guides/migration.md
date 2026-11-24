@@ -56,7 +56,8 @@ behaviour listed further down.
 | `findTotalCost`, `assignClusters`, `calculateMedoids` | `find_total_cost`, `assign_clusters`, `calculate_medoids` |
 | `cluster_by_MIP()`, `cluster_by_kMedoidsPAM()` | `cluster_by_mip()`, `cluster_by_kmedoids_lloyd()` (Lloyd's k-medoids, as before) |
 | `set_clusters(std::vector<int>&)` | `set_clusters(const std::vector<index_t>&)` |
-| public fields `method`, `output_folder`, `name`, `data` | `method()` / `set_method`, `output_folder()` / `set_output_folder`, `name()` / `set_name`, `data()` / `set_data` |
+| public fields `method`, `name`, `data` | `method()` / `set_method`, `name()` / `set_name`, `data()` / `set_data` |
+| public field `output_folder` | none: a `Problem` writes no file, and the directory of a result's files is an argument of `write_result_files` and `Result::save` |
 | public fields `maxIter`, `N_repetition`, `band` | `max_iter()` / `set_max_iter`, `n_repetitions()` / `set_n_repetitions`, `distance().band` / `set_band`; the setters check their value |
 | public fields `clusters_ind`, `centroids_ind` | still public, now holding `index_t`; `labels()` and `medoids()` read them |
 | `init::random(prob)`, `init::Kmeanspp(prob)`, and `Problem::init_fun`, a `std::function<void(Problem &)>` | `init::random(prob, seed)`, `init::Kmeanspp(prob, seed)`; `init_fun` is a `std::function<void(Problem &, std::uint64_t)>` that Lloyd's k-medoids calls with `random_seed() + r` for repetition r (`prob.init_fun = init::Kmeanspp;` still works), and `init()` seeds from `random_seed()`. An initialiser that takes only the `Problem` needs the second parameter |
@@ -67,7 +68,7 @@ behaviour listed further down.
 | `DataLoader::startColumn(n)`, `startRow(n)` | `start_column(n)`, `start_row(n)` |
 | `settings::DEFAULT_BAND_LENGTH` | `settings::DEFAULT_BAND` |
 | the `dtwc::solver` MIP helpers that `dtwc.hpp` reached (`Element`, `Triplet`, `RowMajor`, `ColumnMajor`, `isAround`, `isFractional`, ...), `dtwc/types/element_types.hpp`, `types_util.hpp` | none |
-| `settings::root_folder`, `dtwc_folder`, `resultsPath`, `dataPath`, `dtwc_dataPath`, `DTWC_ROOT_FOLDER`, `CURRENT_ROOT_FOLDER` | none: pass paths explicitly; a `Problem`'s output folder is `./results/`, relative to the working directory |
+| `settings::root_folder`, `dtwc_folder`, `resultsPath`, `dataPath`, `dtwc_dataPath`, `DTWC_ROOT_FOLDER`, `CURRENT_ROOT_FOLDER` | none: pass paths explicitly |
 | `dtwc::Range`, `dtwc::Index`, `settings::isDebug` | none: write the loop (`for (std::size_t i = 0; i < n; ++i)`) |
 | `dtwc::randGenerator`, in `settings.hpp` | none: every function that draws takes its seed |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |

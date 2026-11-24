@@ -523,7 +523,6 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     std::error_code ec;
     fs::create_directories(output, ec);
     if (ec) throw IOError("--output '" + config.output + "' cannot be created: " + ec.message());
-    prob.set_output_folder(output);
   }
 
   // ---- 2. The method, and N and the memory plan where Parquet metadata or an Arrow IPC file's walk give them ----

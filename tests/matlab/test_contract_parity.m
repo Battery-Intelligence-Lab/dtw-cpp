@@ -522,7 +522,6 @@ function test_problem_setters_all_callable(testCase)
     prob.set_distance('Variant', 'ddtw', 'Metric', 'squared_euclidean');
     ok = prob.set_solver('highs');
     verifyTrue(testCase, islogical(ok));
-    prob.set_output_folder(tempdir);
     prob.set_verbose(false);
     prob.set_gpu_precision('auto');
     prob.set_ram_limit('1.5G'); % read as dtwc_cl reads --ram-limit
@@ -594,9 +593,7 @@ function test_problem_methods_all_callable(testCase)
     verifyEqual(testCase, prob.dist_by_ind(1, 2), D(1, 2), 'AbsTol', 1e-10);
     verifyGreaterThanOrEqual(testCase, prob.max_distance(), 0);
 
-    % In-place clustering on the filled matrix. cluster() (Kmedoids/Lloyd) writes
-    % per-rep medoid CSVs, so point the output folder at a writable temp dir.
-    prob.set_output_folder(tempdir);
+    % In-place clustering on the filled matrix.
     prob.set_n_clusters(2);
     prob.cluster();
     verifyGreaterThanOrEqual(testCase, prob.find_total_cost(), 0);

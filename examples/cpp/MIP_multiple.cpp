@@ -46,8 +46,9 @@ int main(int argc, char **argv)
     std::cout << "\n\nClustering by MIP for Number of clusters : " << nc << '\n';
     prob.set_n_clusters(nc); // Nc = number of clusters.
     prob.cluster_by_mip();         // Uses MILP to do clustering.
-    // The files dtwc_cl writes, one folder for each number of clusters.
-    dtwc::detail::write_result_files(prob, prob.output_folder() / ("Nc_" + std::to_string(nc)), true, &std::cout);
+    // The files dtwc_cl writes, one folder under ./results for each number of clusters.
+    dtwc::detail::write_result_files(prob, std::filesystem::path{ "./results" } / ("Nc_" + std::to_string(nc)), true,
+                                     &std::cout);
   }
 
   std::cout << "Finished all tasks " << clk << "\n";

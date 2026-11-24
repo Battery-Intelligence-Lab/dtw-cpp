@@ -166,36 +166,39 @@ class TestClusterFirst:
     _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
     _CALLS = {
         "find_total_cost": lambda p: p.find_total_cost(),
-        "write_result_files": lambda p: dtwcpp.write_result_files(p, p.output_folder),
+        "write_result_files": lambda p: dtwcpp.write_result_files(p, "files"),  # relative: the test runs in tmp_path
         "calculate_medoids": lambda p: p.calculate_medoids(),
         "silhouette": dtwcpp.silhouette,
         "inertia": dtwcpp.inertia,
     }
 
-    def _problem(self, tmp_path):
+    @pytest.fixture(autouse=True)
+    def _in_tmp_path(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+    def _problem(self):
         p = dtwcpp.Problem("first")
         p.set_data(self._DATA, ["a", "b", "c"])
-        p.output_folder = str(tmp_path)
         return p
 
     @pytest.mark.parametrize("sized", [False, True], ids=["never_sized", "sized"])
     @pytest.mark.parametrize("who", list(_CALLS))
     def test_reading_the_clustering_before_clustering_raises(self, tmp_path, sized, who):
-        p = self._problem(tmp_path)
+        p = self._problem()
         if sized:
             p.set_n_clusters(2)
         with pytest.raises(dtwcpp.InvalidInput, match=rf"^{who}: .*holds no clustering.*cluster it first"):
             self._CALLS[who](p)
         assert list(tmp_path.iterdir()) == []  # refused before any file is opened
 
-    def test_the_refusal_names_the_counts_it_found(self, tmp_path):
-        p = self._problem(tmp_path)
+    def test_the_refusal_names_the_counts_it_found(self):
+        p = self._problem()
         p.set_n_clusters(2)
         with pytest.raises(dtwcpp.InvalidInput, match=r"0 labels for N = 3, 0 medoids for k = 2"):
             p.find_total_cost()
 
-    def test_a_clustering_goes_stale_when_the_cluster_count_changes(self, tmp_path):
-        p = self._problem(tmp_path)
+    def test_a_clustering_goes_stale_when_the_cluster_count_changes(self):
+        p = self._problem()
         p.set_n_clusters(2)
         p.fill_distance_matrix()
         p.cluster()
@@ -204,9 +207,9 @@ class TestClusterFirst:
             p.find_total_cost()
 
     @pytest.mark.parametrize("who", ["find_total_cost", "silhouette", "inertia"])
-    def test_replacing_the_series_with_as_many_drops_the_clustering(self, tmp_path, who):
+    def test_replacing_the_series_with_as_many_drops_the_clustering(self, who):
         """The old labels describe the old series, so a same-N set_data must not leave them counting."""
-        p = self._problem(tmp_path)
+        p = self._problem()
         p.set_n_clusters(2)
         p.cluster()
         p.find_total_cost()
@@ -215,11 +218,11 @@ class TestClusterFirst:
             self._CALLS[who](p)
 
     def test_after_clustering_the_readers_work(self, tmp_path):
-        p = self._problem(tmp_path)
+        p = self._problem()
         p.set_n_clusters(2)
         p.cluster()
         assert p.find_total_cost() >= 0.0
-        dtwcpp.write_result_files(p, p.output_folder)
+        dtwcpp.write_result_files(p, tmp_path)
         assert sorted(f.name for f in tmp_path.iterdir()) == [
             "first_distance_matrix.csv", "first_labels.csv", "first_medoids.csv", "first_silhouettes.csv"]
 

@@ -77,9 +77,7 @@ constexpr std::string_view f22_clusters_stdout =
 constexpr std::string_view f22_failed_read_message =
   "Cannot open file for reading";
 
-Problem make_f22_problem(
-  const std::filesystem::path &output = {},
-  bool clustered = true)
+Problem make_f22_problem(bool clustered = true)
 {
   std::vector<std::vector<data_t>> series{
     { 0.0 }, { 2.0 }, { 9.0 }, { 40.0 }, { 55.0 }, { 100.0 }
@@ -90,8 +88,6 @@ Problem make_f22_problem(
   Problem problem("f22_asymmetric");
   problem.set_data(Data(std::move(series), std::move(names)));
   problem.set_verbose(false);
-  if (!output.empty())
-    problem.set_output_folder(output);
   if (clustered) {
     problem.set_n_clusters(2);
     problem.centroids_ind = { 1, 4 };
@@ -229,8 +225,8 @@ std::optional<std::string> f22_read_bytes(
 //   max distance |100 - 0| = 100, d(2,5) = |9 - 100| = 91,
 //   cost = (2 + 0 + 7) + (15 + 0 + 45) = 69 (the next best medoid pair costs 71),
 //   s0 silhouette = (65 - 5.5) / 65 = 0.915385 (a = (2+9)/2, b = (40+55+100)/3).
-// Each row runs on a fresh Problem with its own output folder, and compares one
-// observation string with one oracle.
+// Each row runs on a fresh Problem, with a directory of its own for what it reads and writes, and
+// compares one observation string with one oracle.
 // ===========================================================================
 namespace {
 
@@ -424,7 +420,7 @@ TEST_CASE("Problem and DataLoader entry points match hand oracles",
     for (const Row &row : rows) {
       INFO(row.entry);
       const auto dir = root.make_leaf("r" + std::to_string(leaf++));
-      Problem problem = make_f22_problem(dir, row.clustered);
+      Problem problem = make_f22_problem(row.clustered);
       CHECK(row.observe(problem, dir) == row.oracle);
     }
   } // root removes the whole validated fixture tree

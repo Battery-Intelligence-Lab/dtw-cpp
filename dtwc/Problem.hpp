@@ -212,7 +212,6 @@ private:
   algorithms::Linkage linkage_{ algorithms::Linkage::Average };
   std::size_t ram_limit_{ 0 }; ///< bytes; 0: core::available_memory() when the matrix is filled
   bool verbose_{ false };
-  path_t output_folder_{ "./results/" }; //!< Relative to the working directory; set_output_folder.
   std::string name_{};
   Data data_;
 
@@ -388,7 +387,6 @@ public:
   index_t batch_size() const { return batch_size_; }
   algorithms::Linkage linkage() const { return linkage_; }
   bool verbose() const { return verbose_; }
-  const path_t &output_folder() const { return output_folder_; }
   const std::string &name() const { return name_; }
   const Data &data() const { return data_; }
 
@@ -502,10 +500,6 @@ public:
   /// it, at most 1 GiB.
   void set_ram_limit(std::size_t bytes) { ram_limit_ = bytes; }
   std::size_t ram_limit() const noexcept { return ram_limit_; }
-  void set_output_folder(path_t folder)
-  {
-    output_folder_ = std::move(folder);
-  }
   void set_name(std::string problem_name)
   {
     name_ = std::move(problem_name);

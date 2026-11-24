@@ -15,14 +15,11 @@
 
 #include <dtwc.hpp>
 
-#include "../support/scratch_directory.hpp"
-
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <filesystem>
 #include <functional>
 #include <limits>
 #include <span>
@@ -33,9 +30,7 @@
 
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
-namespace fs = std::filesystem;
 using dtwc::Problem;
-using dtwc::test_support::ScratchDirectory;
 
 namespace {
 
@@ -43,12 +38,11 @@ const std::vector<std::vector<double>> kSeries{ { 0, 1, 2, 1 }, { 0, 1, 2, 2 }, 
                                                 { 9, 8, 9, 9 }, { 9, 9, 8, 9 }, { 8, 9, 9, 9 } };
 const std::vector<std::string> kNames{ "s0", "s1", "s2", "s3", "s4", "s5" };
 
-Problem six_series(const fs::path &out)
+Problem six_series()
 {
   Problem prob("cluster_first");
   prob.set_data(dtwc::Data(std::vector(kSeries), std::vector(kNames)));
   prob.set_verbose(false);
-  prob.set_output_folder(out);
   return prob;
 }
 
@@ -89,8 +83,7 @@ void require_every_reader_refuses(Problem &prob)
 TEST_CASE("set_n_clusters sizes nothing: the outputs stay empty until a clustering writes them",
           "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_empty" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   CHECK(prob.labels().empty());
   CHECK(prob.medoids().empty());
 
@@ -123,16 +116,14 @@ TEST_CASE("set_view_data sizes no output either", "[problem][cluster-first]")
 TEST_CASE("every whole-clustering reader refuses a Problem never clustered",
           "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_fresh" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   require_every_reader_refuses(prob);
 }
 
 TEST_CASE("every whole-clustering reader refuses a Problem that was only sized",
           "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_sized" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_n_clusters(2);
   require_every_reader_refuses(prob);
 }
@@ -140,8 +131,7 @@ TEST_CASE("every whole-clustering reader refuses a Problem that was only sized",
 TEST_CASE("every whole-clustering reader refuses a Problem given only initial medoids",
           "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_initial" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_n_clusters(2);
   std::vector<dtwc::index_t> initial{ 0, 3 };
   prob.set_clusters(initial);
@@ -150,8 +140,7 @@ TEST_CASE("every whole-clustering reader refuses a Problem given only initial me
 
 TEST_CASE("a clustering goes stale when the cluster count changes", "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_stale" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_n_clusters(2);
   prob.cluster();
   REQUIRE_NOTHROW(prob.find_total_cost());
@@ -180,8 +169,7 @@ TEST_CASE("a clustering goes stale when the cluster count changes", "[problem][c
 TEST_CASE("replacing the series drops the clustering, even with as many series",
           "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_replaced" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_n_clusters(2);
   prob.cluster();
   REQUIRE_NOTHROW(prob.find_total_cost());
@@ -209,8 +197,7 @@ TEST_CASE("replacing the series drops the clustering, even with as many series",
 
 TEST_CASE("the refusal names the counts it found", "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_counts" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_n_clusters(2);
   REQUIRE_THROWS_MATCHES(prob.find_total_cost(), dtwc::InvalidInput,
                          MessageMatches(ContainsSubstring("0 labels for N = 6")
@@ -222,8 +209,7 @@ TEST_CASE("set_n_clusters then cluster still clusters, for every method that run
 {
   const auto method = GENERATE(dtwc::Method::Kmedoids, dtwc::Method::LRCore, dtwc::Method::TADPole);
   CAPTURE(method);
-  ScratchDirectory dir{ "cluster_first_control" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_n_clusters(2);
   prob.set_method(method);
   prob.cluster();
@@ -242,8 +228,7 @@ TEST_CASE("set_n_clusters then cluster still clusters, for every method that run
 
 TEST_CASE("set_n_clusters refuses k < 1 and keeps the count it had", "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_setter_k" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_n_clusters(3);
   for (const int bad : { 0, -1, std::numeric_limits<int>::min() }) {
     CAPTURE(bad);
@@ -257,8 +242,7 @@ TEST_CASE("set_n_clusters refuses k < 1 and keeps the count it had", "[problem][
 TEST_CASE("k above N is accepted by the setter and refused when clustering",
           "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_k_above_n" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   REQUIRE_NOTHROW(prob.set_n_clusters(7));
   CHECK(prob.n_clusters() == 7);
   REQUIRE_THROWS_AS(prob.cluster(), dtwc::InvalidInput);
@@ -267,8 +251,7 @@ TEST_CASE("k above N is accepted by the setter and refused when clustering",
 
 TEST_CASE("set_band refuses a band below -1 and keeps the band it had", "[problem][cluster-first]")
 {
-  ScratchDirectory dir{ "cluster_first_setter_band" };
-  auto prob = six_series(dir.path);
+  auto prob = six_series();
   prob.set_band(2);
   for (const int bad : { -2, -5, std::numeric_limits<int>::min() }) {
     CAPTURE(bad);

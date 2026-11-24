@@ -419,9 +419,8 @@ dtwc::Dataset::series_type two_cluster_series()
 TEST_CASE("Tier-1 C++ cluster() leaves the working directory untouched",
           "[api][tier1][sideeffects]")
 {
-  // Problem::output_folder_ defaults to the CWD-relative "./results/",
-  // so a Tier-1 route that wrote run artifacts failed (or littered) whenever the
-  // caller ran from a directory without ./results/.
+  // A Tier-1 cluster() writes no file unless asked (Config::output is cleared), so a
+  // run from any directory leaves it as it was.
   const ScratchDirectory scratch{ "tier1_cwd" };
   const fs::path &sandbox = scratch.path;
   const auto series = two_cluster_series();

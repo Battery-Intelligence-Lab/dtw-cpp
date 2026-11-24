@@ -1237,13 +1237,6 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   plhs[0] = mxCreateLogicalScalar(ok); // false => requested solver not compiled in
 }
 
-static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
-{
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_output_folder requires handle and folder string.");
-  auto &prob = stored_problem(prhs[1]);
-  prob.set_output_folder(get_path(prhs[2], "output_folder"));
-}
-
 /// set_mip_settings(struct): reads any subset of the MIPSettings fields present.
 static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
@@ -1915,13 +1908,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
       cmd_Problem_get_clusters(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_is_distance_matrix_filled")
       cmd_Problem_is_distance_matrix_filled(nlhs, plhs, nrhs, prhs);
-    // Problem: method, solver, output folder, MIP settings, GPU precision, matrix dtype, checkpoint, n_clusters
+    // Problem: method, solver, MIP settings, GPU precision, matrix dtype, checkpoint, n_clusters
     else if (cmd == "Problem_set_method")
       cmd_Problem_set_method(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_solver")
       cmd_Problem_set_solver(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_set_output_folder")
-      cmd_Problem_set_output_folder(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_mip_settings")
       cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings")
