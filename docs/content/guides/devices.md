@@ -49,7 +49,13 @@ Metal: its default device); a request the kernels cannot run (a variant other th
 `standard`, a missing-data strategy, float32 series or FP64 on Metal, series of
 more than one feature a time step); a method with no GPU path (`onebatch`,
 `tadpole`); the GPU half of `cpu+gpu` (a build without CUDA, a streamed run). The
-decision is made before a series is read. A failure once the GPU has begun (out of
+decision is made before a series is read where C++ reads the input: `dtwc_cl`, `dtwc::run`
+with a path, and a path Python or MATLAB hand to it. Python and MATLAB read a Parquet
+file themselves, and Python's `cdist` a path or a `Dataset`, before they call C++, so
+there a request refused without `fallback` is refused after that read, with the same
+error (a build with no GPU backend, and in Python a machine with no GPU, are refused
+before it); with `fallback` the CPU run takes the series already read, and nothing is
+read twice. A failure once the GPU has begun (out of
 memory, a CUDA call that fails) is a device error whether or not `fallback` is set,
 and nothing runs again. `hpc` with `fallback` is `InvalidInput` in Python (the run is remote, with no
 local CPU to fall back to); C++ and MATLAB refuse `hpc` anyway.
@@ -58,7 +64,11 @@ On a `Problem` the request is kept, not replaced: `set_device(..., fallback)` re
 it (without `fallback` it still refuses what this build cannot select, as before),
 and each fill and each method resolves it where it starts, so one `Problem` can fall
 back for `onebatch` and compute the next `pam` on the GPU, and the order of the
-setters does not matter. The stderr line comes once per call that falls back.
+setters does not matter. The stderr line comes once per call that falls back, so a
+fill and then `cluster()` say it twice, and `auto` is resolved for the device that
+computes the call: on a fallback, as on the CPU (PAM up to 5,000 series, CLARA above),
+whether or not the matrix is already filled. Changing only `fallback` keeps a filled
+matrix, whichever device computed it.
 
 ## A Problem's device
 

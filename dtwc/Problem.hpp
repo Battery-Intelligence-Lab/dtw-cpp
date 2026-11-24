@@ -450,7 +450,9 @@ public:
   /// setters does not matter. Without it, set_device raises what this build cannot select (below), the other refusals
   /// are the DeviceError of the fill or the method, and one_batch_pam and tadpole on a GPU Problem are refused, as they
   /// compute on the CPU as they go. A failure once the GPU has begun (a CUDA call that fails, out of memory) is a
-  /// DeviceError either way.
+  /// DeviceError either way. Each call settles the request again, so a fill and then cluster() say it twice, and `auto`
+  /// is resolved for the device that computes the call: on a fallback, as on the CPU. Changing only `fallback` keeps a
+  /// filled matrix, whichever device computed it: its distances do not depend on the flag.
   /// @throws DeviceError for `gpu` on a build with no GPU backend, for cpu+gpu
   ///         on a build without CUDA, and for a GPU index other than 0 on
   ///         Metal, which runs on the system default GPU (not with `fallback`);
