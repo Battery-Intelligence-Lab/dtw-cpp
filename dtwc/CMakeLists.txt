@@ -37,7 +37,7 @@ endforeach()
 # The umbrella header includes the libraries' headers.
 target_sources(dtwc++ INTERFACE FILE_SET HEADERS BASE_DIRS . FILES dtwc.hpp)
 
-# The third-party C the Arrow IPC reader runs: nanoarrow's IPC extension and flatcc
+# The third-party C the Arrow IPC reader runs: nanoarrow, its IPC extension and flatcc
 # (extern/nanoarrow lists them), lz4's library and zstd's decoder (fetched by
 # cmake/Dependencies.cmake). One object library, linked into dtwc_core: without the
 # project's warnings (their C set is the C++ one), position-independent (the wheel's
