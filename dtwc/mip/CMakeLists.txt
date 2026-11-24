@@ -13,7 +13,6 @@ target_sources(mip-solvers
 target_sources(dtwc_core
   PUBLIC FILE_SET HEADERS FILES
     mip.hpp
-    highs_support.hpp
     nearest_medoid.hpp
     decode_assignment.hpp
     lagrangian_root.hpp
