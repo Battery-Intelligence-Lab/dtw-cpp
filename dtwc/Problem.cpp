@@ -685,12 +685,6 @@ double Problem::pair_distance(std::size_t i, std::size_t j) const
 core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity() const
 {
-  return distance_checkpoint_identity(distance_.metric);
-}
-
-core::DistanceMatrix::fingerprint_type
-Problem::distance_checkpoint_identity(core::MetricType metric) const
-{
   // The precision the distances are computed in: the series' on the CPU, the
   // GPU's on a GPU. Not the device: FP64 on a CPU and on a GPU differ by
   // rounding, so either's cache serves the other (and GPU 0's serves GPU 1),
@@ -714,7 +708,7 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   FingerprintHash configuration;
   static constexpr char configuration_domain[] = "dtwc-distance-cache-configuration-v2";
   configuration.update(configuration_domain, sizeof(configuration_domain) - 1);
-  hash_enum(configuration, metric);
+  hash_enum(configuration, distance_.metric);
   hash_u64(configuration, static_cast<std::uint64_t>(static_cast<std::int64_t>(distance_.band)));
   hash_enum(configuration, distance_.variant.variant);
   hash_double(configuration, distance_.variant.wdtw_g);
@@ -760,30 +754,16 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
 
 void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
 {
-  use_mmap_distance_matrix(cache_path, distance_.metric);
-}
-
-void Problem::use_mmap_distance_matrix(
-  const std::filesystem::path &cache_path, core::MetricType metric)
-{
   sync_band();
   // Every check, the identity and the mapping come before any change: a bind
-  // that fails leaves this Problem's metric and matrix as they were.
-  auto candidate = distance_;
-  candidate.metric = metric;
-  validate_distance(candidate, data_);
+  // that fails leaves this Problem's matrix as it was.
+  validate_distance(distance_, data_);
   // map() checks an existing file's magic, version, length, N and fingerprint
   // before any of its distances can be read.
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
-                                          distance_checkpoint_identity(metric), matrix_dtype_);
+                                          distance_checkpoint_identity(), matrix_dtype_);
   // A warm start holds every pair.
   const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix");
-  if (distance_.metric != metric) { // new semantics, as in set_metric
-    distance_.metric = metric;
-    clusters_ind.clear();
-    centroids_ind.clear();
-    rebind_dtw_fn();
-  }
   distMat = std::move(mapped);
   filled_ = distMat.size() > 0 && complete;
 }

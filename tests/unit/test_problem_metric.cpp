@@ -85,23 +85,18 @@ TEST_CASE("set_metric: the metric is part of refresh and of the checkpoint ident
   squared.fill_distance_matrix();
   REQUIRE(squared.is_distance_matrix_filled());
 
-  CHECK(squared.distance_checkpoint_identity()
-        == squared.distance_checkpoint_identity(MetricType::SquaredL2));
-  CHECK(squared.distance_checkpoint_identity()
-        != squared.distance_checkpoint_identity(MetricType::L1));
+  auto l1 = make_problem(series); // the same series under the default metric
+  auto resumed = make_problem(series);
+  resumed.set_metric(MetricType::SquaredL2);
+  CHECK(squared.distance_checkpoint_identity() != l1.distance_checkpoint_identity());
+  CHECK(squared.distance_checkpoint_identity() == resumed.distance_checkpoint_identity());
 
   ScratchDirectory scratch("if2_metric_checkpoint");
   const std::string dir = (scratch.path / "ckpt").string();
   dtwc::save_checkpoint(squared, dir); // tagged with squared.metric()
 
-  auto l1 = make_problem(series);
   CHECK_THROWS_AS(dtwc::load_checkpoint(l1, dir), dtwc::InvalidInput); // another metric's matrix
-  // The three-argument form keeps its explicit tag, for a matrix filled in
-  // another metric than the Problem's (squared L2 into an L1 Problem).
-  CHECK(dtwc::load_checkpoint(l1, dir, MetricType::SquaredL2));
 
-  auto resumed = make_problem(series);
-  resumed.set_metric(MetricType::SquaredL2);
   REQUIRE(dtwc::load_checkpoint(resumed, dir));
   REQUIRE(resumed.is_distance_matrix_filled());
   CHECK(resumed.dist_by_ind(0, 1) == squared.dist_by_ind(0, 1));
@@ -147,11 +142,11 @@ TEST_CASE("set_metric: an mmap cache takes the metric, and the CPU fills it",
     CAPTURE(band);
     const auto cache = scratch.path / ("sq_" + std::to_string(band) + ".cache");
     {
-      // The two-argument form is set_metric + bind. On the synced base the
-      // CPU fill refused it ("a non-L1 cache is external-fill-only").
+      // A squared-L2 Problem's mapped cache, which the CPU fills.
       auto prob = make_problem(series);
       prob.set_band(band);
-      prob.use_mmap_distance_matrix(cache, MetricType::SquaredL2);
+      prob.set_metric(MetricType::SquaredL2);
+      prob.use_mmap_distance_matrix(cache);
       CHECK(prob.metric() == MetricType::SquaredL2);
       prob.fill_distance_matrix();
       for (std::size_t i = 0; i < series.size(); ++i)
@@ -161,8 +156,8 @@ TEST_CASE("set_metric: an mmap cache takes the metric, and the CPU fills it",
                                  series[i], series[j], band, MetricType::SquaredL2),
                                kCrossPathRel));
     }
-    // The one-argument form binds the Problem's metric: a squared-L2 Problem
-    // reopens the filled cache, an L1 one does not match it.
+    // The bind is for the Problem's metric: a squared-L2 Problem reopens the
+    // filled cache, an L1 one does not match it.
     {
       auto reopened = make_problem(series);
       reopened.set_band(band);
@@ -178,7 +173,7 @@ TEST_CASE("set_metric: an mmap cache takes the metric, and the CPU fills it",
   }
 }
 
-TEST_CASE("use_mmap_distance_matrix(path, metric) changes nothing when the bind fails",
+TEST_CASE("use_mmap_distance_matrix changes nothing when the bind fails",
           "[problem][metric][mmap][if2]")
 {
   const auto series = random_series(5, 9, 1, 19);
@@ -189,12 +184,13 @@ TEST_CASE("use_mmap_distance_matrix(path, metric) changes nothing when the bind 
     writer.use_mmap_distance_matrix(cache); // an L1 cache
   }
   auto prob = make_problem(series);
+  prob.set_metric(MetricType::SquaredL2);
   prob.fill_distance_matrix();
   const double before = prob.dist_by_ind(0, 1);
   // The L1 file does not match a squared-L2 identity, so the bind throws.
-  CHECK_THROWS_WITH(prob.use_mmap_distance_matrix(cache, MetricType::SquaredL2),
+  CHECK_THROWS_WITH(prob.use_mmap_distance_matrix(cache),
                     ContainsSubstring("fingerprint mismatch"));
-  CHECK(prob.metric() == MetricType::L1);
+  CHECK(prob.metric() == MetricType::SquaredL2);
   CHECK(prob.is_distance_matrix_filled());
   CHECK(prob.dist_by_ind(0, 1) == before);
 }

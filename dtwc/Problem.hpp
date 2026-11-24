@@ -238,8 +238,7 @@ private:
   /// refused (core::refuse_float32_range, its value computed again in double). A float64 matrix is not scanned.
   void refuse_float32_overflow(size_t r0, size_t r1);
 
-  friend bool load_checkpoint(Problem &prob, const std::string &path,
-                              core::MetricType metric);
+  friend bool load_checkpoint(Problem &prob, const std::string &path);
 
   /// An empty series has no finite DTW distance to anything: unrejected, it would
   /// cluster with DBL_MAX distances.
@@ -591,13 +590,9 @@ public:
   }
 
   /// Full data-plus-distance-semantics identity used by durable checkpoints,
-  /// for this Problem's metric(). Names and clustering outputs are
+  /// metric() included. Names and clustering outputs are
   /// intentionally excluded because they do not affect any stored distance.
   core::DistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
-  /// The same identity for distances computed with `metric`, which may differ
-  /// from metric() only for a matrix a producer outside this Problem filled.
-  core::DistanceMatrix::fingerprint_type distance_checkpoint_identity(
-    core::MetricType metric) const;
   /// Map the distance matrix to the `.dtwm` file `cache_path`, bound to this
   /// Problem's exact data and distance settings, metric() included. An existing
   /// file is reopened with the distances it holds (InvalidInput if they are for
@@ -607,11 +602,6 @@ public:
   /// setter and set_data detach the file. Call refresh_distance_matrix() before
   /// editing series values in place.
   void use_mmap_distance_matrix(const std::filesystem::path &cache_path);
-  /// Bind a cache for `metric`, which becomes this Problem's metric as with
-  /// set_metric: the cache and every distance computed into it share it. A
-  /// bind that throws leaves the metric and the matrix unchanged.
-  void use_mmap_distance_matrix(
-    const std::filesystem::path &cache_path, core::MetricType metric);
 
   void fill_distance_matrix();
   [[deprecated("use fill_distance_matrix")]] void fillDistanceMatrix() { fill_distance_matrix(); }

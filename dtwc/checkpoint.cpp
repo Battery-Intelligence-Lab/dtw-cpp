@@ -25,15 +25,10 @@ fs::path checkpoint_path(const Problem &prob, const std::string &directory)
 
 void save_checkpoint(const Problem &prob, const std::string &path)
 {
-  save_checkpoint(prob, path, prob.metric());
-}
-
-void save_checkpoint(const Problem &prob, const std::string &path, core::MetricType metric)
-{
   // Every check before the filesystem is touched.
   const std::size_t n = prob.size();
   if (n == 0) throw InvalidInput("save_checkpoint: the Problem holds no series.");
-  const auto identity = prob.distance_checkpoint_identity(metric);
+  const auto identity = prob.distance_checkpoint_identity();
   const core::DistanceMatrix &matrix = prob.distance_matrix();
   if (matrix.size() != 0 && matrix.size() != n)
     throw InvalidInput("save_checkpoint: the distance matrix has " + std::to_string(matrix.size())
@@ -49,13 +44,8 @@ void save_checkpoint(const Problem &prob, const std::string &path, core::MetricT
 
 bool load_checkpoint(Problem &prob, const std::string &path)
 {
-  return load_checkpoint(prob, path, prob.metric());
-}
-
-bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType metric)
-{
   prob.sync_band(); // the file is checked against the band the Problem computes with
-  const auto identity = prob.distance_checkpoint_identity(metric);
+  const auto identity = prob.distance_checkpoint_identity();
   const fs::path file = checkpoint_path(prob, path);
   std::error_code ec;
   const bool exists = fs::exists(file, ec);

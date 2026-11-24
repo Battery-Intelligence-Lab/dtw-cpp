@@ -283,7 +283,7 @@ class TestCheckpointMetricFingerprint:
 
     def test_squared_l2_checkpoint_is_rejected_by_an_l1_load(self, tmp_path):
         directory = str(tmp_path / "ckpt_sq")
-        dtwcpp.save_checkpoint(self._problem(filled=True), directory, dtwcpp.MetricType.SquaredL2)
+        dtwcpp.save_checkpoint(self._problem(filled=True, metric="squared_euclidean"), directory)
 
         # Default (L1) load must refuse the SquaredL2 fingerprint, loudly.
         target = self._problem()
@@ -293,7 +293,7 @@ class TestCheckpointMetricFingerprint:
 
         # The matching metric still loads, so the rejection is the fingerprint
         # and not a broken write.
-        assert dtwcpp.load_checkpoint(target, directory, dtwcpp.MetricType.SquaredL2) is True
+        assert dtwcpp.load_checkpoint(self._problem(metric="squared_euclidean"), directory) is True
 
     def test_l1_checkpoint_round_trips_on_the_default_metric(self, tmp_path):
         directory = str(tmp_path / "ckpt_l1")
@@ -304,8 +304,8 @@ class TestCheckpointMetricFingerprint:
         assert dtwcpp.load_checkpoint(target, directory) is True
         np.testing.assert_array_equal(target.distance_matrix(), source.distance_matrix())
 
-    def test_squared_euclidean_checkpoint_round_trips_without_naming_the_metric(self, tmp_path, dtwc_cl):
-        """A metric left out is the Problem's own, as in C++ save_checkpoint(prob, path) and dtwc_cl: a
+    def test_squared_euclidean_checkpoint_round_trips(self, tmp_path, dtwc_cl):
+        """The metric is the Problem's own, as in C++ save_checkpoint(prob, path) and dtwc_cl: a
         squared-Euclidean Problem's checkpoint was written L1-tagged from Python, which the C++ load refused."""
         source = self._problem(filled=True, metric="squared_euclidean")
         directory = str(tmp_path / "ckpt_sq_default")

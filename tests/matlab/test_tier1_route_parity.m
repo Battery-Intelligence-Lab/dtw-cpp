@@ -631,27 +631,12 @@ end
 % =========================================================================
 
 function test_checkpoint_metric_is_part_of_the_identity(testCase)
-%   Drift 10: without the metric argument a SquaredL2 matrix was stamped and
-%   reloaded as L1 (C++/Python have taken the argument since 2.0).
+%   Drift 10: a SquaredL2 matrix was stamped and reloaded as L1. The metric is
+%   the Problem's own, as C++ save_checkpoint(prob, path) and dtwc_cl take it.
     X = testCase.TestData.X;
     ckdir = [tempname '_ckm'];
     cleanupDir = onCleanup(@() remove_directory(ckdir));
 
-    prob = problem_with(X, 'ckpt_metric');
-    prob.fill_distance_matrix();
-    dtwc.save_checkpoint(prob, ckdir, 'squared_euclidean');
-
-    fresh = problem_with(X, 'ckpt_metric');
-    verifyError(testCase, @() dtwc.load_checkpoint(fresh, ckdir, 'l1'), ...
-        'dtwc:invalidArgument', 'an L1 load must reject a SquaredL2 checkpoint');
-    verifyTrue(testCase, dtwc.load_checkpoint(fresh, ckdir, 'squared_euclidean'));
-
-    verifyError(testCase, ...
-        @() dtwc.load_checkpoint(fresh, ckdir, 'not_a_metric'), ...
-        'dtwc:invalidArgument');
-
-    % Unnamed, the metric is the Problem's own, as C++ save_checkpoint(prob, path)
-    % and dtwc_cl take it: a squared-Euclidean Problem was stamped L1 here.
     own = problem_with(X, 'ckpt_metric_own');
     own.set_distance('Metric', 'squared_euclidean');
     own.fill_distance_matrix();

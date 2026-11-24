@@ -17,7 +17,6 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/pair.h>
-#include <nanobind/stl/optional.h>   // save_checkpoint / load_checkpoint: the metric is optional
 #include <nanobind/stl/shared_ptr.h> // _run hands dtwcpp._mip.solve the run's own Problem, to co-own
 
 #ifdef _OPENMP
@@ -1126,6 +1125,7 @@ NB_MODULE(_dtwcpp_core, m)
     .def("print_clusters", &dtwc::Problem::print_clusters)
     .def("__repr__", [](const dtwc::Problem &p) { return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
                                                          + ", k=" + std::to_string(p.n_clusters()) + ")"; });
+
   m.def("write_result_files", [](dtwc::Problem &prob, const std::filesystem::path &directory) {
           prob.require_clustered("write_result_files"); // before any file is opened: a refusal leaves none behind
           nb::gil_scoped_release release;
@@ -1138,7 +1138,6 @@ NB_MODULE(_dtwcpp_core, m)
         "that cannot be written in full.\n\n"
         "MUTATES `prob` when it fills the matrix: do not run it concurrently with any\n"
         "other method on the same Problem (see the Problem class docstring).");
-
 
   // =========================================================================
   // dtwc::run, the run dtwc_cl makes: _run and its _Result (C++ dtwc::Result)
@@ -1346,39 +1345,27 @@ NB_MODULE(_dtwcpp_core, m)
              + ", enabled=" + (o.enabled ? "True" : "False") + ")";
     });
 
-  m.def("save_checkpoint", [](const dtwc::Problem &prob, const std::string &path, std::optional<dtwc::core::MetricType> metric) {
+  m.def("save_checkpoint", [](const dtwc::Problem &prob, const std::string &path) {
     // An N^2 write; `prob` is const here and the writer only reads it.
     nb::gil_scoped_release release;
-    if (metric)
-      dtwc::save_checkpoint(prob, path, *metric);
-    else
-      dtwc::save_checkpoint(prob, path); // the Problem's own metric, as the C++ and the CLI
+    dtwc::save_checkpoint(prob, path);
   },
         "prob"_a,
         "path"_a,
-        "metric"_a = nb::none(),
         "Save the distance matrix to <path>/<name>.dtwm ('distances' for an\n"
         "unnamed Problem), replacing any previous checkpoint there. The\n"
         "directory is created if it does not exist; IOError if it cannot be.\n\n"
-        "`metric` is the pointwise metric the stored distances were computed\n"
-        "with. It is part of the identity fingerprint, so a SquaredL2 matrix is\n"
-        "no longer accepted by a later L1 load. Absent (None), the Problem's\n"
-        "own metric, as the CLI's checkpoint records it; name it only for a\n"
-        "matrix that was filled outside this Problem.");
+        "The Problem's metric is part of the identity fingerprint, so a SquaredL2\n"
+        "matrix is not accepted by a later L1 load.");
 
-  m.def("load_checkpoint", [](dtwc::Problem &prob, const std::string &path, std::optional<dtwc::core::MetricType> metric) {
+  m.def("load_checkpoint", [](dtwc::Problem &prob, const std::string &path) {
         nb::gil_scoped_release release;
-        return metric ? dtwc::load_checkpoint(prob, path, *metric) : dtwc::load_checkpoint(prob, path); }, "prob"_a, "path"_a, "metric"_a = nb::none(),
+        return dtwc::load_checkpoint(prob, path); }, "prob"_a, "path"_a,
         "Load <path>/<name>.dtwm into the Problem's distance matrix.\n\n"
         "Returns True when loaded, False only when there is no such file.\n"
         "Raises InvalidInput for a checkpoint of other series or other\n"
-        "distance settings, and IOError for a file that is not a whole .dtwm\n"
-        "file; neither changes the Problem.\n\n"
-        "`metric` is the pointwise metric THIS run computes with: a checkpoint\n"
-        "written under a different metric does not match the identity\n"
-        "fingerprint (InvalidInput). Absent (None), the Problem's own metric,\n"
-        "as the CLI loads; name it only for a matrix that was filled outside\n"
-        "this Problem.\n\n"
+        "distance settings (the metric included), and IOError for a file that is\n"
+        "not a whole .dtwm file; neither changes the Problem.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");
 
