@@ -596,7 +596,8 @@ public:
   void print_clusters() const;
 
   // Initialisation of clusters:
-  /// Runs init_fun with random_seed().
+  /// Runs init_fun with random_seed(). A repeated call reuses that seed, so it makes the same start, unless
+  /// set_random_seed changes it.
   void init() { init_fun(*this, random_seed_); }
 
   // Clustering functions:
