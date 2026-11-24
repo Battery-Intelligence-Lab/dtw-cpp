@@ -474,8 +474,10 @@ def _set_key(config, key, value, name=None):
     float; C++ then checks the value itself."""
     from dtwcpp import InvalidInput, _dtwcpp_core
     if key.startswith("_") or not hasattr(_dtwcpp_core.Config, key):
-        valid = sorted(n for n in dir(_dtwcpp_core.Config)
-                       if not n.startswith("_") and n != "n_clusters")  # k names it
+        # The Config's fields (k names n_clusters) and the keys cluster() takes itself.
+        valid = sorted({n for n in dir(_dtwcpp_core.Config) if not n.startswith("_") and n != "n_clusters"}
+                       | {"checkpoint", "checkpoint_interval", "device", "dtype", "gpu_device", "output",
+                          "upload_input"})
         raise InvalidInput(f"cluster: unknown key '{key}'. Valid keys: "
                            + ", ".join(valid) + ".")
     current = getattr(config, key)
@@ -534,8 +536,8 @@ def _run_local(dataset, config, device, backend, *, output="", checkpoint="", ch
         source, reader = dataset.as_data(), {}
     config.name = config.name or dataset.name or _dtwcpp_core._default_name(
         source if isinstance(source, str) else "")
-    # An extension that links no HiGHS (the wheel) hands MIP on HiGHS and
-    # LR-core's kelley root to dtwcpp._mip.solve, on highspy.
+    # An extension that links no HiGHS (the wheel) hands MIP on HiGHS to
+    # dtwcpp._mip.solve, on highspy.
     result = _dtwcpp_core._run(config, source, dtype=dataset.dtype,
                                external=not dtwcpp.HIGHS_AVAILABLE, output=output,
                                checkpoint=checkpoint, checkpoint_interval=checkpoint_interval,

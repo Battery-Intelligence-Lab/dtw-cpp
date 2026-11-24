@@ -779,11 +779,6 @@ NB_MODULE(_dtwcpp_core, m)
     dtwc::core::z_normalize(x.data(), x.size());
     return x; }, "x"_a, "Return z-normalized copy (zero mean, unit stddev).");
 
-  m.def("_z_normalize_1d", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x) {
-    std::vector<double> out(x.data(), x.data() + x.size());
-    dtwc::core::z_normalize(out.data(), out.size());
-    return adopt_as_ndarray(std::move(out), { x.size() }); }, "x"_a, "Return z-normalized 1-D float64 ndarray without Python list boxing.");
-
   // =========================================================================
   // Data
   // =========================================================================
