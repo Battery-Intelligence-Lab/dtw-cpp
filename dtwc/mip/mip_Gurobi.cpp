@@ -8,17 +8,15 @@
 
 #include "mip.hpp"
 #include "decode_assignment.hpp"
-#include "../algorithms/fast_pam.hpp"
 #include "../Problem.hpp"
 #include "../base/error.hpp"
-#include "../base/settings.hpp"
-#include "../types/types.hpp"
 
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -46,42 +44,27 @@ void MIP_clustering_byGurobi(Problem &prob)
     if (n_uz > static_cast<std::size_t>(std::numeric_limits<int>::max()) / std::max<std::size_t>(n_uz, 1))
       throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
 
-    std::unique_ptr<GRBVar[]> w{ model.addVars(static_cast<int>(n_uz * n_uz), GRB_BINARY) };
+    // The model the HiGHS backend solves: N*N binaries, x[f, p] at f*N + p, the diagonal x[f, f] opening f.
+    const auto pmedian = mip::build_p_median_model(prob);
+    std::unique_ptr<GRBVar[]> w{ model.addVars(pmedian.num_col, GRB_BINARY) };
+    model.set(GRB_DoubleAttr_Obj, w.get(), pmedian.col_cost.data(), pmedian.num_col);
 
     // Branch on medoid selection first — once A[i,i] is fixed,
     // assignment is a transportation problem (TU) and LP-integral.
     for (std::size_t i = 0; i < n_uz; ++i)
       w[i * (n_uz + 1)].set(GRB_IntAttr_BranchPriority, 100);
 
-    for (auto i : Range(Nb)) {
+    // The k medoids and the one medoid of each point are equalities; the others are x[f, p] - x[f, f] <= 0 (their
+    // lower bound of -1 holds for any binaries).
+    for (std::size_t row = 0; row < pmedian.row_upper.size(); ++row) {
       GRBLinExpr lhs = 0;
-      for (auto j : Range(Nb))
-        lhs += w[j + i * Nb];
+      for (auto term = static_cast<std::size_t>(pmedian.a_start[row]);
+           term < static_cast<std::size_t>(pmedian.a_start[row + 1]); ++term)
+        lhs += pmedian.a_value[term] * w[static_cast<std::size_t>(pmedian.a_index[term])];
 
-      model.addConstr(lhs, '=', 1.0);
+      model.addConstr(lhs, pmedian.row_lower[row] == pmedian.row_upper[row] ? GRB_EQUAL : GRB_LESS_EQUAL,
+                      pmedian.row_upper[row]);
     }
-
-    for (auto j : Range(Nb))
-      for (auto i : Range(Nb))
-        model.addConstr(w[i + j * Nb] <= w[i * (Nb + 1)]);
-
-    {
-      GRBLinExpr lhs = 0;
-      for (auto i : Range(Nb))
-        lhs += w[i * (Nb + 1)];
-
-      model.addConstr(lhs == Nc);
-    }
-
-    prob.fill_distance_matrix();
-    const double max_distance = prob.max_distance();
-    const double scaling_factor = max_distance > 0.0 ? max_distance / 2.0 : 1.0; // the largest cost is 2 at any distance scale
-    GRBLinExpr obj = 0;
-    for (auto j : Range(Nb))
-      for (auto i : Range(Nb))
-        obj += w[i + j * Nb] * prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j)) / scaling_factor;
-
-    model.setObjective(obj, GRB_MINIMIZE);
 
     // Solver tuning from MIPSettings
     model.set(GRB_IntParam_NumericFocus, prob.mip_settings.numeric_focus);
@@ -92,22 +75,9 @@ void MIP_clustering_byGurobi(Problem &prob)
     if (!prob.mip_settings.verbose_solver)
       model.set(GRB_IntParam_OutputFlag, 0);
 
-    // Warm start: run FastPAM and feed solution as MIP start (without mutating prob on failure)
-    if (prob.mip_settings.warm_start) {
-      const auto pam_result = fast_pam_solve(prob, Nc, settings::DEFAULT_MAX_ITER, prob.random_seed());
-
-      for (std::size_t idx = 0; idx < n_uz * n_uz; ++idx)
-        w[idx].set(GRB_DoubleAttr_Start, 0.0);
-
-      for (index_t med : pam_result.medoid_indices)
-        w[static_cast<std::size_t>(med) * (n_uz + 1)].set(GRB_DoubleAttr_Start, 1.0);
-
-      // Gurobi indexing: A[i,j] at flat index i + j * Nb (column-major)
-      for (std::size_t j = 0; j < n_uz; ++j) {
-        const index_t med = pam_result.medoid_indices[static_cast<std::size_t>(pam_result.labels[j])];
-        w[static_cast<std::size_t>(med) + j * n_uz].set(GRB_DoubleAttr_Start, 1.0);
-      }
-    }
+    // Warm start: FastPAM's clustering, which the model carries when MIPSettings::warm_start is set
+    if (!pmedian.start.empty())
+      model.set(GRB_DoubleAttr_Start, w.get(), pmedian.start.data(), pmedian.num_col);
 
     if (prob.mip_settings.verbose_solver || prob.verbose())
       std::cout << "Finished setting up the MILP problem." << '\n';
@@ -125,7 +95,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     for (std::size_t index = 0; index < solution.size(); ++index)
       solution[index] = w[index].get(GRB_DoubleAttr_X);
 
-    prob.set_result(mip::decode_assignment(solution, Nb, Nc, true, "Gurobi"));
+    prob.set_result(mip::decode_assignment(solution, Nb, Nc, false, "Gurobi"));
 
   } catch (GRBException &e) {
     // Must precede std::runtime_error (which GRBException derives from).
@@ -133,6 +103,9 @@ void MIP_clustering_byGurobi(Problem &prob)
                       + std::to_string(e.getErrorCode()) + "): " + e.getMessage());
   } catch (const std::runtime_error &) {
     // Every DTWC++ error (the SolverError above, fast_pam's validation) passes unchanged, never rewrapped below.
+    throw;
+  } catch (const std::bad_alloc &) {
+    // Memory the system refused is no solver failure: it leaves as std::bad_alloc, as every refused allocation does.
     throw;
   } catch (...) {
     throw SolverError("Unknown exception during Gurobi optimisation.");
