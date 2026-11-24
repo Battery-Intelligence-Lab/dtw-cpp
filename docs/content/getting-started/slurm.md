@@ -78,8 +78,10 @@ uv run benchmarks/verify_results.py \
 ## From Python: `device="hpc"`
 
 `DTWClustering(device="hpc")` and `dtwcpp.cluster(..., device="hpc")` send the whole
-clustering job through the same wrapper, which ships inside the `dtwcpp` package, so an
-installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
+clustering job through the wrapper behind `test`, `submit-job`, `status` and the downloads,
+which ships inside the `dtwcpp` package, so an installed wheel needs no source checkout.
+`upload`, `build`, `submit-smoke` and `submit-benchmark-*` send a checkout's files, so they
+are in `scripts/slurm/slurm_remote.sh` of a clone alone. Put `.env` in the directory you run Python from,
 or set `DTWC_REPO_ROOT` to the directory that holds it; the labels, medoids, and
 `<name>_report.txt` are downloaded to `results/slurm/cluster_<job id>/` there.
 `cluster()` and `do_clustering()` hydrate all three onto the returned `Result`;
