@@ -343,17 +343,7 @@ std::vector<double> silhouette(Problem &prob)
  */
 double davies_bouldin(Problem &prob)
 {
-  const auto Nc = prob.n_clusters();
   prob.require_clustered("davies_bouldin");
-
-  // The Davies-Bouldin index is undefined for a single cluster: R_ij needs a
-  // second cluster (j != i) to form any similarity ratio, so the max_{j!=i}
-  // loop below finds nothing and the index silently collapses to 0. Reject
-  // Nc < 2 with a clear error instead.
-  if (Nc < 2)
-    throw InvalidInput(
-      "davies_bouldin requires at least 2 clusters; the Davies-Bouldin index "
-      "is undefined for a single cluster (no inter-cluster separation).");
 
   // k, i and j range over the REALISED clusters: an empty one has no meaningful
   // S_c or medoid, yet would still divide the final sum.
@@ -431,10 +421,10 @@ double calinski_harabasz(Problem &prob)
   // k is the number of REALISED clusters: it sets both the (k-1) and the (N-k)
   // degrees of freedom, so an empty declared cluster would bias both.
   const auto cluster_counts = cluster_counts_checked(prob, "calinski_harabasz");
-  const index_t k = n_realised_clusters(cluster_counts);
+  const index_t k = require_two_realised(
+    cluster_counts, "calinski_harabasz",
+    "the index divides the between-cluster scatter by k - 1, which is zero for a single realised cluster.");
 
-  if (k <= 1)
-    throw InvalidInput("Calinski-Harabasz Index requires at least 2 clusters");
   if (N <= k)
     throw InvalidInput("Calinski-Harabasz Index requires more points than clusters");
 
