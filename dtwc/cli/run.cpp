@@ -622,7 +622,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     // prunes (`can_prune`: bounds_valid's Standard DTW under L1 on univariate float64 series into a float64 matrix, no
     // missing-data strategy, no complete --dist-matrix, which is not read yet: the plan prices the envelopes beside
     // any), each series' envelope (`envs`: an upper and a lower vector of its values); the hierarchical
-    // clustering's dense copy of N x N doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table, N x m doubles,
+    // clustering's packed copy of N (N+1)/2 doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table, N x m doubles,
     // m as one_batch_pam.cpp's automatic_batch_size or --batch-size takes it, and its per-point vectors, at most 8
     // doubles a point. MIP's and LR-core's solver memory is not planned: MIP's outweighs the matrix (150 series of 10
     // steps: the plan held 102,600 bytes, the run needed about 118 MB), LR-core's does not (2,000 series: float32 or the
