@@ -33,7 +33,6 @@
 #include "../base/settings.hpp" // index_t
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace dtwc::mip {
@@ -71,51 +70,6 @@ LagrangianResult lagrangian_root(const double *D, index_t N, index_t k,
                                  double initial_ub = -1.0);
 
 /**
- * @brief The master LP of the Kelley root, as lagrangian_root_kelley drives it:
- *        maximise over box-bounded columns, add one row per cut, move column
- *        bounds, re-solve. Linked HiGHS implements it (highs_kelley_master); the
- *        Python extension, which links no HiGHS, implements it on the user's
- *        highspy (dtwcpp._mip).
- */
-class KelleyMaster
-{
-public:
-  virtual ~KelleyMaster() = default;
-  /// The LP: maximise Σ cost[c]·x[c] over lower[c] ≤ x[c] ≤ upper[c], c < ncol, with no rows. False if refused.
-  virtual bool pass_model(index_t ncol, const double *cost, const double *lower, const double *upper) = 0;
-  /// Add the row lower ≤ Σ_t value[t]·x[index[t]] ≤ upper, t < nnz.
-  virtual void add_row(double lower, double upper, index_t nnz, const index_t *index, const double *value) = 0;
-  /// Set the bounds of the columns first, ..., first + count − 1.
-  virtual void change_col_bounds(index_t first, index_t count, const double *lower, const double *upper) = 0;
-  /// Solve. True when the LP solved to optimality; its column values are then in x[0, ncol).
-  virtual bool run(double *x) = 0;
-};
-
-/// The Kelley master on linked HiGHS.
-/// @throws dtwc::SolverError in a build without HiGHS, naming the way out.
-std::unique_ptr<KelleyMaster> highs_kelley_master();
-
-/**
- * @brief Same Lagrangian bound, solved by a Kelley CUTTING-PLANE method — the
- *        "right tool" for the concave piecewise-linear dual.
- *
- * @details Rather than stepping a subgradient (O(1/√k) convergence, stalls at
- * the non-smooth optimum), this accumulates each evaluated `(L, subgradient)`
- * as a supporting hyperplane and maximizes the polyhedral outer model exactly by
- * a small LP master over the N multipliers μ (bounded to a box) plus one scalar
- * θ. Kelley converges FINITELY on a piecewise-linear function — a handful of
- * major iterations close gaps the subgradient cannot. The master LP is tiny
- * (N+1 columns, one row per major iteration), warm-started across iterations —
- * NOT the intractable N²-column compact LP. Measured, it certifies more roots
- * than the subgradient only on a line metric.
- *
- * @param D,N,k,initial_ub  As lagrangian_root.
- * @param master  The master LP, fresh: highs_kelley_master(), or the Python extension's.
- */
-LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, double initial_ub,
-                                        KelleyMaster &master);
-
-/**
  * @brief EXACT p-median solve: LR-bounded branch-and-bound on y over the core —
  *        "core Benders with y-only branching".
  *
@@ -136,14 +90,11 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
  *
  * @param D,N,k,initial_ub  As lagrangian_root.
  * @param max_nodes  Branch-and-bound node cap (MIPSettings::lr_max_nodes).
- * @param kelley     The root dual: Kelley's cutting planes on this master LP
- *                   (MIPSettings::lr_root = Kelley); null, the subgradient root.
  * @return `certified_optimal = true` and `lower_bound == upper_bound == optimum`
  *         when the tree is fully explored within the node cap.
  */
 LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
                                        double initial_ub = -1.0,
-                                       std::int64_t max_nodes = 2000000,
-                                       KelleyMaster *kelley = nullptr);
+                                       std::int64_t max_nodes = 2000000);
 
 } // namespace dtwc::mip

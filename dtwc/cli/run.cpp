@@ -450,8 +450,8 @@ const char *format_name(std::optional<InputFormat> format)
 }
 
 /// The run itself; `data` holds in-memory series, else config.input is read; `solver`, where given, clusters MIP on
-/// HiGHS and LR-core's Kelley root in RAM (detail::run). `stage` follows it: the stage it is in, its memory plan once
-/// made, and the report's figures.
+/// HiGHS in RAM (detail::run). `stage` follows it: the stage it is in, its memory plan once made, and the report's
+/// figures.
 Outcome execute(const Config &config, std::optional<Data> data, const ExternalSolver &solver, RunStage &stage)
 {
   // ---- 1. Every check that needs no series, before any file is touched (stage check, run_with's) ----
@@ -937,8 +937,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   // PAM, Lloyd's k-medoids and FastCLARA on a sample of every series fill the whole distance matrix before anything
   // else, past checks this run made already (k, max-iter, n-init, CLARA's plan), so the fill is a stage of its own;
   // the idempotent fill leaves their clustering nothing to compute. Every other method refuses what it cannot run
-  // before its own fill (the hierarchical clustering above its size, a MIP without its solver, LR-core's Kelley root
-  // without HiGHS), or fills nothing whole: its distances are computed inside the cluster stage.
+  // before its own fill (the hierarchical clustering above its size, a MIP without its solver), or fills nothing
+  // whole: its distances are computed inside the cluster stage.
   // A RAM-limited Parquet or Arrow IPC run is the one whose series the Problem does
   // not hold: FastCLARA streams them.
   const bool fills_first = !stream_payload && (method == Method::PAM || method == Method::Kmedoids
@@ -961,16 +961,15 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   }
   stage.note(std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside"));
   // In RAM the Problem clusters, but where detail::run was given a solver (a binding that links no HiGHS gives its
-  // own) and the run is MIP on HiGHS or LR-core's Kelley root, tested as Python's Problem.cluster override tests them:
-  // the solver's clustering is the run's, published on the Problem, which the Result reads.
+  // own) and the run is MIP on HiGHS, tested as Python's Problem.cluster override tests it: the solver's clustering is
+  // the run's, published on the Problem, which the Result reads.
   // FastCLARA in RAM runs on the run's own options, as its stream does, so the plan's GPU blocks
   // (clara.gpu_staging_bytes) reach it. Problem::cluster's checks on that path are made before it: k against the series
   // (require_clusterable, above), the method on cpu+gpu (apply); fast_clara makes its own (validate_clara_request,
   // resolve_clara_plan), as Problem::cluster's call of it did.
   const auto cluster_in_ram = [&] {
     if (prob.method() == Method::CLARA) return algorithms::fast_clara(prob, clara);
-    const bool by_solver = solver && ((prob.method() == Method::MIP && prob.solver() == Solver::HiGHS)
-                                      || (prob.method() == Method::LRCore && prob.mip_settings.lr_root == LRRoot::Kelley));
+    const bool by_solver = solver && prob.method() == Method::MIP && prob.solver() == Solver::HiGHS;
     if (!by_solver) return prob.cluster();
     core::ClusteringResult solved = solver(problem);
     prob.set_result(solved);

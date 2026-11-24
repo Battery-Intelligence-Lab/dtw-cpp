@@ -28,7 +28,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
-#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <base/timing.hpp> // dtwc::Clock
 
@@ -37,7 +36,6 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
-#include <memory>
 #include <numeric>
 #include <random>
 #include <string>
@@ -47,7 +45,6 @@ using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 using dtwc::mip::lagrangian_root;
 using dtwc::mip::lagrangian_root_exact;
-using dtwc::mip::lagrangian_root_kelley;
 using dtwc::mip::LagrangianResult;
 
 namespace {
@@ -182,31 +179,6 @@ void require_highs_solver()
   if (!highs_solver_available())
     SKIP("HiGHS is not compiled into this build.");
 }
-
-/// Linked HiGHS's Kelley master, counting the LPs it solves: the Kelley root ran on it.
-struct CountingMaster final : dtwc::mip::KelleyMaster
-{
-  std::unique_ptr<dtwc::mip::KelleyMaster> highs = dtwc::mip::highs_kelley_master();
-  int solves = 0;
-
-  bool pass_model(index_t ncol, const double *cost, const double *lower, const double *upper) override
-  {
-    return highs->pass_model(ncol, cost, lower, upper);
-  }
-  void add_row(double lower, double upper, index_t nnz, const index_t *index, const double *value) override
-  {
-    highs->add_row(lower, upper, nnz, index, value);
-  }
-  void change_col_bounds(index_t first, index_t count, const double *lower, const double *upper) override
-  {
-    highs->change_col_bounds(first, count, lower, upper);
-  }
-  bool run(double *x) override
-  {
-    ++solves;
-    return highs->run(x);
-  }
-};
 
 } // namespace
 
@@ -371,15 +343,9 @@ TEST_CASE("Exact LR-core B&B certifies the optimum on clustered data", "[lagrang
   }
 }
 
-TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime from either root", "[lagrangian][exact]")
+TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime", "[lagrangian][exact]")
 {
-  // MIPSettings::lr_root: the subgradient root (the default) needs no solver; the
-  // Kelley root's master LP does, and a build without HiGHS refuses it by name.
-  const bool kelley_here = highs_solver_available();
-  if (!kelley_here)
-    REQUIRE_THROWS_WITH(dtwc::mip::highs_kelley_master(),
-                        Catch::Matchers::ContainsSubstring("-DDTWC_ENABLE_HIGHS=ON"));
-  int checked = 0, engaged = 0, kelley_checked = 0;
+  int checked = 0, engaged = 0;
   std::int64_t total_nodes = 0;
   for (unsigned seed = 1; seed <= 24; ++seed) {
     const int N = 12 + static_cast<int>(seed % 3); // 12..14
@@ -397,68 +363,24 @@ TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime from e
     total_nodes += ex.nodes;
     if (ex.nodes > 0) ++engaged;
     ++checked;
-
-    if (kelley_here) {
-      CountingMaster master;
-      const LagrangianResult kx = lagrangian_root_exact(D.data(), N, k, -1.0, 2000000, &master);
-      INFO("kelley=" << kx.upper_bound << " nodes=" << kx.nodes << " master LPs=" << master.solves);
-      REQUIRE(master.solves > 0); // the Kelley root ran, on the master it was given
-      REQUIRE(kx.certified_optimal);
-      REQUIRE_THAT(kx.upper_bound, WithinAbs(orc.cost, tol));
-      REQUIRE_THAT(cost_of(kx.medoids, D, N), WithinAbs(orc.cost, tol));
-      ++kelley_checked;
-    }
   }
-  std::printf("[lagrangian][exact] adversarial: %d instances, tree engaged on %d, total nodes=%" PRId64
-              ", Kelley root on %d\n",
+  std::printf("[lagrangian][exact] adversarial: %d instances, tree engaged on %d, total nodes=%" PRId64 "\n",
               checked,
               engaged,
-              total_nodes,
-              kelley_checked);
+              total_nodes);
   REQUIRE(checked == 24);
-  REQUIRE(kelley_checked == (kelley_here ? 24 : 0));
   REQUIRE(engaged >= 1); // the branch-and-bound must actually run on the adversarial regime.
 }
 
 // ===========================================================================
-// KELLEY — the cutting-plane dual matches the optimum and certifies where the
-// subgradient stalls. Skips loudly if HiGHS is not compiled in.
-// ===========================================================================
-TEST_CASE("Lagrangian root (Kelley cutting-plane) matches the optimum", "[lagrangian][kelley]")
-{
-  if (!highs_solver_available()) {
-    WARN("HiGHS not available; skipping Kelley cutting-plane test.");
-    return;
-  }
-  for (unsigned seed = 1; seed <= 20; ++seed) {
-    const int N = 8 + static_cast<int>(seed % 7); // 8..14
-    const int k = 2 + static_cast<int>(seed % 3); // 2..4
-    const std::vector<double> D =
-      (seed % 2 == 0) ? uniform_D(N, seed) : D_from_positions(clustered_positions(N, k, seed));
-    const auto orc = brute_force_pmedian(D, N, k);
-
-    const LagrangianResult r =
-      lagrangian_root_kelley(D.data(), N, k, -1.0, *dtwc::mip::highs_kelley_master());
-
-    const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost)) + 1e-9;
-    INFO("seed=" << seed << " N=" << N << " k=" << k << " LB=" << r.lower_bound
-                 << " opt=" << orc.cost << " UB=" << r.upper_bound << " major=" << r.iterations);
-    REQUIRE(r.lower_bound <= orc.cost + tol);           // valid lower bound
-    REQUIRE(r.upper_bound >= orc.cost - tol);           // valid upper bound
-    REQUIRE(std::abs(r.upper_bound - orc.cost) <= tol); // primal exactly optimal
-    REQUIRE(static_cast<int>(r.medoids.size()) == k);
-  }
-}
-
-// ===========================================================================
-// BENCH — LR-core (subgradient AND Kelley) vs compact MIP across N (hidden: tag
+// BENCH — LR-core vs compact MIP across N (hidden: tag
 // [.] so ctest never runs it). Run explicitly: test_lagrangian_root "[bench]".
 // ADVISORY ONLY: this machine runs parallel workloads; read the SCALING, not ms.
 // ===========================================================================
 TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
 {
-  std::printf("\n   N    k | subgrad: ms  iters  gap     | kelley: ms  major gap     | MIP_ms   | opt\n");
-  std::printf("  -------+-----------------------------+----------------------------+----------+--------------\n");
+  std::printf("\n   N    k | subgrad: ms  iters  gap     | MIP_ms   | opt\n");
+  std::printf("  -------+-----------------------------+----------+--------------\n");
 
   for (int N : { 20, 50, 100, 200, 400, 800 }) {
     const int k = 3;
@@ -470,19 +392,6 @@ TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
     const LagrangianResult sg = lagrangian_root(D.data(), N, k, -1.0);
     const double sg_ms = sg_clk.duration() * 1000.0;
 
-    // --- LR-core Kelley cutting-plane (needs HiGHS) ---
-    double kel_ms = -1.0, kel_gap = -1.0, kel_cost = std::nan("");
-    int kel_major = -1;
-    try {
-      dtwc::Clock kel_clk;
-      const LagrangianResult kr = lagrangian_root_kelley(D.data(), N, k, -1.0, *dtwc::mip::highs_kelley_master());
-      kel_ms = kel_clk.duration() * 1000.0;
-      kel_major = kr.iterations;
-      kel_gap = kr.gap;
-      kel_cost = kr.upper_bound;
-    } catch (const dtwc::SolverError &) { /* HiGHS absent */
-    }
-
     // --- Compact MIP through the production Problem path ---
     Problem prob = make_problem_1d(pos, k);
     REQUIRE(prob.set_solver(Solver::HiGHS));
@@ -491,21 +400,16 @@ TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
     const double mip_ms = mip_clk.duration() * 1000.0;
     const double mip_cost = has_solution(prob) ? cost_of(prob.centroids_ind, D, N) : std::nan("");
 
-    std::printf("  %4d  %2d | %8.1f %5d  %.1e | %8.1f  %4d  %.1e | %8.1f | %-12.5f\n",
+    std::printf("  %4d  %2d | %8.1f %5d  %.1e | %8.1f | %-12.5f\n",
                 N,
                 k,
                 sg_ms,
                 sg.iterations,
                 sg.gap,
-                kel_ms,
-                kel_major,
-                kel_gap,
                 mip_ms,
                 has_solution(prob) ? mip_cost : sg.upper_bound);
   }
-  std::printf(
-    "\n  (ADVISORY timings — shared machine. gap = (UB-LB)/UB of the dual bound;\n"
-    "   Kelley converges FINITELY on the piecewise-linear dual — few major iters.)\n\n");
+  std::printf("\n  (ADVISORY timings — shared machine. gap = (UB-LB)/UB of the dual bound.)\n\n");
   SUCCEED();
 }
 
@@ -559,40 +463,32 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
 // ===========================================================================
 TEST_CASE("Method::LRCore clusters a Problem to the proven optimum", "[lagrangian][lrcore][api]")
 {
-  for (const LRRoot root : { LRRoot::Subgradient, LRRoot::Kelley })
-    for (unsigned seed = 1; seed <= 6; ++seed) {
-      const int k = 3, N = 12;
-      const auto pos = clustered_positions(N, k, 4200 + seed);
-      const auto D = D_from_positions(pos);
-      const auto orc = brute_force_pmedian(D, N, k);
+  for (unsigned seed = 1; seed <= 6; ++seed) {
+    const int k = 3, N = 12;
+    const auto pos = clustered_positions(N, k, 4200 + seed);
+    const auto D = D_from_positions(pos);
+    const auto orc = brute_force_pmedian(D, N, k);
 
-      Problem prob = make_problem_1d(pos, k);
-      prob.set_method(Method::LRCore);
-      prob.mip_settings.lr_root = root;
-      if (root == LRRoot::Kelley && !highs_solver_available()) {
-        REQUIRE_THROWS_AS(prob.cluster(), SolverError);
-        REQUIRE_FALSE(prob.is_distance_matrix_filled()); // refused before any distance was computed
-        continue;
-      }
-      prob.cluster();
+    Problem prob = make_problem_1d(pos, k);
+    prob.set_method(Method::LRCore);
+    prob.cluster();
 
-      REQUIRE(static_cast<int>(prob.centroids_ind.size()) == k);
-      REQUIRE(static_cast<int>(prob.clusters_ind.size()) == N);
-      // centroids_ind holds medoid point indices; its cost must be the optimum.
-      const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost));
-      INFO("root=" << name_of(lr_root_names, root) << " seed=" << seed << " oracle=" << orc.cost
-                   << " lrcore=" << cost_of(prob.centroids_ind, D, N));
-      REQUIRE_THAT(cost_of(prob.centroids_ind, D, N), WithinAbs(orc.cost, tol));
-      // The invariants of an exact p-median clustering: distinct medoids, each in its own cluster.
-      auto sorted = prob.centroids_ind;
-      std::sort(sorted.begin(), sorted.end());
-      REQUIRE(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
-      for (int c = 0; c < k; ++c)
-        REQUIRE(prob.clusters_ind[static_cast<std::size_t>(prob.centroids_ind[static_cast<std::size_t>(c)])] == c);
-      // clusters_ind[j] indexes into centroids_ind ⇒ each label is a valid cluster.
-      for (int j = 0; j < N; ++j) {
-        REQUIRE(prob.clusters_ind[static_cast<std::size_t>(j)] >= 0);
-        REQUIRE(prob.clusters_ind[static_cast<std::size_t>(j)] < k);
-      }
+    REQUIRE(static_cast<int>(prob.centroids_ind.size()) == k);
+    REQUIRE(static_cast<int>(prob.clusters_ind.size()) == N);
+    // centroids_ind holds medoid point indices; its cost must be the optimum.
+    const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost));
+    INFO("seed=" << seed << " oracle=" << orc.cost << " lrcore=" << cost_of(prob.centroids_ind, D, N));
+    REQUIRE_THAT(cost_of(prob.centroids_ind, D, N), WithinAbs(orc.cost, tol));
+    // The invariants of an exact p-median clustering: distinct medoids, each in its own cluster.
+    auto sorted = prob.centroids_ind;
+    std::sort(sorted.begin(), sorted.end());
+    REQUIRE(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
+    for (int c = 0; c < k; ++c)
+      REQUIRE(prob.clusters_ind[static_cast<std::size_t>(prob.centroids_ind[static_cast<std::size_t>(c)])] == c);
+    // clusters_ind[j] indexes into centroids_ind ⇒ each label is a valid cluster.
+    for (int j = 0; j < N; ++j) {
+      REQUIRE(prob.clusters_ind[static_cast<std::size_t>(j)] >= 0);
+      REQUIRE(prob.clusters_ind[static_cast<std::size_t>(j)] < k);
     }
+  }
 }

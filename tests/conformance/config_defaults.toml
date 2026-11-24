@@ -45,7 +45,6 @@ numeric-focus = 1
 mip-focus = 2
 verbose-solver = false
 lr-max-nodes = 2000000
-lr-root = "subgradient"
 device = "cpu"
 gpu-precision = "auto"
 gpu-share = -1

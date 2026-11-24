@@ -3,10 +3,10 @@
 @brief _dtwcpp_core._run and _Result: Python's route to C++ dtwc::run, the run dtwc_cl makes.
 @details
     _run runs a copy of a Config on a source, a path C++ reads or a Data in memory, with the GIL released for the
-    whole run, and returns the C++ dtwc::Result as _Result. With external=True, Method.MIP on HiGHS and LR-core's
-    kelley root solve with dtwcpp._mip.solve(prob), prob the run's own Problem (the wheel links no HiGHS); these tests
-    install a fake dtwcpp._mip, as test_mip.py patches highspy. dtwc_cl (DTWC_CL_PATH, conftest.py) is the oracle of
-    the runs' results.
+    whole run, and returns the C++ dtwc::Result as _Result. With external=True, Method.MIP on HiGHS solves with
+    dtwcpp._mip.solve(prob), prob the run's own Problem (the wheel links no HiGHS); these tests install a fake
+    dtwcpp._mip, as test_mip.py patches highspy. dtwc_cl (DTWC_CL_PATH, conftest.py) is the oracle of the runs'
+    results.
 @author Volkan Kumtepeli
 """
 import gc
@@ -174,9 +174,9 @@ def test_a_float32_matrix_is_float32_at_its_stored_width():
 
 
 def test_the_seam_hands_solve_the_runs_own_problem(monkeypatch):
-    """external=True: MIP on HiGHS and LR-core's kelley root call dtwcpp._mip.solve(prob) with the run's own Problem,
-    its series set, and its ClusteringResult is the run's; PAM never calls it, nor does a run without external. The
-    Problem outlives the run's Result: the object solve kept co-owns it."""
+    """external=True: MIP on HiGHS calls dtwcpp._mip.solve(prob) with the run's own Problem, its series set, and its
+    ClusteringResult is the run's; PAM never calls it, nor does a run without external. The Problem outlives the
+    run's Result: the object solve kept co-owns it."""
     calls = []
 
     def solve(prob):
@@ -190,17 +190,15 @@ def test_the_seam_hands_solve_the_runs_own_problem(monkeypatch):
     mip = core._run(_config(2, "mip", name="seam"), series, external=True)
     assert len(calls) == 1 and calls[0].size == 5 and calls[0].method == dtwcpp.Method.MIP
     assert (mip.labels.tolist(), mip.medoids.tolist(), mip.cost) == ([0, 0, 1, 1, 1], [1, 3], 2.5)
-    kelley = core._run(_config(2, "lrcore", lr_root="kelley"), series, external=True)
-    assert len(calls) == 2 and calls[1].method == dtwcpp.Method.LRCore and kelley.cost == 2.5
     core._run(_config(2, "pam"), series, external=True)
     try:
         core._run(_config(2, "mip"), series)  # linked HiGHS solves it; without, SolverError
     except dtwcpp.SolverError:
         pass
-    assert len(calls) == 2
+    assert len(calls) == 1
 
     kept = calls[0]
-    del mip, kelley
+    del mip
     calls.clear()
     gc.collect()
     assert kept.size == 5 and kept.series_name(4) == "e" and kept.labels().tolist() == [0, 0, 1, 1, 1]
