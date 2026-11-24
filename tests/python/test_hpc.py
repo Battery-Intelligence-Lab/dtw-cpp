@@ -202,11 +202,14 @@ class TestJobToml:
 
     def test_ndim_and_a_checkpoint_fail_before_anything_is_written(self, monkeypatch, tmp_path):
         """job.toml has no ndim, so the cluster would read multivariate series (a Data's
-        own ndim) as univariate ones, and a local checkpoint path or interval names nothing
-        there: all are refused before a run directory is written or the wrapper runs."""
+        own ndim among them) as univariate ones, and a local checkpoint path or interval
+        names nothing there: all are refused before a run directory is written or the
+        wrapper runs."""
         monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
         monkeypatch.setattr(_hpc, "SlurmRemoteRunner",
                             lambda repo_root: pytest.fail("the wrapper was reached"))
+        with pytest.raises(dtwcpp.InvalidInput, match="ndim=3"):
+            dtwcpp.cluster(dtwcpp.load(np.zeros((4, 5, 3)), ndim=3), 2, device="hpc")
         with pytest.raises(dtwcpp.InvalidInput, match="checkpoint"):
             dtwcpp.cluster(np.zeros((4, 5)), 2, device="hpc", checkpoint=str(tmp_path / "ckpt"))
         with pytest.raises(dtwcpp.InvalidInput, match="ndim=3"):

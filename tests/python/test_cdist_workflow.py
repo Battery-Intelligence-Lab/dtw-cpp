@@ -145,10 +145,10 @@ class TestClusterFilesAndFastIngest:
         with pytest.raises(dtwcpp.InvalidInput, match="checkpoint-interval requires"):
             dtwcpp.cluster(ds, 2, checkpoint_interval=5, **keys)
 
-    def test_a_dataset_refuses_a_dtype_it_was_not_made_with(self):
+    def test_a_dataset_refuses_reader_options_it_was_not_made_with(self):
         """A Dataset is read with the options it was made with: a dtype given to cluster(),
-        even at its default, or to cdist(), that is another value is refused, naming both;
-        the same value, spelled either way, or none, runs."""
+        even at its default, or to cdist(), that is another value is refused, naming both,
+        and so is an ndim another than a Data's own; the same value, or none, runs."""
         ds = dtwcpp.load(np.vstack([np.zeros((3, 6)), np.full((3, 6), 9.0)]), skip_rows=1)
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Dataset was made with dtype='float64'"):
             dtwcpp.cdist(ds, dtype="float32")
@@ -159,6 +159,8 @@ class TestClusterFilesAndFastIngest:
             dtwcpp.cluster(ds32, 2, dtype="float64")
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Data was made with dtype='float64'"):
             dtwcpp.cdist(ds.as_data(), dtype="float32")
+        with pytest.raises(dtwcpp.InvalidInput, match="Data already carries ndim=2, which disagrees with ndim=3"):
+            dtwcpp.load(dtwcpp.load(ds.source, ndim=2).as_data(), ndim=3)
         assert dtwcpp.cluster(ds, 2).n_series == 5
         assert dtwcpp.cluster(ds32, 2, dtype="float32").n_series == 6
         assert dtwcpp.cluster(ds32, 2, dtype="f32").n_series == 6

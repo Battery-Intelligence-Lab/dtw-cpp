@@ -199,6 +199,8 @@ class Dataset:
         if not isinstance(dtype, str):
             raise TypeError(f"load: dtype must be a string such as 'float32', got {type(dtype).__name__}")
         from dtwcpp import _dtwcpp_core
+        if isinstance(source, _dtwcpp_core.Data) and ndim not in (1, source.ndim):
+            raise InvalidInput(f"load: Data already carries ndim={source.ndim}, which disagrees with ndim={ndim}.")
         self.source = source
         self.skip_cols = int(skip_cols)
         self.skip_rows = int(skip_rows)
@@ -270,14 +272,18 @@ class Dataset:
 def _keep_options(dataset, given, where):
     """``dataset``, which is read with the reader options it was made with, after
     checking ``given``, the options (``skip_cols``, ``skip_rows``, ``delimiter``,
-    ``dtype``) the caller named, against them: one that differs raises
+    ``dtype``, ``ndim``) the caller named, against them: one that differs raises
     :class:`dtwcpp.InvalidInput` naming both values, one equal to the Dataset's
     own is no refusal. A value is checked and spelled as a Dataset takes it
-    (``"f32"`` is ``"float32"``, ``""`` and ``None`` are one delimiter)."""
+    (``"f32"`` is ``"float32"``, ``""`` and ``None`` are one delimiter), and
+    a Dataset that has read an Arrow IPC file has the file's ``ndim``."""
     from dtwcpp import InvalidInput
     asked = Dataset(dataset.source, **given)
     for key in given:
-        made, wanted = getattr(dataset, key), getattr(asked, key)
+        if key == "ndim":
+            made, wanted = dataset._ndim if dataset._data is None else dataset._data.ndim, asked._ndim
+        else:
+            made, wanted = getattr(dataset, key), getattr(asked, key)
         if key == "delimiter":
             made, wanted = made or None, wanted or None
         if wanted != made:
@@ -287,24 +293,31 @@ def _keep_options(dataset, given, where):
     return dataset
 
 
-def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64"):
+def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64", ndim=1):
     """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
     ``dtype="float32"`` stores the series as float32, half the memory: a file's
     reader rounds each value, never holding a float64 copy (float32 input data
-    alone does not choose it). A Dataset passes through with the options it was
-    made with: a keyword other than its default that differs from the Dataset's
-    raises :class:`dtwcpp.InvalidInput` naming both values, one equal to it
-    runs, and ``name`` is refused. ``load`` cannot tell a keyword at its default
-    from one not given; :func:`cluster` can."""
+    alone does not choose it). ``ndim`` is the number of values per time step of
+    a multivariate series (1, the default, is univariate): each series holds its
+    steps interleaved, so its length is a multiple of ``ndim``, and an array of
+    shape ``(n_series, n_steps, ndim)`` takes it too; an Arrow IPC file gives its
+    own in its schema metadata, and one given here that differs is refused when
+    the file is read, as is one that differs from a :class:`Data`'s own.
+    :func:`cluster` takes a series' ``ndim`` from its Dataset. A Dataset passes
+    through with the options it was made with: a keyword other than its default
+    that differs from the Dataset's raises :class:`dtwcpp.InvalidInput` naming
+    both values, one equal to it runs, and ``name`` is refused. ``load`` cannot
+    tell a keyword at its default from one not given; :func:`cluster` can."""
     if isinstance(source, Dataset):
         if name is not None:
             from dtwcpp import InvalidInput
             raise InvalidInput("load: Dataset keeps the options it was made with; unexpected ['name'].")
         return _keep_options(source, {key: value for key, value, default in (
             ("skip_cols", skip_cols, 0), ("skip_rows", skip_rows, 0),
-            ("delimiter", delimiter, None), ("dtype", dtype, "float64")) if value != default}, "load")
+            ("delimiter", delimiter, None), ("dtype", dtype, "float64"), ("ndim", ndim, 1)) if value != default},
+            "load")
     return Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
-                   delimiter=delimiter, name=name, dtype=dtype)
+                   delimiter=delimiter, name=name, dtype=dtype, ndim=ndim)
 
 
 class Result:
@@ -564,7 +577,8 @@ def cluster(data, k, **keys):
     :func:`load`'s, for a path or an array cluster() loads (``"float32"`` stores
     the series at half the memory), and a :class:`Dataset` keeps its own: one
     given that differs raises :class:`dtwcpp.InvalidInput`, as in
-    :func:`load`. ``keys`` are the
+    :func:`load`, which also takes ``ndim``: a multivariate input is
+    ``cluster(load(X, ndim=3), k)``. ``keys`` are the
     keys of a dtwc_cl run — its long names in snake_case: ``method``, ``band``,
     ``metric``, ``variant`` and its parameters (``wdtw_g``, ``adtw_penalty``,
     ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
