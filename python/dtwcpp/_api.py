@@ -639,7 +639,8 @@ def cluster(data, k, **keys):
     that many rows (0, the default: once, at the end) and needs ``checkpoint``,
     else the run raises :class:`dtwcpp.InvalidInput`. ``upload_input=True`` sends
     the local file or folder a path names with a ``device="hpc"`` job, which
-    otherwise reads an absolute path on the cluster. An ``hpc`` run is the
+    otherwise reads an absolute path on the cluster; any other device refuses it
+    with :class:`dtwcpp.InvalidInput`. An ``hpc`` run is the
     cluster's: it refuses ``checkpoint`` and ``checkpoint_interval``, and its
     ``output`` receives the files it downloaded. Keys kept in a dict run again as
     ``cluster(data, 3, **opts)``.
@@ -656,6 +657,9 @@ def cluster(data, k, **keys):
     if gpu_device is not None and eff.strip().lower() != "hpc:gpu":
         raise InvalidInput(f"cluster: gpu_device names the GPU of a device='hpc:gpu' "
                            f"run, and the device is '{eff}'.")
+    if upload_input and backend != "hpc":
+        raise InvalidInput(f"cluster: upload_input sends a local path with a device='hpc' run, "
+                           f"and the device is '{eff}'; leave upload_input at False.")
     data = _keep_options(data, given, "cluster") if isinstance(data, Dataset) else Dataset(data, **given)
 
     if backend == "hpc":

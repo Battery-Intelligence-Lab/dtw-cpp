@@ -219,6 +219,13 @@ class TestClusterKeywords:
                 "must_not_be_loaded.tsv", k=1, device="definitely-not-a-device",
             )
 
+    def test_upload_input_belongs_to_an_hpc_run(self):
+        """upload_input sends a local path with an hpc job: a local device refuses it, naming the
+        device, as gpu_device is refused off hpc:gpu; left False it runs."""
+        with pytest.raises(dtwcpp.InvalidInput, match="upload_input .* device='hpc' run, and the device is 'cpu'"):
+            dtwcpp.cluster([[0.0], [1.0]], k=2, device="cpu", upload_input=True)
+        assert len(dtwcpp.cluster([[0.0], [1.0], [5.0]], k=2, upload_input=False).labels) == 3
+
 
 # ---------------------------------------------------------------------------
 # cluster() — local cpu path
