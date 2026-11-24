@@ -461,8 +461,9 @@ TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
   };
   std::vector<std::string> names{ "a", "b", "c", "d", "pos", "neg" };
 
-  int threw = 0;
-  for (std::uint64_t seed = 0; seed < 64; ++seed) {
+  constexpr std::uint64_t seeds = 64;
+  std::uint64_t threw = 0;
+  for (std::uint64_t seed = 0; seed < seeds; ++seed) {
     Problem problem("obpam_nonfinite");
     problem.set_data(Data(std::vector<std::vector<data_t>>(series),
                           std::vector<std::string>(names)));
@@ -478,8 +479,10 @@ TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
       ++threw; // loud rejection: the required behaviour
     }
   }
-  // Non-vacuity: the poison configuration really is reachable in this sweep.
-  REQUIRE(threw > 0);
+  // Every seed is refused: a poison point in the batch fails the table, a poison medoid fails the distance check
+  // (its distance to the other poison point is +inf), and with neither a medoid the two points' distances of about
+  // DBL_MAX sum to +inf, which the objective's check refuses.
+  REQUIRE(threw == seeds);
 }
 
 TEST_CASE("OneBatchPAM's final assignment is the serial scan at every thread count",
