@@ -261,6 +261,30 @@ def test_an_arrow_ipc_view_refuses_a_write_and_clusters_as_its_series_in_memory(
     assert mapped.cost == in_memory.cost
 
 
+@pytest.mark.parametrize("kind", ["Table", "RecordBatchReader", "ChunkedArray"])
+def test_a_pyarrow_stream_reads_as_its_source_across_its_batches(kind):
+    """What a user hands dtwcpp.load: a pyarrow Table, RecordBatchReader or ChunkedArray, each an Arrow C stream
+    only, of two batches (three series, then one) of ragged lengths. The series, their lengths and their names
+    are the source's; a bare list column has no names, so its series are series_<i>, numbered across the batches."""
+    pa = pytest.importorskip("pyarrow")
+    series = [[0.0, 0.5, 1.0], [2.5, 1.0], [9.0], [4.0, 4.0, 4.0, 4.0]]
+    names = ["a", "b", "c", "d"]
+    column = pa.list_(pa.float64())
+    table = pa.concat_tables([pa.table({"name": names[:3], "data": pa.array(series[:3], column)}),
+                              pa.table({"name": names[3:], "data": pa.array(series[3:], column)})])
+    if kind == "Table":
+        source = table
+    elif kind == "RecordBatchReader":
+        source = pa.RecordBatchReader.from_batches(table.schema, table.to_batches())
+    else:
+        source = pa.chunked_array([pa.array(series[:3], column), pa.array(series[3:], column)])
+        names = [f"series_{i}" for i in range(len(series))]
+    data = dtwcpp.load(source).as_data()
+    assert data.p_vec == series
+    assert data.p_names == names
+    assert [data.series_length(i) for i in range(data.size)] == [3, 2, 1, 4]
+
+
 # ---------------------------------------------------------------------------
 # HDF5 (skip if h5py is not installed)
 # ---------------------------------------------------------------------------
