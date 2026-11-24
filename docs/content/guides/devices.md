@@ -18,9 +18,45 @@ result = dtwc.cluster(data, 3, device="gpu:1")
 `gpu` resolves to CUDA where compiled and to Metal on macOS. `cpu+gpu` runs the
 CPU's threads and a CUDA GPU together ([below](#cpu-and-gpu-together-cpugpu)).
 A request that cannot be honoured raises a device error; DTWC++ does not silently
-run the same request on CPU. `onebatch` and `tadpole` compute on the CPU as they go
-and reject a GPU request, `cpu+gpu` included. `clara` runs on a GPU (below) from
-`dtwc_cl`, C++, Python and MATLAB alike, on a build with a GPU backend.
+run the same request on CPU. The one way to run it there is to say so:
+`fallback` ([below](#fallback-a-gpu-request-that-cannot-be-honoured)). `onebatch` and
+`tadpole` compute on the CPU as they go and reject a GPU request, `cpu+gpu` included.
+`clara` runs on a GPU (below) from `dtwc_cl`, C++, Python and MATLAB alike, on a
+build with a GPU backend.
+
+## Fallback: a GPU request that cannot be honoured
+
+`fallback` makes the device a wish. Where the request cannot be honoured, the call
+computes on the CPU instead of raising a device error, and says so: one line on
+stderr, `[dtwc] gpu requested: <reason>; running on cpu (fallback)`, the run
+report's configuration row (`device cpu (gpu requested; fallback: <reason>)`), and a
+result whose device is `cpu`. It is off by default and belongs to one call; the
+process-wide `device(...)` has none.
+
+| Where | How |
+|---|---|
+| `dtwc_cl` | `--fallback` (config key `fallback`) |
+| C++ | `Config::fallback`; `Problem::set_device(device, index, fallback)`; `cdist(X, Y, distance, device, index, precision, share, fallback)` |
+| Python | `cluster(..., device="gpu", fallback=True)`, `cdist(..., fallback=True)`, `DTWClustering(device="gpu", fallback=True)`, `Problem("p", device="gpu", fallback=True)` and `set_device("gpu", fallback=True)` |
+| MATLAB | `'Fallback', true` in `dtwc.cluster`, `dtwc.distance.cdist`, `dtwc.Problem(..., 'Device', 'gpu', 'Fallback', true)` and `set_device`, and the `Fallback` property of `dtwc.DTWClustering` |
+
+What is checked before anything runs, and so falls back, is everything that does not
+need a series computed: a build with no GPU backend; no usable GPU (CUDA: the device
+count, the ordinal, compute capability 8.0 or newer and a context on the device;
+Metal: its default device); a request the kernels cannot run (a variant other than
+`standard`, a missing-data strategy, float32 series or FP64 on Metal, series of
+more than one feature a time step); a method with no GPU path (`onebatch`,
+`tadpole`); the GPU half of `cpu+gpu` (a build without CUDA, a streamed run). The
+decision is made before a series is read. A failure once the GPU has begun (out of
+memory, a CUDA call that fails) is a device error whether or not `fallback` is set,
+and nothing runs again. `hpc` with `fallback` is `InvalidInput` in Python (the run is remote, with no
+local CPU to fall back to); C++ and MATLAB refuse `hpc` anyway.
+
+On a `Problem` the request is kept, not replaced: `set_device(..., fallback)` records
+it (without `fallback` it still refuses what this build cannot select, as before),
+and each fill and each method resolves it where it starts, so one `Problem` can fall
+back for `onebatch` and compute the next `pam` on the GPU, and the order of the
+setters does not matter. The stderr line comes once per call that falls back.
 
 ## A Problem's device
 
@@ -46,7 +82,7 @@ index; Metal has GPU 0 only, so `gpu:1` there is a device error, never GPU 0.
 `set_gpu_precision` chooses what the GPU computes in (`auto`, `fp32`, `fp64`), and
 `set_gpu_share` how `cpu+gpu` splits its work (below).
 `gpu` on a build without a GPU backend, and `cpu+gpu` on one without CUDA, raise a
-device error at the call; `hpc`
+device error at the call, unless the call says `fallback` (above); `hpc`
 raises a device error,
 because it submits a whole run (`dtwc.cluster(..., device="hpc")` in Python)
 rather than computing a `Problem` locally.
@@ -72,13 +108,16 @@ longest series is an invalid-argument error naming both series and the smallest
 feasible band: such a pair has no warping path, and its distance would otherwise
 be the finite `1.8e308` sentinel. So is an empty series, which `Data::p_vec` can leave after `set_data`.
 
-On-demand distances and the schedules `onebatch` and `tadpole`, which compute
-the pairs they need as they go, compute through `Problem::dtw_function()`, on the
-CPU even when a `Problem`'s device is a GPU; `dtwc_cl`, C++, Python and MATLAB `cluster(...)` and `DTWClustering`,
-which hand their settings to a `Problem` through `dtwc::apply`, reject
-`onebatch` and `tadpole` on a GPU instead. On `cpu+gpu`, and with a forced `gpu_share`
-on any device, the two are refused on a `Problem` too (`one_batch_pam(prob)`,
-`tadpole(prob)`, `Problem::cluster`): they have no fill and no pass to split. FastCLARA on a GPU fills its
+On-demand distances, which compute the pairs a method needs as it goes, compute
+through `Problem::dtw_function()`, on the CPU even when a `Problem`'s device is a GPU
+(the request is still checked there, as above). `onebatch` and `tadpole` compute
+that way too, so on a GPU, `cpu+gpu` included, `dtwc_cl`, C++, Python and MATLAB `cluster(...)` and
+`DTWClustering`, which hand their settings to a `Problem` through `dtwc::apply`, and
+`one_batch_pam(prob)`, `tadpole(prob)` and `Problem::cluster` on a `Problem`,
+refuse them: they have no fill and no pass for a GPU to take. With `fallback` they
+compute on the CPU and say so. A forced `gpu_share` on any device other than
+`cpu+gpu` is refused on a `Problem` too, as there is no fill and no pass to split.
+FastCLARA on a GPU fills its
 sample matrices there (each sample is a view of its series on CUDA, a copy on
 Metal, whose fill uploads owned series) and, with CUDA, assigns every series to
 the medoids there too, a block of series at a time through a two-stream pipeline

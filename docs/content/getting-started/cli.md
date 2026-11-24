@@ -346,6 +346,7 @@ CUDA's `auto` depends on the GPU, so it is not a stable cache identity (Metal's
 | `-d, --device <string>`    | Compute device: `cpu`, `gpu`, `gpu:N` (`cuda`, `cuda:N` are the same; CUDA on NVIDIA, Metal on macOS), `cpu+gpu`, `cpu+gpu:N` (the distance matrix's fill and FastCLARA's assignment pass split between the CPU and a CUDA GPU) | `cpu`   |
 | `--gpu-precision <string>` | GPU kernel precision. Alias: `--gpu-dtype`. Values: `auto`, `fp32`/`f32`/`float32`, `fp64`/`f64`/`float64`/`double` | `auto` |
 | `--gpu-share <number>`     | `cpu+gpu`: the GPU's share of the work, in [0, 1]; `-1` measures it at the start of the work, and a value forces it. A share outside [0, 1], and a forced share on a device other than `cpu+gpu`, exit 1 | `-1` |
+| `--fallback`               | Run on the CPU a GPU request that cannot be honoured (no GPU backend or device, a variant, missing-data strategy or precision the kernels lack, a method with no GPU path), saying so on stderr and in the report; without it that request exits 1 | off |
 
 On `--device gpu` the GPU fills the distance matrix, so the methods that read one
 run there: `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara`, whose
@@ -354,7 +355,20 @@ there too). `onebatch` and `tadpole` compute on the CPU as they go, so they exit
 on `gpu` naming the methods that use it. A variant other than `standard`, a missing-data strategy, `--dtype
 float32`, and on Metal a GPU index other than 0 or `--gpu-precision fp64`, exit 1
 before the input is read; a build without a GPU backend refuses `gpu` naming the
-build flag. `--device hpc` exits 1: `dtwc_cl` computes where it runs.
+build flag, and so does a machine with no usable GPU, or no GPU `N` (the device is
+asked for before the input is read, so beside `--checkpoint` it is the device that is
+refused, not the `--gpu-precision` rule above). `--device hpc` exits 1: `dtwc_cl`
+computes where it runs.
+
+`--fallback` makes the device a wish. Each refusal in the paragraph above, and a
+`cpu+gpu` request a build or a streamed run cannot take, then runs on the CPU
+instead of exiting 1: one line on stderr, `[dtwc] gpu requested: <reason>; running on
+cpu (fallback)`, and the run report's configuration row says `device cpu (gpu
+requested; fallback: <reason>)`, so a fallback is never silent. Only what is known
+before a series is read falls back: a failure once the GPU has begun (out of memory,
+a CUDA call that fails) still exits 1. `dtwc_cl --device gpu --fallback ...` is the
+command that uses the GPU where there is one and the CPU where there is none; the
+[Devices](../../guides/devices/) page has the rule.
 
 `--device cpu+gpu` (a CUDA build with a device) fills the distance matrix of those
 methods on the CPU's threads and the GPU at once, and splits FastCLARA's assignment

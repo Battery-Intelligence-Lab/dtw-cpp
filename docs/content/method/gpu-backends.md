@@ -162,7 +162,9 @@ Metal buffers and copies the result back to host storage.
 
 A `Problem` computes on the CPU until `set_device` says otherwise. Tier-1
 `device="gpu"` chooses a compiled GPU backend explicitly and raises if that
-request cannot be delivered; there is no CUDA→Metal→CPU fallback chain.
+request cannot be delivered; there is no CUDA→Metal→CPU fallback chain. A call can
+ask for the CPU instead, and be told it ran there (`fallback`, in
+[Devices](../../guides/devices/)).
 
 ## Citations
 

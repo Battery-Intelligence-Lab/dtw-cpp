@@ -75,7 +75,7 @@ disp(result.medoid_indices); disp(result.total_cost); disp(dtwc.davies_bouldin(p
 | method of `cluster()` | `set_method(Method)`, `method()` | `set_method(Method)`, `method` | `set_method(name)` |
 | distance settings | `set_distance(core::DistanceConfig)`, `distance()` | `set_distance(variant=, band=, metric=, missing_strategy=, mv_mode=, wdtw_g=, ...)` | `set_distance('Variant', ..., 'Band', ..., ...)` |
 | one distance setting | `set_band`, `set_variant`, `set_metric`, `set_missing_strategy` | `set_band`, `set_variant`, `set_variant_params`, `missing_strategy` | `set_band`, `set_variant(name, param)`, `set_missing_strategy` |
-| device | `set_device(Device, index = 0)`, `device()`, `set_gpu_precision`, `gpu_precision()`, `set_gpu_share`, `gpu_share()`, `fill_split()` | `set_device(name)`, `set_gpu_precision`, `set_gpu_share` | `set_device(name)`, `set_gpu_precision(name)`, `set_gpu_share(share)` |
+| device | `set_device(Device, index = 0, fallback = false)`, `device()`, `fallback()`, `set_gpu_precision`, `gpu_precision()`, `set_gpu_share`, `gpu_share()`, `fill_split()` | `set_device(name, fallback=False)`, `fallback`, `set_gpu_precision`, `set_gpu_share` | `set_device(name, 'Fallback', false)`, `set_gpu_precision(name)`, `set_gpu_share(share)` |
 | iterations, restarts, seed | `set_max_iter`, `set_n_repetitions`, `set_random_seed` | the same, or `max_iter`, `n_repetitions`, `random_seed` | `set_max_iter`, `set_n_repetitions` |
 | MIP solver | `set_solver(Solver)` (returns `bool`), `solver()`, `mip_settings` | `set_solver(Solver)`, `solver`, `mip_settings` | `set_solver(name)`, `set_mip_settings(s)` |
 | CLARA, OneBatchPAM, hierarchical, TADPole | `set_sample_size`, `set_n_samples`, `set_batch_size`, `set_linkage`, `set_tadpole_dc` | | |
@@ -94,6 +94,16 @@ for multivariate series; MATLAB's `set_distance` and `dtwc.distance.dtw` do not 
 `MvMode`, which `dtwc.cluster` and `DTWClustering` do). Multivariate series hold `ndim` values per time step,
 interleaved. A `Problem` computes on the CPU until its device is set; it does
 not follow the process device ([Devices](../../guides/devices/)).
+
+`set_device(device, index, fallback)` with `fallback` makes the device a wish: where a fill or a method starts
+and the GPU cannot honour the request (no GPU backend or usable GPU, a variant, missing-data strategy,
+precision or number of features its kernels lack, a method with no GPU path), that call computes on the CPU,
+one line on stderr saying why, and the `Problem` keeps its request for the next call, so the order of the
+setters does not matter. Without it, `set_device` refuses what the build cannot select (`gpu` without a GPU
+backend, `cpu+gpu` without CUDA) and the other refusals are the `DeviceError` of the fill or the method.
+`one_batch_pam(prob)`, `tadpole(prob)` and `Problem::cluster()` with `onebatch` or `tadpole` compute their
+distances on the CPU as they go, so on a GPU `Problem` they are `DeviceError` (a CPU run with `fallback`),
+where they used to run on the CPU without a word.
 
 `set_gpu_share(share)` is the GPU's share of the work device `cpu+gpu` splits (`-1`, the
 default, measures it; a value in [0, 1] forces it; anything else is `InvalidInput`). A
