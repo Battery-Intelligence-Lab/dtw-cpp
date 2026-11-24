@@ -883,7 +883,8 @@ std::string cuda_device_refusal(int device_id)
   const std::string device = "CUDA device " + std::to_string(device_id);
   // The runtime's own words for what it cannot do, each call's error consumed as CUDA_CHECK consumes it. The attributes
   // take the ordinal, so a device refused for its ordinal or its compute capability is never made the calling thread's
-  // current one, and one whose context cannot start is given back: a refusal leaves the thread's device as it was.
+  // current one, and a device selected for the context check is given back on every return: the probe leaves the
+  // thread's device as it was (each fill selects its own device).
   int major = 0, minor = 0;
   cudaError_t err = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device_id);
   if (err == cudaSuccess) err = cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device_id);
@@ -896,7 +897,7 @@ std::string cuda_device_refusal(int device_id)
   int previous = 0;
   const bool had_previous = cudaGetDevice(&previous) == cudaSuccess;
   if (!had_previous) (void)cudaGetLastError();
-  // Where a refused probe moved the thread's device, it is given back (and where it did not, nothing is selected).
+  // Where the probe moved the thread's device, it is given back (and where it did not, nothing is selected).
   const auto give_back = [&] {
     int current = previous;
     if (had_previous && cudaGetDevice(&current) == cudaSuccess && current != previous) (void)cudaSetDevice(previous);
@@ -914,6 +915,7 @@ std::string cuda_device_refusal(int device_id)
     give_back();
     return device + " cannot start a context: " + cudaGetErrorString(err);
   }
+  give_back();
   return {};
 }
 
