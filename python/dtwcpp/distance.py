@@ -73,6 +73,7 @@ def cdist(
     device=None,
     gpu_precision="auto",
     gpu_share=-1.0,
+    fallback=False,
 ):
     """Compute cross-collection ``(n_X, n_Y)`` DTW distance matrix in C++/SIMD/CUDA.
 
@@ -96,6 +97,12 @@ def cdist(
         (uses :func:`dtwcpp.device`).
     gpu_precision : str, default='auto'
         GPU kernel precision (``'auto'``, ``'fp32'``, or ``'fp64'``).
+    fallback : bool, default=False
+        A GPU request that cannot be honoured (no GPU backend or device, a variant,
+        missing-data strategy, precision or number of features the kernels lack) runs
+        on the CPU, with one line on stderr saying why, instead of raising
+        :class:`dtwcpp.DeviceError`. For this call only: :func:`dtwcpp.device` has no
+        fallback.
 
     Returns
     -------
@@ -105,8 +112,10 @@ def cdist(
 
     if isinstance(band, (bool, np.bool_)) or not isinstance(band, (int, np.integer)):
         raise TypeError(f"band must be an integer, got {type(band).__name__}")
+    if not isinstance(fallback, (bool, np.bool_)):
+        raise TypeError(f"fallback must be a bool, got {type(fallback).__name__}")
     eff_device = dtwcpp.device() if device is None else device
-    backend, _ = dtwcpp._resolve_device(eff_device)
+    backend, _ = dtwcpp._resolve_device(eff_device, fallback)
     if backend == "hpc":
         raise dtwcpp.DeviceError(
             "device='hpc' offloads clustering jobs to a SLURM cluster and is "
@@ -133,6 +142,7 @@ def cdist(
         gpu_precision=gpu_precision,
         gpu_share=float(gpu_share),
         matrix_dtype=matrix_dtype,
+        fallback=bool(fallback),
     )
 
 

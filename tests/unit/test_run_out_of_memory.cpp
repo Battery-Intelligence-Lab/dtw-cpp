@@ -311,12 +311,16 @@ TEST_CASE("A run the system refuses memory at a text file's read, at a --dist-ma
 #endif
 #ifdef DTWC_HAS_CUDA
   // On a GPU the series stay float64 (a GPU takes no float32 series), so the same refusal names no --dtype float32.
-  // The reader refuses before a device is asked for, so no GPU need be present.
-  auto on_gpu = read;
-  on_gpu.device = dtwc::Device::GPU;
-  const std::string gpu_read = refused_under_cap(margin, [&] { return dtwc::run(on_gpu); });
-  CHECK_THAT(gpu_read, StartsWith("read stage: out of memory; plan: none yet; the process peaked at "));
-  CHECK_THAT(gpu_read, !ContainsSubstring("--dtype float32"));
+  // The run asks for its device before it reads a series, and a CUDA context cannot be started under the cap: it is
+  // started first, which needs a GPU.
+  if (dtwc::gpu_available()) {
+    dtwc::require_gpu_device("test", 0);
+    auto on_gpu = read;
+    on_gpu.device = dtwc::Device::GPU;
+    const std::string gpu_read = refused_under_cap(margin, [&] { return dtwc::run(on_gpu); });
+    CHECK_THAT(gpu_read, StartsWith("read stage: out of memory; plan: none yet; the process peaked at "));
+    CHECK_THAT(gpu_read, !ContainsSubstring("--dtype float32"));
+  }
 #endif
 
   // A --dist-matrix read: 16,000,000 cells parsed beside the matrix the plan holds, 64,016,000 bytes, and the 4,000

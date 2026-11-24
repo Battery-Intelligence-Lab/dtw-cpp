@@ -289,3 +289,55 @@ class TestProblemDevice:
         prob.band = 2
         with pytest.raises(dtwcpp.InvalidInput, match="smallest feasible band is 6"):
             prob.fill_distance_matrix()
+
+
+# ---------------------------------------------------------------------------
+# fallback: a GPU request that cannot be honoured runs on the CPU, loudly
+# ---------------------------------------------------------------------------
+
+class TestFallback:
+    """``fallback=True`` runs a GPU request the build, the machine or the kernels cannot honour on the CPU, with one
+    line on stderr; without it that request is a DeviceError. WDTW has no GPU kernel, and a build with no GPU backend
+    has no GPU at all: the request below is refused on every build."""
+
+    _REQUEST = {"device": "gpu", "variant": "wdtw"}
+
+    def test_cluster_runs_the_refused_request_on_the_cpu_and_says_so(self, capfd):
+        series = _series(8, 20)
+        with pytest.raises(dtwcpp.DeviceError):
+            dtwcpp.cluster(series, 2, **self._REQUEST)
+        capfd.readouterr()
+        result = dtwcpp.cluster(series, 2, fallback=True, **self._REQUEST)
+        assert result.device == "cpu"
+        written = capfd.readouterr().err
+        assert written.startswith("[dtwc] gpu requested: ") and written.endswith("; running on cpu (fallback)\n")
+        assert written.count("\n") == 1
+        cpu = dtwcpp.cluster(series, 2, device="cpu", variant="wdtw")
+        assert (result.labels == cpu.labels).all() and (result.medoids == cpu.medoids).all()
+        assert result.cost == cpu.cost
+        assert "device cpu (gpu requested; fallback: " in " ".join(result.report.split())
+
+    def test_cdist_the_estimator_and_a_problem_take_the_same_word(self):
+        series = _series(6, 20)
+        with pytest.raises(dtwcpp.DeviceError):
+            dtwcpp.cdist(series, **self._REQUEST)
+        on_cpu = dtwcpp.cdist(series, device="cpu", variant="wdtw")
+        assert np.array_equal(dtwcpp.cdist(series, fallback=True, **self._REQUEST), on_cpu)
+
+        estimator = dtwcpp.DTWClustering(n_clusters=2, fallback=True, **self._REQUEST)
+        reference = dtwcpp.DTWClustering(n_clusters=2, device="cpu", variant="wdtw")
+        assert (estimator.fit(series).labels_ == reference.fit(series).labels_).all()
+
+        problem = dtwcpp.Problem("fallback", device="gpu", fallback=True)  # kept on every build: a fill decides
+        assert problem.fallback
+        problem.set_data(series)
+        problem.set_variant(dtwcpp.DTWVariant.WDTW)
+        np.testing.assert_array_equal(problem.distance_matrix(), on_cpu)
+        problem.set_device("cpu")
+        assert not problem.fallback
+
+    def test_hpc_has_nothing_to_fall_back_from(self):
+        with pytest.raises(dtwcpp.InvalidInput, match="fallback"):
+            dtwcpp.cluster(_series(), 2, device="hpc", fallback=True)
+        with pytest.raises(dtwcpp.InvalidInput, match="fallback"):
+            dtwcpp.DTWClustering(n_clusters=2, device="hpc", fallback=True).fit(_series())

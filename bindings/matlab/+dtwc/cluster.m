@@ -27,12 +27,18 @@ function res = cluster(data, k, varargin)
 %   Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda, MvMode,
 %   MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver,
 %   MipGap, TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver,
-%   LrMaxNodes, Device, GpuPrecision, GpuShare, Verbose, NoReport ('float32'
-%   MatrixDtype stores the distance matrix at half the memory, each distance
-%   rounded to a single; GpuShare is the GPU's share of the work Device
+%   LrMaxNodes, Device, GpuPrecision, GpuShare, Fallback, Verbose, NoReport
+%   ('float32' MatrixDtype stores the distance matrix at half the memory, each
+%   distance rounded to a single; GpuShare is the GPU's share of the work Device
 %   'cpu+gpu' splits with the CPU, -1 (the default) measured, [0, 1] forced so a
-%   run repeats; Verbose prints dtwc_cl -v's lines, the memory plan
-%   among them; NoReport true makes no run report, so Result.Report is '').
+%   run repeats; Fallback true runs a Device that cannot be honoured (no GPU
+%   backend or device, a Variant, MissingStrategy, GpuPrecision or number of
+%   features the kernels lack, a Method with no GPU path) on the CPU instead of
+%   raising dtwc:deviceError, one line on stderr and Result.Report saying why and
+%   Result.device 'cpu' (this call only: dtwc.device has none; a failure once
+%   the GPU has begun is an error either way); Verbose prints dtwc_cl -v's lines,
+%   the memory plan among them; NoReport true makes no run report, so
+%   Result.Report is '').
 %   RamLimit is the memory the run plans for, bytes or a size such as '8G'; 0,
 %   the default, plans with 90 % of the memory available (a MEX built without
 %   llfio cannot tell it, and plans nothing): a limit that cannot hold the run

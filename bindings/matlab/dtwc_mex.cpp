@@ -491,6 +491,7 @@ enum class Key {
   Device,
   GpuPrecision,
   GpuShare,
+  Fallback,
   Verbose,
   NoReport
 };
@@ -509,7 +510,7 @@ constexpr dtwc::Name<Key> distance_keys[]{
   { "TweLambda", Key::TweLambda },
 };
 
-/// Cross-collection cdist settings: distance_keys + MvMode, Device, GpuPrecision, GpuShare, MatrixDtype.
+/// Cross-collection cdist settings: distance_keys + MvMode, Device, GpuPrecision, GpuShare, Fallback, MatrixDtype.
 constexpr dtwc::Name<Key> cdist_keys[]{
   { "Variant", Key::Variant },
   { "Band", Key::Band },
@@ -525,6 +526,7 @@ constexpr dtwc::Name<Key> cdist_keys[]{
   { "Device", Key::Device },
   { "GpuPrecision", Key::GpuPrecision },
   { "GpuShare", Key::GpuShare },
+  { "Fallback", Key::Fallback },
   { "MatrixDtype", Key::MatrixDtype },
 };
 
@@ -566,6 +568,7 @@ constexpr dtwc::Name<Key> config_keys[]{
   { "Device", Key::Device },
   { "GpuPrecision", Key::GpuPrecision },
   { "GpuShare", Key::GpuShare },
+  { "Fallback", Key::Fallback },
   { "Verbose", Key::Verbose },
   { "NoReport", Key::NoReport },
 };
@@ -682,6 +685,9 @@ static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxA
     break;
   case Key::GpuShare:
     c.gpu_share = get_scalar(value, key_name);
+    break;
+  case Key::Fallback:
+    c.fallback = get_logical(value, key_name);
     break;
   case Key::Verbose:
     c.verbose = get_logical(value, key_name);
@@ -809,12 +815,13 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx)
 // =========================================================================
 
 /// Problem::set_device from a device name, parsed by dtwc::detail::parse_device,
-/// the grammar behind dtwc::device(name) and the CLI's --device.
-static void set_problem_device(dtwc::Problem &prob, const mxArray *device)
+/// the grammar behind dtwc::device(name) and the CLI's --device; `fallback` (a logical, or absent) makes the request a
+/// wish that a fill or a method resolves (Problem::set_device).
+static void set_problem_device(dtwc::Problem &prob, const mxArray *device, const mxArray *fallback = nullptr)
 {
   require_char(device, "device");
   const auto [selected, index] = dtwc::detail::parse_device(get_string(device));
-  prob.set_device(selected, index);
+  prob.set_device(selected, index, fallback != nullptr && get_logical(fallback, "Fallback"));
 }
 
 static void cmd_Problem_new(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -826,7 +833,7 @@ static void cmd_Problem_new(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
   auto prob = std::make_shared<dtwc::Problem>(name);
   prob->set_verbose(false);
   // Select the device before the handle exists: a rejected name leaks nothing.
-  if (nrhs > 2) set_problem_device(*prob, prhs[2]);
+  if (nrhs > 2) set_problem_device(*prob, prhs[2], nrhs > 3 ? prhs[3] : nullptr);
   uint64_t h = HandleManager<dtwc::Problem>::create(prob);
 
   plhs[0] = handle_to_mx(h);
@@ -969,7 +976,7 @@ static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs
 static void cmd_Problem_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_device requires handle and device name.");
-  set_problem_device(stored_problem(prhs[1]), prhs[2]);
+  set_problem_device(stored_problem(prhs[1]), prhs[2], nrhs > 3 ? prhs[3] : nullptr);
 }
 
 static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -1452,7 +1459,7 @@ static void cmd_cdist(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
   const auto n_x = static_cast<std::size_t>(X_data.size());
   const auto n_y = static_cast<std::size_t>(Y_data.size());
   const std::vector<double> dists =
-    dtwc::cdist(X_data, Y_data, dist_cfg, cfg.device, cfg.device_index, cfg.gpu_precision, cfg.gpu_share);
+    dtwc::cdist(X_data, Y_data, dist_cfg, cfg.device, cfg.device_index, cfg.gpu_precision, cfg.gpu_share, cfg.fallback);
 
   if (cfg.matrix_dtype == dtwc::core::Precision::Float32) {
     mxArray *out = mxCreateNumericMatrix(n_x, n_y, mxSINGLE_CLASS, mxREAL);

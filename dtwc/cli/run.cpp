@@ -440,6 +440,7 @@ struct Outcome
   Method method;
   std::vector<std::string> streamed_names; ///< a RAM-limited run's series names, which its Problem cannot hold
   std::string report;                      ///< the run report's text; empty under --no-report
+  std::string device;                      ///< where the run computed, as device_text writes it
 };
 
 /// What the run report calls an input's format.
@@ -451,8 +452,9 @@ const char *format_name(std::optional<InputFormat> format)
 
 /// The run itself; `data` holds in-memory series, else config.input is read; `solver`, where given, clusters MIP on
 /// HiGHS in RAM (detail::run). `stage` follows it: the stage it is in, its memory plan once made, and the report's
-/// figures.
-Outcome execute(const Config &config, std::optional<Data> data, const ExternalSolver &solver, RunStage &stage)
+/// figures. A GPU request it cannot honour is a GpuRefusal thrown in its check or plan stage, where `data` is still
+/// whole and no series was read: run_with decides what to do with it (`fallback`), and `config.fallback` is cleared.
+Outcome execute(const Config &config, std::optional<Data> &data, const ExternalSolver &solver, RunStage &stage)
 {
   // ---- 1. Every check that needs no series, before any file is touched (stage check, run_with's) ----
   if (!data && config.input.empty())
@@ -477,7 +479,14 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   auto problem = std::make_shared<Problem>(run_name(config));
   Problem &prob = *problem;
   apply(config, prob);
-  validate_gpu_request("run", prob, config.dtype);
+  // The GPU request, judged before a file is touched: the kernels' rules for the series known now (the precision they
+  // are stored in, and for series in memory their features a time step; an Arrow IPC file's are known at its walk), then
+  // the device itself, so that beside --checkpoint a device that cannot run is what is refused, not the precision rule
+  // below.
+  const bool stored_f32 = config.dtype == core::Precision::Float32 || (data && data->is_f32());
+  validate_gpu_request("run", prob, stored_f32 ? core::Precision::Float32 : core::Precision::Float64,
+                       data ? data->ndim : 1);
+  if (uses_gpu(config.device)) require_gpu_device("run", config.device_index);
 #ifdef DTWC_HAS_CUDA
   if (!config.checkpoint.empty() && uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto)
     throw InvalidInput("--checkpoint on a CUDA GPU needs an explicit --gpu-precision fp32 or fp64: CUDA's auto depends "
@@ -536,6 +545,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   // stream, every series' name and label, the plan holds within the data cap); `what` is the input's format,
   // `resident` the price that chose the stream.
   const auto check_stream = [&](const char *what, const char *by, std::size_t resident) {
+    if (config.device == Device::CPU_GPU) throw detail::hybrid_streamed_refusal();
     if (!config.checkpoint.empty())
       throw InvalidInput("--checkpoint requires resident series data and cannot be combined with RAM-limited "
                          + std::string(what) + " streaming.");
@@ -740,6 +750,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   std::string storage; // how the file's series are held once read (-v and the report's read row name it)
   if (format == InputFormat::ArrowIPC) {
     ipc.emplace(input);
+    validate_gpu_request("run", prob, config.dtype, ipc->ndim()); // the file's features a time step: a GPU takes one
     n_series = static_cast<std::size_t>(ipc->num_rows());
     // Metal's GPU uploads an owned copy of the views read_arrow_ipc gives in the file's precision (resident_bytes
     // prices it); CUDA reads them where they lie.
@@ -1079,7 +1090,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     throw IOError("--checkpoint '" + config.checkpoint + "': the distance checkpoint cannot be saved (the results are "
                   "written to '" + config.output + "'); " + *checkpoint_failure);
 
-  return { std::move(problem), std::move(result), method, std::move(streamed_names), {} };
+  return { std::move(problem), std::move(result), method, std::move(streamed_names), {}, {} };
 }
 
 /// The name a failed run's report gives its error: its type in base/error.hpp.
@@ -1168,41 +1179,67 @@ InvalidInput out_of_memory(const RunStage &stage, const Config &config)
                       + ways_out(stage, config) + ".");
 }
 
-/// A run of `config` on `data` (else config.input), `solver` as detail::run takes it, its report rendered and, with an
+/// A run of `asked` on `data` (else asked.input), `solver` as detail::run takes it, its report rendered and, with an
 /// output directory, written last.
 /// Every thread's scratch is given back as the run starts, returns or throws (ScratchRelease). A std::bad_alloc is
 /// caught outside it and outside execute, whose Problem, series and TeamCap are gone by then, and becomes
 /// out_of_memory's InvalidInput. A run that fails past its checks writes its report up to the failing stage, with the
 /// error, and throws its own exception on: a report that cannot be made or written is dropped, never the error.
-Outcome run_with(const Config &config, std::optional<Data> data, const ExternalSolver &solver)
+///
+/// `asked.fallback` is this function's: execute refuses a GPU request that cannot be honoured, with a GpuRefusal in its
+/// check or plan stage (before a series is read, so `data` is whole), and then the run is made again on the CPU, one
+/// line on stderr and the report's configuration row saying why and Result::device() "cpu". Once the run has computed
+/// anything, a failure is an error and nothing is run again.
+Outcome run_with(const Config &asked, std::optional<Data> data, const ExternalSolver &solver)
 {
-  RunStage stage;
-  try {
+  Config config = asked; // what execute runs: the request until a refusal, then the CPU's
+  config.fallback = false;
+  std::string fallback; // why `config` is the CPU's; empty while it is as asked
+  for (;;) {
+    RunStage stage;
     try {
-      if (config.report) stage.report.emplace(config);
-      stage.begin("check"); // the scratch given back first, the checks then
-      const core::ScratchRelease release;
-      Outcome outcome = execute(config, std::move(data), solver, stage);
-      if (stage.report) {
-        stage.report->close(stage.plan ? stage.plan->threads : 0);
-        outcome.report = stage.report->render();
-        if (!config.output.empty()) write_report(config, outcome.report);
-      }
-      return outcome;
-    } catch (const std::bad_alloc &) {
-      throw out_of_memory(stage, config);
-    }
-  } catch (const std::exception &error) {
-    if (stage.report && !config.output.empty() && std::string_view(stage.stage) != "check") {
       try {
-        stage.report->close(stage.plan ? stage.plan->threads : 0);
-        stage.report->error_kind = kind_of(error);
-        stage.report->error_text = error.what();
-        write_report(config, stage.report->render());
-      } catch (...) { // the run's own error is what it throws
+        if (asked.report) {
+          stage.report.emplace(asked);
+          if (!fallback.empty()) stage.report->fell_back(fallback);
+        }
+        stage.begin("check"); // the scratch given back first, the checks then
+        const core::ScratchRelease release;
+        Outcome outcome = execute(config, data, solver, stage);
+        outcome.device = device_text(config);
+        if (stage.report) {
+          stage.report->close(stage.plan ? stage.plan->threads : 0);
+          outcome.report = stage.report->render();
+          if (!config.output.empty()) write_report(config, outcome.report);
+        }
+        return outcome;
+      } catch (const std::bad_alloc &) {
+        throw out_of_memory(stage, config);
       }
+    } catch (const std::exception &error) {
+      const std::string_view at = stage.stage;
+      if (const auto *refusal = dynamic_cast<const GpuRefusal *>(&error);
+          refusal && asked.fallback && fallback.empty() && (at == "check" || at == "plan")) {
+        fallback = refusal->reason();
+        config.device = Device::CPU;
+        config.device_index = 0;
+        // cpu+gpu's split has no CPU counterpart; a share forced on any other device stays, and the run refuses it as
+        // it does on every build, rather than the fallback hiding it.
+        if (asked.device == Device::CPU_GPU) config.gpu_share = -1.0;
+        detail::say_fallback(fallback);
+        continue;
+      }
+      if (stage.report && !config.output.empty() && at != "check") {
+        try {
+          stage.report->close(stage.plan ? stage.plan->threads : 0);
+          stage.report->error_kind = kind_of(error);
+          stage.report->error_text = error.what();
+          write_report(config, stage.report->render());
+        } catch (...) { // the run's own error is what it throws
+        }
+      }
+      throw;
     }
-    throw;
   }
 }
 
@@ -1258,8 +1295,8 @@ fs::path report_path(const Config &config)
 
 Result detail::run(const Config &config, std::optional<Data> data, const ExternalSolver &solver)
 {
-  auto [problem, result, method, streamed_names, report] = run_with(config, std::move(data), solver);
-  return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
+  auto [problem, result, method, streamed_names, report, device] = run_with(config, std::move(data), solver);
+  return Result(std::move(problem), result.total_cost, std::move(device), method, result.iterations,
                 result.converged, std::move(streamed_names), std::move(report));
 }
 

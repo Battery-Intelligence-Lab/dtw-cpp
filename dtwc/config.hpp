@@ -75,6 +75,11 @@ struct Config
   /// `--gpu-share`: the GPU's share of the work `cpu+gpu` splits (Problem::set_gpu_share); -1 measures it, a value in
   /// [0, 1] forces it. Any other device refuses a forced one.
   double gpu_share = -1.0;
+  /// `--fallback`: a GPU request that cannot be honoured (no GPU backend or device, a variant, missing-data strategy,
+  /// precision or number of features the kernels lack, a method with no GPU path) runs on the CPU instead of raising
+  /// DeviceError, with one line on stderr and the run report saying so. Per call: not part of the process-wide
+  /// dtwc::device(). A failure once the GPU has begun is an error either way.
+  bool fallback = false;
   // Solver
   Solver solver = Solver::HiGHS;         ///< `--solver`
   MIPSettings mip;                       ///< `--mip-gap`, `--time-limit`, `--lr-max-nodes`, ...
@@ -109,9 +114,11 @@ std::size_t parse_ram_limit(const std::string &text, std::string_view key);
 /// distance, the method and its controls, the MIP solver and settings, the
 /// device, the matrix dtype, the memory limit and verbose. The Problem checks each as it takes it;
 /// `name` and the file options (input, output, checkpoint, dtype, ...) are not read.
+/// With `config.fallback` the Problem keeps a GPU request it cannot honour, and computes on the CPU where a fill or a
+/// method starts (Problem::set_device); without it the refusals below are raised here.
 /// @throws InvalidInput for a value outside its domain or a distance no kernel
 ///         implements; SolverError for gurobi on a build without Gurobi;
-///         DeviceError for gpu on a build without a GPU backend, and for
+///         DeviceError (GpuRefusal) for gpu on a build without a GPU backend, and for
 ///         onebatch or tadpole on a GPU (they compute on the CPU as they go);
 ///         InvalidInput for a gpu_share outside [0, 1] (-1 apart) and for a
 ///         forced one on a device other than cpu+gpu.

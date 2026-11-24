@@ -19,8 +19,10 @@ classdef DTWClustering
 %     NClusters (3), Method ('pam'): any dtwc.cluster method.
 %     Variant, Band, Metric, MissingStrategy, WdtwG, AdtwPenalty, MsmC, TweNu,
 %     TweLambda: the distance, as dtwc.distance.dtw takes it.
-%     MaxIter, NInit, MvMode, BatchSize, Device: as dtwc.cluster's keys; Device
-%     empty is dtwc.device().
+%     MaxIter, NInit, MvMode, BatchSize, Device, Fallback: as dtwc.cluster's keys;
+%     Device empty is dtwc.device(); Fallback true runs a GPU request that cannot
+%     be honoured on the CPU, saying so on stderr, instead of raising
+%     dtwc:deviceError.
 %     RandomState: the seed of the first restart (restart i takes RandomState
 %     + i - 1); empty is dtwc.default_random_seed().
 %
@@ -52,6 +54,7 @@ classdef DTWClustering
         BatchSize = []
         RandomState = []
         Device = []
+        Fallback = []
     end
 
     properties (SetAccess = private)
@@ -68,7 +71,7 @@ classdef DTWClustering
     properties (Constant, Access = private)
         DistanceKeys = {'Variant', 'Band', 'Metric', 'MissingStrategy', 'WdtwG', 'AdtwPenalty', ...
                         'MsmC', 'TweNu', 'TweLambda'}
-        RunKeys = {'Method', 'MaxIter', 'NInit', 'MvMode', 'BatchSize', 'Device'}
+        RunKeys = {'Method', 'MaxIter', 'NInit', 'MvMode', 'BatchSize', 'Device', 'Fallback'}
     end
 
     methods

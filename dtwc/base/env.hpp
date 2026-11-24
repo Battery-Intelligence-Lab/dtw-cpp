@@ -5,6 +5,8 @@
  * @details `Device` names where a run computes (`cpu` / `gpu` / `cpu+gpu`), `GpuPrecision`
  * what a GPU computes in. The process-wide default device is read and set
  * through `dtwc::device()` / `dtwc::device(name)`; a `Problem` never reads it.
+ * A GPU request that cannot be honoured is a `GpuRefusal` (a `DeviceError`), which a
+ * call's `fallback` turns into a run on the CPU that says so.
  * `hpc` is not a C++ device: it submits a
  * whole run to a SLURM cluster, which Python's `dtwcpp.device("hpc")` and
  * `slurm_remote.sh` do, so the grammar here refuses it with a `DeviceError`
@@ -36,6 +38,23 @@ enum class Device {
 
 /// Whether `d` computes on a GPU, alone or beside the CPU: everything a GPU takes and refuses applies to it.
 constexpr bool uses_gpu(Device d) noexcept { return d != Device::CPU; }
+
+/// A DeviceError for a GPU request refused before anything was computed: this build has no GPU backend or the
+/// machine no usable GPU, the kernels cannot run the request (a variant, a missing-data strategy, a precision, several
+/// features a time step), or the method has no GPU path. `fallback` (Config::fallback, Problem::set_device) catches
+/// this type alone and computes on the CPU instead. A failure once the GPU has begun (a CUDA call that fails, out of
+/// memory) is a plain DeviceError and is never run again.
+class GpuRefusal : public DeviceError
+{
+public:
+  /// `message` is what() (the whole refusal, with its way out), `reason` its cause in one phrase.
+  GpuRefusal(const std::string &message, std::string reason) : DeviceError(message), reason_(std::move(reason)) {}
+  /// The cause in one phrase, no full stop: what a fallback's line on stderr says.
+  const std::string &reason() const noexcept { return reason_; }
+
+private:
+  std::string reason_;
+};
 
 /// GPU compute precision, on every GPU backend. `Auto` is FP32 on consumer CUDA
 /// GPUs and FP64 on HPC ones; Metal computes in FP32 and rejects FP64.
@@ -83,9 +102,21 @@ std::string gpu_not_built_message();
 /// false (the request is one a GPU refuses too).
 std::string hybrid_refused_message(std::string_view where, std::string_view why, bool gpu_runs = true);
 
-/// @brief hybrid_refused_message for a method that computes its distances on the CPU as it goes (`method`: onebatch,
-/// tadpole), so has no fill and no pass to split; `gpu` refuses it too.
-std::string hybrid_as_it_goes_message(std::string_view where, std::string_view method);
+/// @brief The refusal of `gpu` on a build with no GPU backend: gpu_not_built_message(), its reason that.
+GpuRefusal gpu_not_built_refusal();
+
+/// @brief hybrid_refused_message(where, why, gpu_runs) as a refusal whose reason is `why`.
+GpuRefusal hybrid_refusal(std::string_view where, std::string_view why, bool gpu_runs = true);
+
+/// @brief The refusal of a streamed run on `cpu+gpu`: a streamed batch is assigned on one device.
+GpuRefusal hybrid_streamed_refusal();
+
+/// @brief The refusal of `method` (onebatch, tadpole) on `device` (gpu or cpu+gpu): it computes its distances on the
+/// CPU as it goes, so it has no fill and no pass for a GPU to take, and the GPU would sit idle.
+GpuRefusal as_it_goes_refusal(std::string_view where, std::string_view method, Device device);
+
+/// @brief What a fallback says, once, on stderr: `[dtwc] gpu requested: <reason>; running on cpu (fallback)`.
+void say_fallback(std::string_view reason);
 
 /// @brief The InvalidInput text where a forced gpu_share meets a device other than cpu+gpu, which would ignore it:
 /// `where` refuses it, `splits` names the work cpu+gpu splits.

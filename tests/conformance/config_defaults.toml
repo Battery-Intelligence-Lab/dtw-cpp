@@ -48,5 +48,6 @@ lr-max-nodes = 2000000
 device = "cpu"
 gpu-precision = "auto"
 gpu-share = -1
+fallback = false
 verbose = false
 no-report = false

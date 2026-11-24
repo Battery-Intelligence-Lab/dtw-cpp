@@ -272,6 +272,10 @@ void bind(CLI::App &app, Config &config)
   key(app, "--gpu-share", config.gpu_share,
       "cpu+gpu: the GPU's share of the work, in [0, 1]; -1 (default) measures it at the start of the work. A "
       "forced share repeats a run; any other device refuses one");
+  key(app, "--fallback", config.fallback,
+      "Run on the CPU a GPU request that cannot be honoured (no GPU backend or device, a variant, missing-data strategy "
+      "or precision the kernels lack, a method with no GPU path), saying so on stderr and in the report; without it "
+      "that request exits 1");
 
   key(app, "-v,--verbose", config.verbose, "Verbose output");
   app.add_flag_function(

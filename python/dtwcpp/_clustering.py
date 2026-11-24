@@ -123,6 +123,13 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         ``"cpu+gpu"``/``"cpu+gpu:N"`` or ``"hpc"``; ``None`` is
         :func:`dtwcpp.device`. ``"hpc"`` runs the fit on a SLURM cluster and
         sets ``labels_`` only.
+    fallback : bool, default=False
+        A GPU request that cannot be honoured (no GPU backend or device, a
+        variant, missing-data strategy, precision or number of features the
+        kernels lack, a method with no GPU path) computes on the CPU, with one
+        line on stderr saying why, instead of raising :class:`dtwcpp.DeviceError`.
+        ``True`` with ``device="hpc"``, which runs remotely, raises
+        :class:`dtwcpp.InvalidInput`.
 
     Attributes
     ----------
@@ -136,7 +143,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
                  max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
                  msm_c=1.0, twe_nu=0.001, twe_lambda=1.0, mv_mode="dependent",
                  missing_strategy="error", metric="l1", batch_size=-1,
-                 random_state=None, device=None):
+                 random_state=None, device=None, fallback=False):
         self.n_clusters = n_clusters
         self.method = method
         self.variant = variant
@@ -154,6 +161,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         self.batch_size = batch_size
         self.random_state = random_state
         self.device = device
+        self.fallback = fallback
 
     def _precomputed(self):
         return self.metric == "precomputed"
@@ -181,6 +189,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         }
         if device is not None:
             settings["device"] = device
+            settings["fallback"] = self.fallback
         if self._precomputed():
             del settings["metric"]  # the distances are given, not computed
         for key, value in settings.items():
@@ -193,7 +202,11 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         from dtwcpp import _dtwcpp_core, _resolve_device
         from dtwcpp._api import _series
         device = self.device if self.device is not None else dtwcpp.device()
-        backend, _ = _resolve_device(device)
+        backend, _ = _resolve_device(device, bool(self.fallback))
+        if backend == "hpc" and self.fallback:  # the fit is remote: no local CPU to fall back to
+            raise dtwcpp.InvalidInput(
+                f"DTWClustering(device='{device}') computes on the cluster, so fallback (a GPU request that "
+                "runs on this machine's CPU) has nothing to apply to; leave fallback at False.")
         # C++ takes and checks every setting before X is read, as dtwc::run does
         # before it reads a file.
         config = self._config(None if backend == "hpc" else device)

@@ -95,12 +95,14 @@ bool float_exact(const std::vector<double> &matrix)
 }
 
 /// Without HiGHS, `mip` (whose default backend it is) must raise SolverError, not
-/// solve some other way, on either device and before a GPU is looked for. True
-/// once that refusal has been asserted, so the caller skips the checks that need
-/// a result; false on a build with HiGHS.
+/// solve some other way, on either device; a GPU run asks for its device first, so
+/// where none is present that is the refusal (the caller's check, not this one's).
+/// True once the SolverError has been asserted, so the caller skips the checks that
+/// need a result; false on a build with HiGHS, and for a GPU that is not there.
 bool mip_refused_without_highs(Method method, Device device = Device::CPU)
 {
   if (method != Method::MIP || dtwc::highs_solver_available()) return false;
+  if (uses_gpu(device) && !dtwc::gpu_available()) return false;
   CHECK_THROWS_MATCHES(dtwc::run(config_for(method, device), levels()), dtwc::SolverError,
                        MessageMatches(ContainsSubstring("HiGHS solver is unavailable")));
   return true;
@@ -293,7 +295,7 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   const auto wdtw = [](dtwc::Config &c) { c.variant.variant = dtwc::core::DTWVariant::WDTW; };
   const auto zero_cost = [](dtwc::Config &c) { c.missing = dtwc::core::MissingStrategy::ZeroCost; };
   const auto float32 = [](dtwc::Config &c) { c.dtype = dtwc::core::Precision::Float32; };
-  const auto index_1 = [](dtwc::Config &c) { c.device_index = 1; };
+  [[maybe_unused]] const auto index_1 = [](dtwc::Config &c) { c.device_index = 1; };
   const auto fp64 = [](dtwc::Config &c) { c.gpu_precision = dtwc::GpuPrecision::FP64; };
 
   // The CPU takes each of these, so it goes on to read the file, which fails.
@@ -321,8 +323,20 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, fp64)); }),
              ContainsSubstring("precision FP64 is not implemented"));
 #  else
-  for (const auto &set : { +index_1, +fp64 }) // blind: V-row
-    CHECK_THROWS_AS(dtwc::run(from_file(Device::GPU, set)), dtwc::IOError);
+  // CUDA takes an index and FP64, but the run asks for its device before it reads a series: a GPU past the last, or no
+  // GPU at all, is the DeviceError (the runtime's own words for the ordinal); a request the device can run goes on to the
+  // file, which is missing.
+  const auto index_past_last = [](dtwc::Config &c) { c.device_index = 99; };
+  CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, index_past_last)); }),
+             StartsWith("run: ") && ContainsSubstring("No CPU fallback was attempted"));
+  if (dtwc::gpu_available()) {
+    CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, index_past_last)); }),
+               ContainsSubstring("invalid device ordinal"));
+    CHECK_THROWS_AS(dtwc::run(from_file(Device::GPU, fp64)), dtwc::IOError);
+  } else {
+    CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, fp64)); }),
+               ContainsSubstring("GPU was detected") && ContainsSubstring("No CPU fallback was attempted"));
+  }
 #  endif
 #else
   for (const auto &set : { +wdtw, +zero_cost, +float32, +index_1, +fp64 })

@@ -12,7 +12,9 @@ function out = device(name)
 %   No silent fallback: an unknown name, 'gpu' on a build without a GPU backend,
 %   'cpu+gpu' on a build without CUDA, or 'hpc' (Python's dtwcpp.device("hpc")
 %   submits a run to SLURM; MATLAB computes where it starts) raises a
-%   'dtwc:deviceError' — the device is never quietly downgraded to CPU.
+%   'dtwc:deviceError' — the device is never quietly downgraded to CPU. A call
+%   can ask for it, loudly: dtwc.cluster, dtwc.distance.cdist, dtwc.Problem and
+%   dtwc.DTWClustering take 'Fallback', true (this default has none).
 %
 %   See also dtwc.cluster, dtwc.DTWClustering
 

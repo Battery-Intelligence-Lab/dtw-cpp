@@ -166,10 +166,10 @@ namespace algorithms {
 
   core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, bool prune, TADPoleStats *stats)
   {
-    // A Problem on cpu+gpu, or one with a forced share, asks for a split this method has no part in (it computes its
-    // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word.
-    if (prob.device().first == Device::CPU_GPU)
-      throw DeviceError(dtwc::detail::hybrid_as_it_goes_message("tadpole", "tadpole"));
+    // A Problem on a GPU, or one with a forced share, asks for work this method has no part in (it computes its
+    // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word;
+    // a Problem given `fallback` computes on the CPU, and says so.
+    const dtwc::detail::DeviceScope device_scope(prob, "tadpole", Method::TADPole);
     if (prob.gpu_share() != -1.0)
       throw InvalidInput(dtwc::detail::share_ignored_message(
         "tadpole", "the distance matrix's fill and FastCLARA's pass", prob.device().first));

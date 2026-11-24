@@ -129,6 +129,8 @@ public:
    *  to `<name>_report.txt`; empty where the run was told `report = false` (dtwc_cl --no-report). */
   const std::string &report() const noexcept { return report_; }
   double cost() const noexcept { return cost_; }
+  /** Where the run computed, as `--device` names it: `cpu`, `gpu`, `gpu:N`, `cpu+gpu` or `cpu+gpu:N`; `cpu` where
+   *  a GPU request fell back to it (Config::fallback). */
   const std::string &device() const noexcept { return device_; }
   /** The method that ran, `auto` resolved (name_of(method_names, m) spells it). */
   Method method() const noexcept { return method_; }
@@ -174,12 +176,13 @@ Result cluster(Dataset &&data, index_t k, std::string_view method = "auto",
  * Cluster `data` with every setting of `cfg`, as run() does for `cfg.input`: `cfg.output` is the directory the run
  * writes its result files into, the run report last ("" writes none; Config's own default is dtwc_cl's `./results`,
  * so clear it to cluster in memory), `cfg.checkpoint` and `cfg.checkpoint_interval` save and resume the distance
- * matrix, `cfg.device` runs it, and `cfg.name` names the run (the Dataset's name where it is empty). `cfg.input` is
- * not read: `data` is the input, read with the reader options it was made with. A reader option of `cfg` (skip_cols,
- * skip_rows, delimiter, dtype) that is not at its default and differs from the Dataset's is InvalidInput, as is a
- * `column` beside series in memory (a Dataset holds no column: a path's read takes the Config's); a Config cannot
- * say which options were given, so its defaults stand for "not given". An in-memory Dataset passed as an rvalue
- * hands its series to the run; an lvalue one is copied.
+ * matrix, `cfg.device` runs it (a GPU request that cannot be honoured is a DeviceError, or, with `cfg.fallback`, a CPU
+ * run that says so on stderr and in the report), and `cfg.name` names the run (the Dataset's name where it is empty).
+ * `cfg.input` is not read: `data` is the input, read with the reader options it was made with. A reader option of
+ * `cfg` (skip_cols, skip_rows, delimiter, dtype) that is not at its default and differs from the Dataset's is
+ * InvalidInput, as is a `column` beside series in memory (a Dataset holds no column: a path's read takes the
+ * Config's); a Config cannot say which options were given, so its defaults stand for "not given". An in-memory
+ * Dataset passed as an rvalue hands its series to the run; an lvalue one is copied.
  */
 Result cluster(const Dataset &data, const Config &cfg);
 Result cluster(Dataset &&data, const Config &cfg);

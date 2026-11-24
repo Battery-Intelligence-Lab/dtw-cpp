@@ -68,18 +68,31 @@ inline void validate_mip_settings(const MIPSettings &s)
 
 class Problem;
 
+namespace detail {
+class DeviceScope;
+} // namespace detail
+
 namespace algorithms {
 struct CLARAOptions;
 core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
 } // namespace algorithms
 
-/// The GPU rules that need no series: `prob`'s variant or missing-data
+/// The GPU rules that need no series values: `prob`'s variant or missing-data
 /// strategy the GPU kernels do not implement, Float32 series
-/// (`series_precision`) and a precision Metal cannot honour. A fill applies them
-/// with its series' precision (validate_fill_request); dtwc::run applies them
-/// with the configured one before it reads a series. A CPU Problem passes.
-/// @throws DeviceError naming `where`, the backend and the axis.
-void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision);
+/// (`series_precision`), a precision Metal cannot honour and series of several
+/// features a time step (`ndim` above 1: the kernels are univariate). A fill
+/// applies them with its series' precision and ndim (validate_fill_request);
+/// dtwc::run applies them with the series it knows before it reads one. A CPU
+/// Problem passes.
+/// @throws GpuRefusal (a DeviceError) naming `where`, the backend and the axis.
+void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision,
+                          std::size_t ndim = 1);
+
+/// Whether this build's GPU backend can compute on GPU `index` on this machine, asked before a series is read or a
+/// byte allocated: CUDA's device count, the ordinal, a compute capability of 8.0 or more and a context on it; Metal's
+/// default device. The rules that need no device (validate_gpu_request) come first.
+/// @throws GpuRefusal (a DeviceError) naming `where` and why not.
+void require_gpu_device(std::string_view where, int index);
 
 /// True when this build's GPU backend (CUDA, else Metal) finds a GPU, so
 /// Device::GPU can compute here.
@@ -156,6 +169,7 @@ private:
   int n_repetitions_{ 1 };   ///< Restarts of the iterative methods (set_n_repetitions)
   Device device_{ Device::CPU };
   int device_index_{ 0 }; ///< The GPU ordinal of Device::GPU.
+  bool fallback_{ false }; ///< set_device: a GPU request that cannot be honoured computes on the CPU (detail::DeviceScope)
   GpuPrecision gpu_precision_{ GpuPrecision::Auto };
   double gpu_share_{ -1.0 }; ///< cpu+gpu's GPU share (set_gpu_share); -1: measured
   std::optional<core::FillSplit> fill_split_; ///< cpu+gpu's split of the last fill (fill_split)
@@ -229,6 +243,7 @@ private:
   const dtw_fn_f32_t &dtw_function_f32(const SeriesCheck &check);
   /// FastCLARA's CPU pass, which checks each block of series just before it assigns it.
   friend core::ClusteringResult algorithms::fast_clara(Problem &prob, const algorithms::CLARAOptions &opts);
+  friend class detail::DeviceScope;
   /// get_name / p_vec return references into owned heap storage. A view
   /// (set_view_data) has none, nor has a Float32 store Float64 values:
   /// indexing would read past an empty vector in a Release build.
@@ -427,13 +442,24 @@ public:
   /// the GPU; OneBatchPAM, TADPole and a streamed FastCLARA refuse cpu+gpu. A Problem
   /// never reads the process-wide default (dtwc::device()); until told
   /// otherwise it computes on the CPU. A change drops the distance matrix.
+  ///
+  /// With `fallback` the request is a wish: where a fill or a method starts and the GPU cannot honour it (no GPU
+  /// backend or usable GPU, a variant, missing-data strategy, precision or number of features its kernels lack, cpu+gpu
+  /// without CUDA, a method that computes on the CPU as it goes), that call computes on the CPU, says so once on
+  /// stderr, and the Problem keeps its request for the next call. That is decided there, not here, so the order of the
+  /// setters does not matter. Without it, set_device raises what this build cannot select (below), the other refusals
+  /// are the DeviceError of the fill or the method, and one_batch_pam and tadpole on a GPU Problem are refused, as they
+  /// compute on the CPU as they go. A failure once the GPU has begun (a CUDA call that fails, out of memory) is a
+  /// DeviceError either way.
   /// @throws DeviceError for `gpu` on a build with no GPU backend, for cpu+gpu
   ///         on a build without CUDA, and for a GPU index other than 0 on
-  ///         Metal, which runs on the system default GPU; InvalidInput for a
-  ///         negative index.
-  void set_device(Device device, int index = 0);
+  ///         Metal, which runs on the system default GPU (not with `fallback`);
+  ///         InvalidInput for a negative index.
+  void set_device(Device device, int index = 0, bool fallback = false);
   /// The device and GPU index set_device recorded.
   std::pair<Device, int> device() const noexcept { return { device_, device_index_ }; }
+  /// Whether set_device was given `fallback`.
+  bool fallback() const noexcept { return fallback_; }
   /// What a GPU computes in (the CPU computes in the series' precision). A
   /// change drops the distance matrix.
   void set_gpu_precision(GpuPrecision precision)
@@ -464,7 +490,7 @@ public:
     refresh_distance_matrix();
   }
   core::Precision matrix_dtype() const noexcept { return matrix_dtype_; }
-  /// Take `other`'s distance settings, device, GPU index, GPU precision, matrix dtype and
+  /// Take `other`'s distance settings, device, GPU index, fallback, GPU precision, matrix dtype and
   /// verbosity: a sub-Problem's, before its series (its fill then honours the
   /// parent's device, or validate_fill_request refuses it, e.g. Float32 on a GPU).
   void copy_distance_settings_from(const Problem &other);
@@ -636,6 +662,41 @@ private:
   std::size_t block_bytes_; ///< the values of a block of check()
   std::size_t mark_ = none; ///< the lowest series marked
 };
+
+namespace detail {
+
+/**
+ * @brief A fill or a method of a Problem is about to compute: resolves its GPU request for this call.
+ *
+ * A Problem set_device gave `fallback`, on a GPU, is checked here against everything that needs no pair computed (this
+ * build, `method`, the kernels' rules for its series, the device; see Problem::set_device). Where the request cannot
+ * be honoured the Problem computes on the CPU until the scope ends, one line on stderr saying why: its device, GPU
+ * index and forced share are the CPU's and no share, and are the request's again afterwards, with the distance matrix
+ * the call filled. A nested scope (cluster, then its fill) finds the CPU and does nothing, so one call says it once.
+ * Without `fallback` the scope does nothing but refuse `method` where it has no GPU path (onebatch and tadpole compute
+ * on the CPU as they go): every other refusal is the fill's or the method's own. A Problem on the CPU is never touched.
+ * @throws GpuRefusal (a DeviceError) for the refusal of a Problem without `fallback`.
+ */
+class DeviceScope
+{
+public:
+  /// `where` names the call in a refusal; `method` is the method that begins, none for a fill.
+  DeviceScope(Problem &prob, std::string_view where, std::optional<Method> method = std::nullopt);
+  ~DeviceScope();
+  DeviceScope(const DeviceScope &) = delete;
+  DeviceScope &operator=(const DeviceScope &) = delete;
+  /// The Problem computes this call on the CPU, its GPU request refused.
+  bool fell_back() const noexcept { return fell_back_; }
+
+private:
+  Problem &prob_;
+  Device device_;
+  int index_;
+  double share_;
+  bool fell_back_ = false;
+};
+
+} // namespace detail
 
 
 } // namespace dtwc

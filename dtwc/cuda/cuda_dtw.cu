@@ -877,6 +877,33 @@ std::string cuda_device_info(int device_id)
          std::to_string(prop.totalGlobalMem / (1024 * 1024)) + " MB)";
 }
 
+std::string cuda_device_refusal(int device_id)
+{
+  if (!cuda_available()) return detail::no_cuda_device_reason();
+  const std::string device = "CUDA device " + std::to_string(device_id);
+  // The runtime's own words for what it cannot do, each call's error consumed as CUDA_CHECK consumes it.
+  cudaError_t err = cudaSetDevice(device_id);
+  if (err != cudaSuccess) {
+    (void)cudaGetLastError();
+    return device + " cannot be selected: " + cudaGetErrorString(err);
+  }
+  int major = 0, minor = 0;
+  err = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device_id);
+  if (err == cudaSuccess) err = cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device_id);
+  if (err != cudaSuccess) {
+    (void)cudaGetLastError();
+    return device + " cannot be queried: " + cudaGetErrorString(err);
+  }
+  if (const std::string too_old = detail::compute_capability_refusal(major, minor, device_id); !too_old.empty())
+    return too_old;
+  err = cudaFree(nullptr); // starts the context a launch needs, which an exclusive-mode device may refuse
+  if (err != cudaSuccess) {
+    (void)cudaGetLastError();
+    return device + " cannot start a context: " + cudaGetErrorString(err);
+  }
+  return {};
+}
+
 // =========================================================================
 // Templated kernel launch helper (anonymous namespace — internal only)
 // =========================================================================

@@ -135,12 +135,40 @@ std::string hybrid_refused_message(std::string_view where, std::string_view why,
          "but " + std::string(why) + ". Use device " + instead + "; no single-device fallback was attempted.";
 }
 
-std::string hybrid_as_it_goes_message(std::string_view where, std::string_view method)
+GpuRefusal gpu_not_built_refusal()
 {
-  return hybrid_refused_message(
-    where, "method '" + std::string(method) + "' computes its distances on the CPU as it goes, so the GPU would sit "
-           "idle; choose pam, kmedoids, hierarchical, mip, lrcore or clara",
-    false);
+  return GpuRefusal(gpu_not_built_message(), "this build has no GPU backend compiled in");
+}
+
+GpuRefusal hybrid_refusal(std::string_view where, std::string_view why, bool gpu_runs)
+{
+  return GpuRefusal(hybrid_refused_message(where, why, gpu_runs), std::string(why));
+}
+
+GpuRefusal hybrid_streamed_refusal()
+{
+  return hybrid_refusal("fast_clara", "the series are streamed, and a streamed batch is assigned on one device");
+}
+
+GpuRefusal as_it_goes_refusal(std::string_view where, std::string_view method, Device device)
+{
+  const std::string name(method);
+  const std::string reason =
+    "method '" + name + "' computes its distances on the CPU as it goes, so the GPU would sit idle";
+  if (device == Device::CPU_GPU)
+    return GpuRefusal(
+      hybrid_refused_message(where, reason + "; choose pam, kmedoids, hierarchical, mip, lrcore or clara", false),
+      reason);
+  return GpuRefusal(std::string(where) + ": method '" + name + "' computes its distances on the CPU as it goes, so "
+                      "device 'gpu' would sit idle; the GPU fills the distance matrix that pam, kmedoids, mip, lrcore "
+                      "and hierarchical use, and clara's sample matrices. Choose one of those, or device 'cpu'. "
+                      "No CPU fallback was attempted.",
+                    reason);
+}
+
+void say_fallback(std::string_view reason)
+{
+  std::cerr << "[dtwc] gpu requested: " + std::string(reason) + "; running on cpu (fallback)\n";
 }
 
 std::string share_ignored_message(std::string_view where, std::string_view splits, Device device)

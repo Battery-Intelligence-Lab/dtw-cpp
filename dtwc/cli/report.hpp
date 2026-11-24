@@ -20,6 +20,7 @@
 #include <ctime>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dtwc::detail {
@@ -79,6 +80,14 @@ struct RunReport
   /// The run's start: its clocks, and the machine's facts (the RAM available now).
   explicit RunReport(const Config &config);
 
+  /// The run was asked for a GPU it cannot use, `reason` why, and computes on the CPU instead (Config::fallback): the
+  /// configuration row says so, and the machine's GPU is not the run's.
+  void fell_back(std::string reason)
+  {
+    fallback = std::move(reason);
+    machine.gpu.reset();
+  }
+
   /// Close the open row, run on `threads` threads (0: none planned yet), and open `name`'s.
   void begin(const char *name, int threads);
   /// Close the open row, run on `threads` threads: the run's end, or its throw.
@@ -102,6 +111,7 @@ struct RunReport
   std::optional<Clustering> clustering;
   std::optional<Silhouettes> silhouettes;
   std::string error_kind, error_text; ///< a failed run's typed error and its text
+  std::string fallback;               ///< why the run computes on the CPU where `config` asked for a GPU; else empty
 };
 
 /// The command line that repeats `config` with its method as `method`: dtwc_cl and every key whose value is not its

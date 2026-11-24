@@ -85,13 +85,14 @@ from dtwcpp._dtwcpp_core import (
 )
 
 
-def _resolve_device(device):
+def _resolve_device(device, fallback=False):
     """Resolve a requested device to ``(backend, ordinal)``, failing loudly.
 
     ``backend`` is ``"cpu"``, ``"gpu"``, ``"cpu+gpu"`` or ``"hpc"``. The name is
     parsed by the C++ grammar, where ``cuda`` is a spelling of ``gpu``; ``gpu``
     needs a GPU this build's backend finds, and raises ``DeviceError`` without
-    one. ``cpu+gpu`` is checked by C++ alone, in the same words in every
+    one, unless ``fallback`` leaves that to C++, which then runs the request on
+    the CPU. ``cpu+gpu`` is checked by C++ alone, in the same words in every
     language: a build without CUDA refuses it where it is selected
     (``dtwcpp.device``, ``Problem``), a CUDA build without a device at its
     first use, as C++ and MATLAB do.
@@ -101,7 +102,7 @@ def _resolve_device(device):
     if device.strip().lower() in _HPC_NAMES:
         return ("hpc", 0)
     backend, device_id = _parse_device(device)
-    if backend == "gpu" and not gpu_available():
+    if backend == "gpu" and not fallback and not gpu_available():
         raise DeviceError(
             f"[dtwc] device='gpu' requested but no GPU is available ({gpu_info()}). "
             "This request will not silently fall back to CPU."
@@ -134,7 +135,10 @@ def device(device=None):
     ``"hpc:gpu"``. A local selection is stored in C++ and the
     CANONICAL name that ``dtwc::device()`` reports is returned, so
     ``"cuda:0"`` comes back as ``"gpu"`` exactly as it does in C++ and MATLAB.
-    An explicit ``device=`` argument always overrides this global default.
+    An explicit ``device=`` argument always overrides this global default. The
+    default has no ``fallback``: that is an option of one call (``cluster``,
+    ``cdist``, ``DTWClustering``, ``Problem``), which runs a GPU request that
+    cannot be honoured on the CPU.
 
     Examples
     --------

@@ -30,13 +30,17 @@ struct Config;
  * Validates `ndim` agreement, `core::validate(distance)`, finite/missing series values, and
  * Sakoe-Chiba band feasibility across `(X, Y)` before computing any pair. When one side is
  * `Float32` and the other `Float64`, widens the `Float32` side to `Float64`.
+ *
+ * A GPU request the build, the machine or the kernels cannot honour (see Config::fallback) is a DeviceError
+ * before any pair is computed, or, with `fallback`, a computation on the CPU with one line on stderr saying so.
  */
 std::vector<double> cdist(const Data &X, const Data &Y,
                           const core::DistanceConfig &distance = {},
                           Device device = Device::CPU,
                           int device_index = 0,
                           GpuPrecision gpu_precision = GpuPrecision::Auto,
-                          double gpu_share = -1.0);
+                          double gpu_share = -1.0,
+                          bool fallback = false);
 
 /**
  * @brief Cross-collection DTW distance matrix reading distance and device settings from `config`.

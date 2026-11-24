@@ -5,6 +5,12 @@ function D = cdist(X, varargin)
 %   D = dtwc.distance.cdist(X)                          % pairwise X vs X
 %   D = dtwc.distance.cdist(X, Y, 'Band', 10, 'Metric', 'squared_euclidean')
 %   D = dtwc.distance.cdist(X, Y, 'Device', 'gpu', 'GpuPrecision', 'fp32')
+%   D = dtwc.distance.cdist(X, Y, 'Device', 'gpu', 'Fallback', true)
+%
+%   A GPU Device that cannot be honoured (no GPU backend or device, a Variant,
+%   MissingStrategy, GpuPrecision or number of features the kernels lack) raises
+%   dtwc:deviceError, unless 'Fallback' is true, which computes on the CPU and
+%   says so once on stderr.
 %
 %   X and Y may be an N x L numeric matrix, a cell of numeric vectors, a
 %   dtwc.Dataset, or a file/folder path.

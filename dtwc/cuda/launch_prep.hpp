@@ -79,18 +79,27 @@ inline constexpr std::size_t upper_triangle_pairs(std::size_t n) noexcept
   return (n < 2) ? std::size_t{ 0 } : n * (n - 1) / 2;
 }
 
-/// @brief Reject a GPU older than compute capability 8.0 (Ampere, 2021), the
-/// oldest the kernels are built and tuned for.
+/// @brief Why a GPU older than compute capability 8.0 (Ampere, 2021), the oldest the kernels are built and tuned for,
+/// is refused ("" for one that is not): naming device @p device_id's compute capability.
+inline std::string compute_capability_refusal(int major, int minor, int device_id)
+{
+  if (major >= 8) return {};
+  return "CUDA device " + std::to_string(device_id) + " has compute capability " + std::to_string(major) + "."
+         + std::to_string(minor) + "; DTWC++ needs 8.0 or newer (Ampere, 2021: A30, A100, RTX 30 and later)";
+}
+
+/// @brief Reject a GPU older than compute capability 8.0.
 /// @throws dtwc::DeviceError naming device @p device_id's compute capability.
 inline void require_compute_capability(int major, int minor, int device_id)
 {
-  if (major < 8)
-    throw dtwc::DeviceError(
-      "CUDA device " + std::to_string(device_id) + " has compute capability "
-      + std::to_string(major) + "." + std::to_string(minor)
-      +
-      "; DTWC++ needs 8.0 or newer (Ampere, 2021: A30, A100, RTX 30 and later). "
-      "No CPU fallback was attempted.");
+  if (const std::string why = compute_capability_refusal(major, minor, device_id); !why.empty())
+    throw dtwc::DeviceError(why + ". No CPU fallback was attempted.");
+}
+
+/// @brief Why a CUDA call on a host with no usable device is refused.
+inline std::string no_cuda_device_reason()
+{
+  return "DTWC++ was built with CUDA support, but no usable CUDA GPU was detected";
 }
 
 /// @brief Reject a CUDA call on a host with no usable device.
@@ -98,10 +107,7 @@ inline void require_compute_capability(int major, int minor, int device_id)
 inline void require_cuda_device(bool available, const char *entry)
 {
   if (!available)
-    throw dtwc::DeviceError(
-      std::string(entry) +
-      ": DTWC++ was built with CUDA support, but no "
-      "usable CUDA GPU was detected. No CPU fallback was attempted.");
+    throw dtwc::DeviceError(std::string(entry) + ": " + no_cuda_device_reason() + ". No CPU fallback was attempted.");
 }
 
 /// The wavefront stages both series in shared memory up to this length.

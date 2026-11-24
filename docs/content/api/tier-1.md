@@ -64,7 +64,8 @@ FastCLARA assignment between the CPU and a CUDA GPU. Setting a device returns it
 canonical name, so `cuda:0` comes back as `gpu`. An unknown name, `gpu` on a
 build without a GPU backend, or `cpu+gpu` without CUDA raises `DeviceError`
 (Python also checks that the machine has a GPU for `gpu`); no request falls back
-to the CPU. Python also takes `hpc` and `hpc:gpu`, which send the whole run to a
+to the CPU unless the call says `fallback` (below), and the global device has none.
+Python also takes `hpc` and `hpc:gpu`, which send the whole run to a
 SLURM cluster ([SLURM](../../getting-started/slurm/)); C++ and MATLAB refuse them
 with `DeviceError`.
 
@@ -172,8 +173,8 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `twe_lambda`), `mv_mode`, `missing_strategy`, `max_iter`, `n_init`, `seed`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
-`lr_max_nodes`, `device`, `gpu_precision`, `gpu_share`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
-(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'GpuShare'`, `'MatrixDtype'`, `'RamLimit'`, ...), and
+`lr_max_nodes`, `device`, `gpu_precision`, `gpu_share`, `fallback`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
+(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'GpuShare'`, `'Fallback'`, `'MatrixDtype'`, `'RamLimit'`, ...), and
 `no_report` (MATLAB `'NoReport'`; `--no-report`: no run report). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
 beside a `Dataset`, which keeps its own, refuses one that differs. `output`, `checkpoint` and
@@ -206,8 +207,18 @@ that a run repeats, and anything else, or a forced value on another device, is
 `InvalidInput` ([Devices](../../guides/devices/)). `k` below 1 or above the number of series, and an empty dataset,
 are `InvalidInput`.
 
+`fallback` (`Config::fallback`, Python `fallback=True`, MATLAB `'Fallback', true`, `dtwc_cl --fallback`)
+makes a GPU `device` a wish. A request that cannot be honoured (no GPU backend or usable GPU, a variant,
+missing-data strategy, precision or number of features the kernels lack, a method with no GPU path, `cpu+gpu`
+without CUDA or on a streamed run) is then run on the CPU, before a series is read, instead of raising
+`DeviceError`: one line on stderr, `[dtwc] gpu requested: <reason>; running on cpu (fallback)`, the run report's
+configuration row saying why, and a `Result` whose `device` is `cpu`. It belongs to the call (the process device
+has none) and is off by default; a failure once the GPU has begun is a `DeviceError` either way
+([Devices](../../guides/devices/)).
+
 In Python, `device="hpc"` or `"hpc:gpu"` submits the run as one `job.toml` and
-returns a `Result` holding the labels, medoids and run report; `gpu_device` (`"a100"`, `"a6000"`,
+returns a `Result` holding the labels, medoids and run report; `fallback=True` with it is `InvalidInput`
+(the run is remote, with no local CPU to fall back to); `gpu_device` (`"a100"`, `"a6000"`,
 `"l40s"`, `"h100"`) picks the GPU of an `hpc:gpu` run. `upload_input=True` sends the local file or
 folder a path names with the job, which otherwise reads an absolute path on the cluster
 ([SLURM](../../getting-started/slurm/)); `output` receives the downloaded files, and `checkpoint` and
@@ -284,7 +295,7 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 | cluster of each series | `labels()` | `labels` | `labels` (1-based) |
 | medoid of each cluster | `medoids()`, series indices | `medoids` | `medoids` (1-based) |
 | total distance to the medoids | `cost()` | `cost` | `cost` |
-| where it ran | `device()` | `device` | `device` |
+| where it ran (`cpu` where a GPU request fell back) | `device()` | `device` | `device` |
 | a quality score | `score(name)` | `score(name)` | `score(name)` |
 | the N×N distances | `distance_matrix()`, row-major | `distance_matrix` | `distance_matrix()` |
 | write the result files | `save(dir)` | `save(dir)` | `save(dir)` |
@@ -342,7 +353,10 @@ Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes on
 `cpu`, CUDA wavefront/regtile kernels on `gpu`, and row-partitioned concurrent
 execution on `cpu+gpu` (`gpu_share`). All DTW variants (`ddtw`, `wdtw`, `adtw`,
 `softdtw`, `msm`, `twe`), missing-value strategies, and multivariate modes
-(`dependent`, `independent`) run in parallel on the CPU.
+(`dependent`, `independent`) run in parallel on the CPU. A GPU `device` the
+kernels or the machine cannot honour is a `DeviceError`, or with `fallback`
+(Python's `cdist(..., fallback=True)`, MATLAB's `'Fallback', true`, C++'s `Config::fallback`) the
+CPU's matrix, with one line on stderr saying why.
 
 ## The scikit-learn estimator (Python and MATLAB)
 
@@ -372,9 +386,9 @@ disp(est.predict(X(1:2, :) + 0.1));
 
 The parameters are `n_clusters` (3), `method` (`"pam"`), `variant`, `band`,
 `max_iter`, `n_init`, `wdtw_g`, `adtw_penalty`, `msm_c`, `twe_nu`, `twe_lambda`,
-`mv_mode`, `missing_strategy`, `metric`, `batch_size`, `random_state` and
-`device`, with `cluster()`'s defaults; MATLAB's properties are the same words in
-CamelCase (`NClusters`, `Method`, ..., `RandomState`, `Device`) and its fitted
+`mv_mode`, `missing_strategy`, `metric`, `batch_size`, `random_state`, `device` and
+`fallback`, with `cluster()`'s defaults; MATLAB's properties are the same words in
+CamelCase (`NClusters`, `Method`, ..., `RandomState`, `Device`, `Fallback`) and its fitted
 values are `Labels`, `MedoidIndices`, `Inertia` and `ClusterCenters`. `fit` runs
 `n_init` restarts on one distance matrix, restart `i` seeded `random_state + i`,
 and keeps the lowest cost. `transform` gives the distances to the fitted

@@ -124,6 +124,7 @@ print(f"Iterations:     {clf.n_iter_}")
 | `batch_size` | int | `-1` | OneBatchPAM's batch size (`-1`: automatic) |
 | `random_state` | int | `None` | The seed; `None` is `dtwcpp.DEFAULT_RANDOM_SEED` (42) |
 | `device` | str | `None` | Local `"cpu"`/`"gpu"`/`"cuda:N"`/`"cpu+gpu"`, or whole-job `"hpc"` offload |
+| `fallback` | bool | `False` | A GPU `device` that cannot be honoured computes on the CPU, saying so on stderr, instead of raising `DeviceError` (`InvalidInput` with `"hpc"`) |
 
 The estimator validates the complete distance contract before computing.
 Euclidean and squared Euclidean costs are available for Standard DTW and DDTW, and the
@@ -297,7 +298,20 @@ clf = dtwcpp.DTWClustering(n_clusters=3, band=10, device="cuda")
 labels = clf.fit_predict(X)
 ```
 
-`cuda` / `cuda:N` are aliases of `gpu` / `gpu:N` (selecting CUDA where built, else Metal on macOS); if no GPU is available, `dtwcpp.DeviceError` is raised with no CPU fallback. GPU execution supports univariate Standard DTW with `missing_strategy="error"` (L1 or squared Euclidean); other variants and missing-data recurrences require CPU computation.
+`cuda` / `cuda:N` are aliases of `gpu` / `gpu:N` (selecting CUDA where built, else Metal on macOS); if no GPU is available, `dtwcpp.DeviceError` is raised, and the request is not run on the CPU unless the call says `fallback=True`. GPU execution supports univariate Standard DTW with `missing_strategy="error"` (L1 or squared Euclidean); other variants and missing-data recurrences require CPU computation.
+
+`fallback=True` (in `cluster`, `cdist`, `DTWClustering` and `Problem`) makes the device a wish: a GPU request that cannot be honoured
+(no GPU backend or device, a variant, missing-data strategy, precision or number of features the kernels lack, a method with
+no GPU path) computes on the CPU instead of raising `DeviceError`, with one line on stderr (`[dtwc] gpu requested: <reason>;
+running on cpu (fallback)`) and the run report saying why, and `Result.device` is `"cpu"`. It belongs to the call, not to
+`dtwcpp.device(...)`; a failure once the GPU has begun is a `DeviceError` either way, and `device="hpc"` with it is `InvalidInput`.
+`prob.set_device("gpu", fallback=True)` or `Problem("p", device="gpu", fallback=True)` keeps the request and settles it where
+each fill or method starts ([Devices](../../guides/devices/)):
+
+```python
+res = dtwcpp.cluster(series, 3, device="gpu", fallback=True)      # the GPU where there is one, else the CPU
+print(res.device)                                                   # "gpu" or "cpu"
+```
 
 `device="cpu+gpu"` (a CUDA build) uses the CPU's threads and the GPU together: it fills the
 distance matrix of `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical` and of `clara` on a
