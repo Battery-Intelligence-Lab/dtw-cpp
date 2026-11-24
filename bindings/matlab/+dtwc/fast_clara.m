@@ -14,7 +14,7 @@ function result = fast_clara(prob, k, varargin)
 %   k : positive integer
 %       Number of clusters.
 %   SampleSize : int, optional (default -1 = auto)
-%       Subsample size. -1 uses auto formula: max(40+2k, min(N, 10k+100)).
+%       Subsample size. -1 uses auto formula: min(N, 10k+100).
 %   NSamples : int, optional (default 5)
 %       Number of subsamples to try.
 %   MaxIter : int, optional (default 100)
