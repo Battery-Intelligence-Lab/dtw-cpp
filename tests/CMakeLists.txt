@@ -155,9 +155,10 @@ dtwc_add_test(NAME dtwc_unit_mip
         ${_dtwc_test_source_test_mip_backend_guards}
         ${_dtwc_test_source_unit_test_mip}
     ${_dtwc_highs_skip})
+# Without HiGHS the strict LR-core run leaves out the cases that solve with it: [compare], [kelley], [bench] (hidden).
 if(NOT (DTWC_ENABLE_HIGHS AND TARGET highs::highs))
     add_test(NAME test_lrcore_strict
-             COMMAND $<TARGET_FILE:dtwc_unit_mip> "[lrcore],[lagrangian]~[compare]~[kelley]"
+             COMMAND $<TARGET_FILE:dtwc_unit_mip> "[lrcore],[lagrangian]~[compare]~[kelley]~[bench]"
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     set_tests_properties(test_lrcore_strict PROPERTIES
         FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"

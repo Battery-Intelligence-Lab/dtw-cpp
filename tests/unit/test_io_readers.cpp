@@ -182,6 +182,22 @@ TEST_CASE("Parquet chunk extractors reject corrupt list offsets",
   CHECK_THROWS_WITH(
     dtwc::io::detail::extract_series_from_column(column, type, f32),
     Catch::Matchers::ContainsSubstring("outside the values buffer"));
+
+  // The range of the chunk's values is checked before they are sliced for their null count: past the values, over
+  // values that hold a null, the refusal is the corrupt chunk's, not the null's.
+  arrow::DoubleBuilder with_null_builder(arrow::default_memory_pool());
+  REQUIRE(with_null_builder.Append(1.0).ok());
+  REQUIRE(with_null_builder.AppendNull().ok());
+  REQUIRE(with_null_builder.AppendValues(std::vector<double>{3.0, 4.0, 5.0}).ok());
+  std::shared_ptr<arrow::Array> with_null;
+  REQUIRE(with_null_builder.Finish(&with_null).ok());
+  auto past_the_values = std::static_pointer_cast<arrow::Array>(
+    std::make_shared<arrow::ListArray>(
+      type, /*length=*/2, arrow::Buffer::FromVector(std::vector<int32_t>{0, 2, 9}), with_null));
+  CHECK_THROWS_WITH(
+    dtwc::io::detail::extract_series_from_column(
+      std::make_shared<arrow::ChunkedArray>(past_the_values), type, f64),
+    Catch::Matchers::ContainsSubstring("outside the values buffer"));
 }
 
 TEST_CASE("Parquet: scalar Float64 column still reads", "[io][parquet]")
@@ -470,6 +486,24 @@ TEST_CASE("Parquet: a null list cell or null list element is rejected",
       Catch::Matchers::ContainsSubstring("null"));
     std::filesystem::remove(tmp);
   }
+
+  // Only the rows that are read are checked: a null in a row --skip-rows drops is no refusal, as in a CSV file's
+  // skipped lines.
+  auto pool = arrow::default_memory_pool();
+  auto values_builder = std::make_shared<arrow::DoubleBuilder>(pool);
+  arrow::ListBuilder list_builder(pool, values_builder);
+  REQUIRE(list_builder.Append().ok());
+  REQUIRE(values_builder->Append(1.0).ok());
+  REQUIRE(values_builder->AppendNull().ok());
+  REQUIRE(list_builder.Append().ok());
+  REQUIRE(values_builder->AppendValues(std::vector<double>{ 4.0, 5.0 }).ok());
+  std::shared_ptr<arrow::Array> rows;
+  REQUIRE(list_builder.Finish(&rows).ok());
+  auto tmp = tmpdir() / "list_null_in_skipped_row.parquet";
+  write_parquet(tmp, arrow::Table::Make(arrow::schema({ arrow::field("series", rows->type()) }), { rows }));
+  CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp, "series"), Catch::Matchers::ContainsSubstring("null"));
+  CHECK(dtwc::io::read_arrow(tmp, "series", 0, 1).p_vec == std::vector<std::vector<double>>{ { 4.0, 5.0 } });
+  std::filesystem::remove(tmp);
 }
 
 // The reader fixtures tests/python/test_io.py and tests/matlab/test_tier1_route_parity.m read too, written by
