@@ -161,6 +161,8 @@ void check_collection_series(const Data &data, std::string_view side, core::Miss
 
 void check_cross_band(const Data &X, const Data &Y, const core::DistanceConfig &cfg)
 {
+  if (cfg.band < -1) // as Problem::set_distance refuses it
+    throw InvalidInput("cdist: band must be -1 (full DTW) or at least 0; got " + std::to_string(cfg.band) + ".");
   const auto n_x = static_cast<std::size_t>(X.size());
   const auto n_y = static_cast<std::size_t>(Y.size());
   if (n_x == 0 || n_y == 0 || cfg.band < 0) return;

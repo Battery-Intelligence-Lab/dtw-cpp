@@ -97,6 +97,9 @@ TEST_CASE("cdist matches per-pair dtw oracle across rectangular, ragged, banded,
     dtwc::core::DistanceConfig narrow;
     narrow.band = 2;
     REQUIRE_THROWS_AS(dtwc::distance::cdist(X_rag, Y_rag, narrow), dtwc::InvalidInput);
+    // A band below -1 is refused, as Problem::set_band refuses it, not run as full DTW.
+    narrow.band = -2;
+    REQUIRE_THROWS_AS(dtwc::distance::cdist(X_rag, Y_rag, narrow), dtwc::InvalidInput);
   }
 
   SECTION("DDTW and WDTW variants")
