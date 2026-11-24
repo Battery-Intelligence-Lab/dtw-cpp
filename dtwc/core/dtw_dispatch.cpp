@@ -325,7 +325,8 @@ void validate(const DistanceConfig &c, bool f32)
   if (f32)
     for (const auto &q : parameters)
       if (q.variant == p.variant
-          && (q.value > std::numeric_limits<float>::max() || (q.value != 0 && static_cast<float>(q.value) == 0)))
+          && (q.value > static_cast<double>(std::numeric_limits<float>::max())
+              || (q.value != 0 && static_cast<float>(q.value) == 0)))
         throw InvalidInput(std::string(q.name)
                            + " cannot be represented in float32 without becoming zero or non-finite.");
 

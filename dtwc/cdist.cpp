@@ -35,6 +35,8 @@
 namespace dtwc {
 namespace {
 
+// The refusals of a GPU cdist, which validate_cdist_device below reaches only in a build with a GPU backend.
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
 const char *variant_label(core::DTWVariant v)
 {
   switch (v) {
@@ -72,6 +74,7 @@ constexpr std::string_view kGpuBackend = "Metal";
                      + "; no backend call or CPU fallback was attempted. " + fix,
                    std::string(kGpuBackend) + " " + reason);
 }
+#endif
 
 void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
                            Device device, int device_index, GpuPrecision gpu_precision)

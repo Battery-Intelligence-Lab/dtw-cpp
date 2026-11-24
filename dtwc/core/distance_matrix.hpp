@@ -99,7 +99,7 @@ inline void for_each_point(const T *packed, index_t n, index_t a, F &&f)
   for (index_t o = 0; o < n; ++o) {
     double v[W];
     for (size_t g = 0; g < W; ++g)
-      v[g] = packed[tri_index(static_cast<size_t>(rows[g]), static_cast<size_t>(o))];
+      v[g] = static_cast<double>(packed[tri_index(static_cast<size_t>(rows[g]), static_cast<size_t>(o))]);
     f(o, static_cast<const double *>(v));
   }
 }
@@ -187,7 +187,7 @@ public:
   {
     assert(i < n_ && j < n_);
     const size_t k = tri_index(i, j);
-    return f64_ ? f64_[k] : f32_[k];
+    return f64_ ? f64_[k] : static_cast<double>(f32_[k]);
   }
 
   /// Parallel fills write disjoint (i,j) pairs; no locking is needed.

@@ -166,7 +166,7 @@ namespace {
 
     double operator()(index_t i, index_t j) const noexcept
     {
-      return packed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))];
+      return static_cast<double>(packed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))]);
     }
 
     void compute_initial_mu(index_t k, std::vector<double> &mu) const
@@ -966,8 +966,8 @@ void LR_core_clustering(Problem &prob)
     for (index_t c = 0; c < n_medoids; ++c) {
       const auto m = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)]);
       const auto served_by = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(result.labels[m])]);
-      const double d_self = packed[core::tri_index(m, m)];
-      const double d_served = packed[core::tri_index(served_by, m)];
+      const auto d_self = static_cast<double>(packed[core::tri_index(m, m)]);
+      const auto d_served = static_cast<double>(packed[core::tri_index(served_by, m)]);
       if (d_self <= d_served) result.labels[m] = c;
     }
   });

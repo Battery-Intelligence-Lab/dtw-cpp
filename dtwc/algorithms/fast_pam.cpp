@@ -83,7 +83,7 @@ void compute_nearest_and_second(
 
     for (index_t m = 0; m < k; ++m) {
       const index_t medoid = medoids[m]; // read once: cl 19.50 otherwise reads it again for the tie below
-      const double d = matrix[core::tri_index(static_cast<std::size_t>(p), static_cast<std::size_t>(medoid))];
+      const auto d = static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(p), static_cast<std::size_t>(medoid))]);
       // A medoid tied with another medoid (a duplicate series) serves itself,
       // or its own cluster would be published empty.
       if (!has_best || d < best || (d == best && medoid == p)) {
@@ -165,7 +165,7 @@ void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std:
   if constexpr (W == 1) {                // the loop find_best_swap ran before groups
     double acc = 0.0;
     for (index_t o = 0; o < N; ++o) {
-      const double doj = matrix[core::tri_index(static_cast<std::size_t>(a), static_cast<std::size_t>(o))];
+      const auto doj = static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(a), static_cast<std::size_t>(o))]);
       const double d1 = d1s[o];
       if (doj < d1) {
         acc += doj - d1;               // x_c becomes o's nearest
@@ -202,10 +202,10 @@ void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std:
       // the W accumulators fit the 16 vector registers; d1 is read again for the second half.
       constexpr index_t H = W / 2;
       double doj[W];
-      for (index_t g = 0; g < H; ++g) doj[g] = distance(g, o);
+      for (index_t g = 0; g < H; ++g) doj[g] = static_cast<double>(distance(g, o));
       const double d1 = d1s[o];
       for (index_t g = 0; g < H; ++g) update(g, doj[g], d1);
-      for (index_t g = H; g < W; ++g) doj[g] = distance(g, o);
+      for (index_t g = H; g < W; ++g) doj[g] = static_cast<double>(distance(g, o));
       const double d1_again = d1s[o];
       for (index_t g = H; g < W; ++g) update(g, doj[g], d1_again);
     }
@@ -372,8 +372,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
           candidate_cost[static_cast<std::size_t>(a + g)] = cost[g].value();
       };
       run_openmp(total_distance, static_cast<std::size_t>((N + G - 1) / G));
-      medoids[0] = static_cast<index_t>(
-        std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin());
+      medoids[0] = std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin();
       compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
       converged = true;
     } else {

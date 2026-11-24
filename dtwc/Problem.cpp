@@ -824,7 +824,7 @@ Problem::distance_checkpoint_identity() const
   hash_u64(hash, static_cast<std::uint64_t>(data_.ndim));
   hash_enum(hash, data_.precision);
   for (std::size_t i = 0; i < data_.size(); ++i) {
-    hash_u64(hash, static_cast<std::uint64_t>(data_.series_flat_size(i)));
+    hash_u64(hash, data_.series_flat_size(i));
     if (data_.is_f32()) {
       for (const float value : data_.series_f32(i))
         hash_float(hash, value);
@@ -975,7 +975,7 @@ void prefetch_series(const Data &data, std::size_t first, std::size_t count)
     const auto begin = reinterpret_cast<std::uintptr_t>(series_of(first).data());
     const auto end = reinterpret_cast<std::uintptr_t>(back.data() + back.size());
     if (begin < end && end - begin <= 2 * bytes)
-      core::prefetch_pages(series_of(first).data(), static_cast<std::size_t>(end - begin));
+      core::prefetch_pages(series_of(first).data(), end - begin);
   };
   if (data.is_f32())
     read_ahead([&data](std::size_t i) { return data.series_f32(i); });
@@ -1650,8 +1650,8 @@ void Problem::assign_clusters()
         // (values near DBL_MAX give +inf), and Lloyd refuses that before it
         // publishes labels.
         const double distance = core::detail::require_finite_medoid_distance(
-          matrix[core::tri_index(static_cast<std::size_t>(ip), static_cast<std::size_t>(medoid))], "kmedoids_lloyd",
-          i_p, static_cast<index_t>(slot), medoid);
+          static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(ip), static_cast<std::size_t>(medoid))]),
+          "kmedoids_lloyd", i_p, static_cast<index_t>(slot), medoid);
         // A medoid tied with another medoid (a duplicate series) serves itself,
         // or its own cluster would be published empty.
         if (!has_best || distance < best_distance || (distance == best_distance && medoid == ip)) {
@@ -1685,7 +1685,7 @@ void Problem::calculate_medoids()
 #endif
       for (std::size_t i = 0; i < n_series; ++i)
         if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
-          sum += (*values)[core::tri_index(i_p, i)];
+          sum += static_cast<double>((*values)[core::tri_index(i_p, i)]);
 
       pointCosts[i_p] = sum;
     };

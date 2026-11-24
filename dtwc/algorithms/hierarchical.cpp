@@ -209,7 +209,7 @@ namespace {
       for (const index_t cand : members[cl]) {
         double cost = 0.0;
         for (std::size_t q = 0; q < size; ++q)
-          cost += matrix[core::tri_index(static_cast<std::size_t>(cand), static_cast<std::size_t>(mem[q]))];
+          cost += static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(cand), static_cast<std::size_t>(mem[q]))]);
 
         if (cost < best_cost || (cost == best_cost && cand < best_idx)) {
           best_cost = cost;
@@ -221,7 +221,8 @@ namespace {
 
       // Total cost = sum of distances of each point to its medoid.
       for (std::size_t q = 0; q < size; ++q)
-        total_cost += matrix[core::tri_index(static_cast<std::size_t>(mem[q]), static_cast<std::size_t>(best_idx))];
+        total_cost += static_cast<double>(
+          matrix[core::tri_index(static_cast<std::size_t>(mem[q]), static_cast<std::size_t>(best_idx))]);
     }
     return total_cost;
   }

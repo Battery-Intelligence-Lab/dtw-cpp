@@ -149,7 +149,7 @@ namespace algorithms {
     auto sample_pair = [&](std::size_t p) { sample[p] = distance(pairs[p].first, pairs[p].second); };
     run_openmp(sample_pair, pairs.size());
 
-    std::size_t idx = static_cast<std::size_t>(percentile / 100.0 * (sample.size() - 1));
+    std::size_t idx = static_cast<std::size_t>(percentile / 100.0 * static_cast<double>(sample.size() - 1));
     if (idx >= sample.size()) idx = sample.size() - 1;
     std::nth_element(sample.begin(), sample.begin() + idx, sample.end());
     double dc = sample[idx];

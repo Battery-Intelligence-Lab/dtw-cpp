@@ -160,7 +160,7 @@ SeriesSet problem_series(const Problem& prob, const std::vector<index_t>& indice
     set.converted.reserve(indices.size());
     for (const index_t index : indices) {
       const auto values = prob.data().series_f32(static_cast<std::size_t>(index));
-      set.views.push_back(set.converted.emplace_back(values.begin(), values.end()));
+      set.views.emplace_back(set.converted.emplace_back(values.begin(), values.end()));
     }
   } else {
     for (const index_t index : indices)
@@ -321,7 +321,7 @@ double dba_align_and_accumulate(const Series& center, std::span<const SeriesView
       double *const dst_sum = all_sums.data() + s * L;
       std::size_t *const dst_cnt = all_counts.data() + s * L;
       const auto values = series[s];
-      for (const auto [i, j] : path) {
+      for (const auto &[i, j] : path) {
         dst_sum[i] += values[j];
         ++dst_cnt[i];
       }
@@ -348,7 +348,7 @@ double dba_align_and_accumulate(const Series& center, std::span<const SeriesView
     require_finite(cost, entry_point, "squared-DTW cost");
     objective += cost;
     require_finite(objective, entry_point, "squared-DTW cost");
-    for (const auto [i, j] : path) {
+    for (const auto &[i, j] : path) {
       sums[i] += values[j];
       ++counts[i];
     }
@@ -399,7 +399,7 @@ Series ssg(std::span<const SeriesView> series, Series center,
       require_finite(cost, entry_point, "squared-DTW cost");
       sums.assign(center.size(), 0.0);
       counts.assign(center.size(), 0);
-      for (const auto [i, j] : path) {
+      for (const auto &[i, j] : path) {
         sums[i] += series[index][j];
         ++counts[i];
       }

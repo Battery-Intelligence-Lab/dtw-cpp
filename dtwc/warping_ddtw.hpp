@@ -174,11 +174,11 @@ template <typename X, typename Y>
 core::series_value_t<X> ddtwBanded(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
                                    core::MetricType metric = core::MetricType::L1)
 {
-  using data_t = core::series_value_t<X>;
-  auto [dx, dy] = detail::derivative_bufs<data_t>();
-  derivative_transform_inplace(std::span<const data_t>{ x }, dx);
-  derivative_transform_inplace(std::span<const data_t>{ y }, dy);
-  return dtwBanded(dx, dy, band, static_cast<data_t>(-1), metric);
+  using value_t = core::series_value_t<X>;
+  auto [dx, dy] = detail::derivative_bufs<value_t>();
+  derivative_transform_inplace(std::span<const value_t>{ x }, dx);
+  derivative_transform_inplace(std::span<const value_t>{ y }, dy);
+  return dtwBanded(dx, dy, band, static_cast<value_t>(-1), metric);
 }
 
 } // namespace dtwc

@@ -52,8 +52,8 @@ core::series_value_t<X> dtwMissing_banded(const X &x, const Y &y, int band = set
                                           core::series_value_t<X> early_abandon = -1,
                                           core::MetricType metric = core::MetricType::L1)
 {
-  using data_t = core::series_value_t<X>;
-  const std::span<const data_t> xs{ x }, ys{ y };
+  using value_t = core::series_value_t<X>;
+  const std::span<const value_t> xs{ x }, ys{ y };
   // A univariate L2 cost is L1: sqrt((a-b)^2) == |a-b|.
   if (metric == core::MetricType::SquaredL2)
     return core::run_dtw<core::SpanNanAwareSquaredL2Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,

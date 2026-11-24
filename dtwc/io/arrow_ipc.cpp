@@ -159,8 +159,8 @@ public:
     if (!file_.is_open()) file_.open(*path_, std::ios::binary);
     file_.clear();
     file_.seekg(first);
-    file_.read(reinterpret_cast<char *>(into), static_cast<std::streamsize>(last - first));
-    if (!file_ || file_.gcount() != static_cast<std::streamsize>(last - first))
+    file_.read(reinterpret_cast<char *>(into), last - first);
+    if (!file_ || file_.gcount() != last - first)
       throw IOError("only " + std::to_string(file_.gcount()) + " of the " + std::to_string(last - first)
                     + " bytes at byte " + std::to_string(first) + " could be read: the file changed while it was read");
   }
@@ -989,7 +989,7 @@ void walk(const Source &source, Walk &out)
         out.longest_values = memory ? std::max(out.longest_values, longest_span(series, batch.values)) : -1;
       if (out.columns.name >= 0) {
         const ArrowArrayView *names = view->children[out.columns.name];
-        for (const ArrowBufferView &buffer : names->buffer_views) batch.names += buffer.size_bytes;
+        for (const ArrowBufferView &part : names->buffer_views) batch.names += part.size_bytes;
         const auto [first, last] = span_of(names, body.view);
         batch.name_span = last - first;
         batch.longest_name =
@@ -1264,9 +1264,9 @@ std::vector<std::vector<std::vector<std::byte>>> detail::decoded_buffers(std::sp
     auto &buffers = out.emplace_back();
     const auto collect = [&buffers](const auto &self, ArrowArray *array) -> void {
       for (std::int64_t i = 0; i < array->n_buffers; ++i) {
-        const ArrowBuffer *buffer = ArrowArrayBuffer(array, i);
-        const auto *data = reinterpret_cast<const std::byte *>(buffer->data);
-        buffers.emplace_back(data, data + buffer->size_bytes);
+        const ArrowBuffer *part = ArrowArrayBuffer(array, i);
+        const auto *data = reinterpret_cast<const std::byte *>(part->data);
+        buffers.emplace_back(data, data + part->size_bytes);
       }
       for (std::int64_t i = 0; i < array->n_children; ++i) self(self, array->children[i]);
     };
@@ -1323,7 +1323,7 @@ struct IpcFile::State
 namespace {
 
 /// One heap block of `bytes` (heap_block_added), as a size: a price of rows and values, as unsigned as they.
-std::size_t heap(std::size_t bytes) { return bytes + static_cast<std::size_t>(heap_block_added(bytes)); }
+std::size_t heap(std::size_t bytes) { return bytes + heap_block_added(bytes); }
 
 /// A string's heap block for `chars` characters: none within its own buffer (15 characters in each standard library's
 /// string), else its characters, its terminator and the rounding of its capacity (at most 15 more).
@@ -1770,7 +1770,7 @@ Data IpcFile::read_rows(std::vector<index_t> rows, std::size_t ram_budget) const
 }
 
 template <typename T>
-Data IpcFile::read_row_groups(int first, int count, const PieceCheck &piece) const
+Data IpcFile::read_row_groups(int first, int count, const PieceCheck &check) const
 {
   const State &state = *state_;
   try {
@@ -1778,7 +1778,7 @@ Data IpcFile::read_row_groups(int first, int count, const PieceCheck &piece) con
     const auto read = [&](std::size_t j) {
       const std::size_t k = static_cast<std::size_t>(first) + j;
       batches[j] = read_batch<T>(state, k);
-      piece(j, batches[j], state.first_row[k]);
+      check(j, batches[j], state.first_row[k]);
     };
     run_openmp(read, batches.size(), batches.size() > 1);
     // One Data: the batches' spans and names, its owner holding theirs.
