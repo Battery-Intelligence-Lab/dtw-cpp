@@ -298,11 +298,11 @@ function test_keys_are_python_words_in_camel_case(testCase)
         'dc', 'wdtw_g', 'adtw_penalty', 'sdtw_gamma', 'msm_c', 'twe_nu', 'twe_lambda', ...
         'mv_mode', 'missing_strategy', 'sample_size', 'n_samples', 'seed', 'batch_size', ...
         'linkage', 'solver', 'mip_gap', 'time_limit', 'no_warm_start', 'numeric_focus', ...
-        'mip_focus', 'verbose_solver', 'lr_max_nodes', 'device', 'gpu_precision', 'gpu_share', 'matrix_dtype', ...
-        'verbose', 'no_report'};
+        'mip_focus', 'verbose_solver', 'lr_max_nodes', 'device', 'gpu_precision', 'gpu_share', 'fallback', ...
+        'matrix_dtype', 'verbose', 'no_report'};
     estimator_words = {'n_clusters', 'method', 'variant', 'band', 'max_iter', 'n_init', ...
         'wdtw_g', 'adtw_penalty', 'msm_c', 'twe_nu', 'twe_lambda', 'mv_mode', ...
-        'missing_strategy', 'metric', 'batch_size', 'random_state', 'device'};
+        'missing_strategy', 'metric', 'batch_size', 'random_state', 'device', 'fallback'};
     camel = @(words) sort(cellfun(@(w) strjoin(cellfun(@(p) [upper(p(1)) p(2:end)], ...
         strsplit(w, '_'), 'UniformOutput', false), ''), words, 'UniformOutput', false));
 
@@ -443,6 +443,33 @@ function test_gpu_share_is_one_key_with_cpps_range_and_device_refusals(testCase)
                            'GpuPrecision', 'fp64', 'GpuShare', 0.5);
         verifyNotEmpty(testCase, strfind(regexprep(res.Report, '\s+', ' '), 'share 0.5, forced')); % the report wraps its notes
     end
+end
+
+function test_fallback_runs_a_gpu_request_the_kernels_cannot_run_on_the_cpu(testCase)
+%   A GPU Device with a Variant no GPU kernel runs (and, on a build with no GPU backend, any GPU Device) is C++'s
+%   dtwc:deviceError; with 'Fallback' true the same call computes on the CPU, says so on stderr and in the run report,
+%   and the Result reports the device that ran. cdist, Problem and DTWClustering take the same word.
+    X = testCase.TestData.X;
+    request = {'Device', 'gpu', 'Variant', 'wdtw'};
+    verifyError(testCase, @() dtwc.cluster(X, 2, request{:}), 'dtwc:deviceError');
+    res = dtwc.cluster(X, 2, request{:}, 'Fallback', true);
+    cpu = dtwc.cluster(X, 2, 'Device', 'cpu', 'Variant', 'wdtw');
+    verifyEqual(testCase, res.device, 'cpu');
+    verifyEqual(testCase, res.labels, cpu.labels);
+    verifyEqual(testCase, res.cost, cpu.cost);
+    verifySubstring(testCase, regexprep(res.Report, '\s+', ' '), 'device cpu (gpu requested; fallback: ');
+
+    verifyError(testCase, @() dtwc.distance.cdist(X, X, request{:}), 'dtwc:deviceError');
+    verifyEqual(testCase, dtwc.distance.cdist(X, X, request{:}, 'Fallback', true), ...
+                dtwc.distance.cdist(X, X, 'Device', 'cpu', 'Variant', 'wdtw'));
+    prob = dtwc.Problem('fallback', 'Device', 'gpu', 'Fallback', true);   % kept on every build: a fill decides
+    prob.set_data(X);
+    prob.set_variant('wdtw');
+    prob.fill_distance_matrix();
+    verifyTrue(testCase, prob.is_distance_matrix_filled());
+    estimator = dtwc.DTWClustering('NClusters', 2, 'Variant', 'wdtw', 'Device', 'gpu', 'Fallback', true);
+    reference = dtwc.DTWClustering('NClusters', 2, 'Variant', 'wdtw', 'Device', 'cpu');
+    verifyEqual(testCase, estimator.fit(X).Labels, reference.fit(X).Labels);
 end
 
 function test_hpc_is_a_device_error_as_in_cpp(testCase)

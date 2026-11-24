@@ -36,18 +36,22 @@ classdef Problem < handle
         %   prob = dtwc.Problem()
         %   prob = dtwc.Problem('my_problem')
         %   prob = dtwc.Problem('my_problem', 'Device', 'gpu')
+        %   prob = dtwc.Problem('my_problem', 'Device', 'gpu', 'Fallback', true)
         %
         %   Device: 'cpu' (default), 'gpu', 'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu' or
         %   'cpu+gpu:N' -- the names dtwc.device() accepts. A Problem does not
         %   follow the process-wide dtwc.device(). 'gpu' without a GPU backend and
         %   'cpu+gpu' without CUDA raise dtwc:deviceError, as does 'hpc' (Python's
         %   dtwcpp.device("hpc") submits a run to SLURM; MATLAB computes where it
-        %   starts).
+        %   starts). Fallback true makes the Device a wish: where a fill or a method
+        %   starts and the GPU cannot honour it, that call computes on the CPU and
+        %   says so once on stderr, and the Problem keeps its request (see set_device).
             if nargin < 1, name = ''; end
             p = inputParser;
             addParameter(p, 'Device', 'cpu', @(v) ischar(v) || isstring(v));
+            addParameter(p, 'Fallback', false, @(v) islogical(v) && isscalar(v));
             parse(p, varargin{:});
-            obj.Handle = dtwc_mex('Problem_new', name, char(p.Results.Device));
+            obj.Handle = dtwc_mex('Problem_new', name, char(p.Results.Device), p.Results.Fallback);
         end
 
         function delete(obj)
@@ -140,14 +144,25 @@ classdef Problem < handle
             dtwc_mex('Problem_set_missing_strategy', obj.Handle, strategy);
         end
 
-        function set_device(obj, device)
+        function set_device(obj, device, varargin)
         %SET_DEVICE Compute on a device: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu', 'cpu+gpu:N'.
         %   prob.set_device('gpu')
+        %   prob.set_device('gpu', 'Fallback', true)
         %   'gpu:N' is GPU N of this build's GPU backend (CUDA, else Metal,
         %   which has GPU 0 only). A request the device cannot honour (a
         %   variant, missing-data strategy, multivariate data or precision its
         %   kernels lack) raises dtwc:deviceError when distances are computed.
-            dtwc_mex('Problem_set_device', obj.Handle, char(device));
+        %   With Fallback true the request is a wish: where a fill or a method
+        %   starts and the GPU cannot honour it (no GPU backend or usable GPU, a
+        %   variant, missing-data strategy, precision or number of features its
+        %   kernels lack, a method with no GPU path), that call computes on the
+        %   CPU, saying so once on stderr, and the Problem keeps its request;
+        %   set_device then raises nothing a build without a GPU backend would. A
+        %   failure once the GPU has begun is a dtwc:deviceError either way.
+            p = inputParser;
+            addParameter(p, 'Fallback', false, @(v) islogical(v) && isscalar(v));
+            parse(p, varargin{:});
+            dtwc_mex('Problem_set_device', obj.Handle, char(device), p.Results.Fallback);
         end
 
         function set_matrix_dtype(obj, dtype)
