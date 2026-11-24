@@ -896,18 +896,22 @@ std::string cuda_device_refusal(int device_id)
   int previous = 0;
   const bool had_previous = cudaGetDevice(&previous) == cudaSuccess;
   if (!had_previous) (void)cudaGetLastError();
+  // Where a refused probe moved the thread's device, it is given back (and where it did not, nothing is selected).
+  const auto give_back = [&] {
+    int current = previous;
+    if (had_previous && cudaGetDevice(&current) == cudaSuccess && current != previous) (void)cudaSetDevice(previous);
+    (void)cudaGetLastError();
+  };
   err = cudaSetDevice(device_id);
   if (err != cudaSuccess) {
     (void)cudaGetLastError();
+    give_back();
     return device + " cannot be selected: " + cudaGetErrorString(err);
   }
   err = cudaFree(nullptr); // starts the context a launch needs, which an exclusive-mode device may refuse
   if (err != cudaSuccess) {
     (void)cudaGetLastError();
-    if (had_previous && previous != device_id) {
-      (void)cudaSetDevice(previous);
-      (void)cudaGetLastError();
-    }
+    give_back();
     return device + " cannot start a context: " + cudaGetErrorString(err);
   }
   return {};
