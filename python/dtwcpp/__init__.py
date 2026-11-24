@@ -29,7 +29,7 @@ from dtwcpp._dtwcpp_core import (
     BarycenterClusteringResult,
     # Classes
     Problem,
-    # Arrow C Data / stream ingest: zero-copy, no pyarrow
+    # Arrow C Data / stream ingest: no Python list conversion, no pyarrow
     data_from_arrow_c_array,
     # Error taxonomy
     DtwcError,
