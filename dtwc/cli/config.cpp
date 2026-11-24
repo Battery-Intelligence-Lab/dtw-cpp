@@ -190,7 +190,7 @@ void bind(CLI::App &app, Config &config)
   key(app, "-m,--method", config.method, method_names, "method",
       "Clustering method: auto, pam, onebatch, clara, kmedoids, mip, lrcore, hierarchical, tadpole");
   key(app, "-b,--band", config.band, "Sakoe-Chiba band width (-1 = full DTW)");
-  key(app, "--metric", config.metric, core::metric_names, "metric", "Distance metric: l1, squared_euclidean");
+  key(app, "--metric", config.metric, core::metric_names, "metric", "Distance metric: l1, euclidean, squared_euclidean");
   key(app, "--variant", config.variant.variant, core::variant_names, "variant",
       "DTW variant: standard, ddtw, wdtw, adtw, softdtw, msm, twe");
   key(app, "--max-iter", config.max_iter, "Maximum iterations");

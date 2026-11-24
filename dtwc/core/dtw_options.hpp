@@ -24,9 +24,9 @@ enum class MetricType
   SquaredL2   ///< (a - b)^2
 };
 
-/// L2 has no name: no front end offers it.
 inline constexpr Name<MetricType> metric_names[]{
   { "l1", MetricType::L1 },
+  { "euclidean", MetricType::L2 },
   { "squared_euclidean", MetricType::SquaredL2 },
   { "sqeuclidean", MetricType::SquaredL2 },
   { "l2sq", MetricType::SquaredL2 },

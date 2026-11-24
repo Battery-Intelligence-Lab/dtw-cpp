@@ -75,7 +75,7 @@ Parameters:
 |-----------|------|---------|-------------|
 | `series` | list of list/array | required | Input time series |
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
-| `metric` | str | `"l1"` | `"l1"` or `"squared_euclidean"` |
+| `metric` | str | `"l1"` | `"l1"`, `"euclidean"` or `"squared_euclidean"` |
 | `device` | str | `None` | `"cpu"`, `"gpu"`, `"gpu:N"` (`"cuda"` / `"cuda:N"` are aliases), `"cpu+gpu"`, `"cpu+gpu:N"` (CUDA only); `None` uses `dtwcpp.device()` |
 | `matrix_dtype` | str | `"float64"` | `"float64"` or `"float32"`: the matrix's value type and the array's dtype; `"float32"` takes half the memory, each distance rounded to a float |
 
@@ -121,13 +121,13 @@ print(f"Iterations:     {clf.n_iter_}")
 | `twe_lambda` | float | `1.0` | TWE edit penalty (only for `variant="twe"`) |
 | `mv_mode` | str | `"dependent"` | Multivariate mode: `"dependent"` or `"independent"` |
 | `missing_strategy` | str | `"error"` | NaN handling: `"error"`, `"zero_cost"`, `"arow"`, `"interpolate"` |
-| `metric` | str | `"l1"` | Pointwise metric: `"l1"` or `"squared_euclidean"`; `"precomputed"`: `X` is an N x N distance matrix for `fit`, M x N for `predict`/`transform`/`score` |
+| `metric` | str | `"l1"` | Pointwise metric: `"l1"`, `"euclidean"` or `"squared_euclidean"`; `"precomputed"`: `X` is an N x N distance matrix for `fit`, M x N for `predict`/`transform`/`score` |
 | `batch_size` | int | `-1` | OneBatchPAM's batch size (`-1`: automatic) |
 | `random_state` | int | `None` | The seed; `None` is `dtwcpp.DEFAULT_RANDOM_SEED` (42) |
 | `device` | str | `None` | Local `"cpu"`/`"gpu"`/`"cuda:N"`/`"cpu+gpu"`, or whole-job `"hpc"` offload |
 
 The estimator validates the complete distance contract before computing.
-Squared Euclidean cost is available for Standard DTW and DDTW, and the
+Euclidean and squared Euclidean costs are available for Standard DTW and DDTW, and the
 missing-data strategies and independent mode honour the metric; WDTW, ADTW,
 Soft-DTW, MSM and TWE compute an L1 cost and refuse another metric. Non-error
 missing handling requires Standard DTW, and independent multivariate mode
@@ -177,7 +177,7 @@ d = dtwcpp.distance.dtw(x, y, variant="msm", msm_c=1.0)               # Move-Spl
 d = dtwcpp.distance.dtw(x, y, variant="twe", twe_nu=0.001, twe_lambda=1.0)  # Time Warp Edit
 ```
 
-`metric` is `"l1"` or `"squared_euclidean"` for Standard DTW and DDTW; the other
+`metric` is `"l1"`, `"euclidean"` or `"squared_euclidean"` for Standard DTW and DDTW; the other
 variants compute an L1 cost and refuse another metric.
 
 ### DTW with missing data

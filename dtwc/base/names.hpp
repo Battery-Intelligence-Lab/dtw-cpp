@@ -64,8 +64,7 @@ E parse_name(const Name<E> (&table)[N], std::string_view text, std::string_view 
 }
 
 /// The canonical name of `value`: its first entry in `table`.
-/// @throws InvalidInput when no entry names `value` (e.g. MetricType::L2, which no
-///         front end spells).
+/// @throws InvalidInput when no entry names `value` (an integer cast outside the enum).
 template <class E, std::size_t N>
 std::string_view name_of(const Name<E> (&table)[N], E value)
 {

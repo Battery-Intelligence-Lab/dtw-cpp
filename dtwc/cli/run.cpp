@@ -473,9 +473,6 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     throw InvalidInput("--checkpoint saves the distance matrix, and tadpole keeps the pairs it computes in a cache of "
                        "its own: the file would hold none of them. Omit --checkpoint, or give tadpole a complete matrix "
                        "with --dist-matrix.");
-  if (config.report && config.metric == core::MetricType::L2) // the report names the metric, and L2 has no name
-    throw InvalidInput("run: the run report names the metric, and MetricType::L2 has none; use MetricType::L1, the "
-                       "same on univariate series, or set report = false.");
 
   auto problem = std::make_shared<Problem>(run_name(config));
   Problem &prob = *problem;

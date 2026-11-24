@@ -87,8 +87,8 @@ A distance setting is checked when it is set (`InvalidInput`, the setting left
 as it was) and drops the distance matrix and the clustering, which describe the
 old distances. The distance settings are the ones `cluster()` takes: `variant`
 (`standard`, `ddtw`, `wdtw`, `adtw`, `softdtw`, `msm`, `twe`) and its parameters,
-`band` (the Sakoe-Chiba half-width in steps, `-1` for none), `metric` (`l1` or
-`squared_euclidean`, for Standard DTW and DDTW), `missing_strategy` (`error`,
+`band` (the Sakoe-Chiba half-width in steps, `-1` for none), `metric` (`l1`,
+`euclidean` or `squared_euclidean`, for Standard DTW and DDTW), `missing_strategy` (`error`,
 `zero_cost`, `arow`, `interpolate`) and `mv_mode` (`dependent` or `independent`,
 for multivariate series; MATLAB's `set_distance` and `dtwc.distance.dtw` do not take
 `MvMode`, which `dtwc.cluster` and `DTWClustering` do). Multivariate series hold `ndim` values per time step,

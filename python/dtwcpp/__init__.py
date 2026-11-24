@@ -164,7 +164,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix
     band : int, default=-1
         Sakoe-Chiba band width (-1 = full DTW).
     metric : str, default='l1'
-        Distance metric: 'l1' or 'squared_euclidean'.
+        Distance metric: 'l1', 'euclidean' or 'squared_euclidean'.
     device : str or None, default=None
         Computation device: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu' or
         'cpu+gpu:N' (the fill on both devices, CUDA only). ``None`` uses

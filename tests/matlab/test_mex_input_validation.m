@@ -857,7 +857,7 @@ function test_unknown_names_list_the_cpp_table(testCase)
             ['unknown missing strategy ''bogus''. Valid: error, zero_cost, arow, ' ...
              'interpolate.']
         @() dtwc_mex('dtw', 0, 0, 'Metric', 'bogus'), ...
-            'unknown metric ''bogus''. Valid: l1, squared_euclidean.'
+            'unknown metric ''bogus''. Valid: l1, euclidean, squared_euclidean.'
     };
     for i = 1:size(cases, 1)
         err = [];

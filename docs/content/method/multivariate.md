@@ -55,7 +55,9 @@ size_t n_steps = data.series_length(0);  // 3 (not 9)
 For the same band, $$\mathrm{DTW_I} \le \mathrm{DTW_D}$$ follows for additive
 L1 and squared-L2 channel costs because each independent channel can choose its
 own path. That ordering does not extend to Euclidean `MetricType::L2`, whose
-square root couples the channel costs.
+square root couples the channel costs. Independent mode runs a univariate DTW on
+each channel, where `MetricType::L2` is L1, so under it L2 and L1 give the same
+distance.
 
 The current channel-aware routes are:
 
@@ -107,7 +109,8 @@ The Standard wrappers select these cost functors from `core/dtw_cost.hpp`:
 | `core::SpanMVSquaredL2Cost` | $$\sum_d (a_d-b_d)^2$$ |
 | `core::SpanMVL2Cost` | $$\sqrt{\sum_d (a_d-b_d)^2}$$ |
 
-The Euclidean implementation is `SpanMVL2Cost`.
+The Euclidean implementation (`MetricType::L2`, `--metric euclidean`) is
+`SpanMVL2Cost`.
 The missing-data wrappers use `SpanMVNanAwareL1Cost`,
 `SpanMVNanAwareSquaredL2Cost`, and `SpanMVNanAwareL2Cost`, which skip the
 channels where either value is NaN.

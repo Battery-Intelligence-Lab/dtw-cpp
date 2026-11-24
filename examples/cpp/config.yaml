@@ -31,7 +31,7 @@ method: pam
 # Sakoe-Chiba band width. -1 = full (unconstrained) DTW.
 band: -1
 
-# Distance metric: l1, squared_euclidean
+# Distance metric: l1, euclidean, squared_euclidean
 metric: l1
 
 # DTW variant: standard, ddtw, wdtw, adtw, softdtw, msm, twe

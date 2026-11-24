@@ -786,7 +786,7 @@ NB_MODULE(_dtwcpp_core, m)
         "variant: standard, ddtw, wdtw, adtw, softdtw, msm or twe; each reads its own\n"
         "parameter (wdtw_g, adtw_penalty, sdtw_gamma, msm_c, twe_nu and twe_lambda).\n"
         "band: -1 for full DTW, b >= 0 for a Sakoe-Chiba half-width.\n"
-        "metric: l1 or squared_euclidean (Standard DTW and DDTW).\n"
+        "metric: l1, euclidean or squared_euclidean (Standard DTW and DDTW).\n"
         "missing_strategy: error, zero_cost, arow or interpolate (Standard DTW); NaN\n"
         "is a missing value under the last three.\n"
         "Raises InvalidInput for an unknown name, a parameter outside its domain, a\n"

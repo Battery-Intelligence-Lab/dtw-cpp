@@ -11,7 +11,7 @@ DTW-C++ provides a full-featured CLI tool for time series clustering. After comp
 
 - **Multiple clustering methods**: FastPAM, OneBatchPAM, FastCLARA, Lloyd's k-medoids, MIP, LR-core, hierarchical, and TADPole
 - **DTW variants**: Standard, DDTW, WDTW, ADTW, Soft-DTW, MSM, and TWE
-- **Distance metrics**: L1 (default) and squared Euclidean
+- **Distance metrics**: L1 (default), Euclidean and squared Euclidean
 - **GPU acceleration**: the distance matrix on CUDA (NVIDIA) or Metal (macOS), with `--device gpu`
 - **Configuration files**: TOML or YAML; `--print-config` writes the settings as a file `--config` reads
 - **Checkpointing**: Save and resume distance matrix computation
@@ -85,7 +85,7 @@ since the GPU fills the matrix PAM reads (on `cpu+gpu` the CPU's threads fill th
 | `--variant <string>` | DTW variant | `standard` |
 | `--missing-strategy <string>` | Missing-data strategy: `error`, `zero_cost`, `arow`, `interpolate` (aliases: `zero-cost`, `zerocost`) | `error` |
 
-Available metrics: `l1`, `squared_euclidean` (aliases: `sqeuclidean`, `l2sq`).
+Available metrics: `l1`, `euclidean` and `squared_euclidean` (aliases: `sqeuclidean`, `l2sq`).
 
 Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias
 `soft-dtw`), `msm`, and `twe`.
