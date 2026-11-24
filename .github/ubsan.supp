@@ -1,0 +1,7 @@
+# @author Volkan Kumtepeli
+#
+# UBSan suppressions for the sanitizer job of workflows/ubuntu-unit.yml, read through UBSAN_OPTIONS=suppressions=.
+# Signed overflow is ignored in the whole of the vendored nanoarrow_ipc.c. Two are known, which the hostile-file tests
+# reach on purpose: ArrowIpcDecoderReadHeaderPrefix adds a message length (int32) to its prefix size, and
+# ArrowIpcDecoderMakeBuffer adds a buffer's offset and length (int64). Every other UBSan report fails the job.
+signed-integer-overflow:nanoarrow_ipc.c

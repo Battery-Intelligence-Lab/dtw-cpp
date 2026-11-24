@@ -71,9 +71,14 @@ jobs:
         run: cmake --build . --parallel 2
         working-directory: build_dir
 
+      # A UBSan report fails the test that reaches it (halt_on_error): the runtime otherwise prints and carries on. Not
+      # -fno-sanitize-recover, whose abort handlers never consult the suppressions (.github/ubsan.supp). Only the
+      # sanitized build reads UBSAN_OPTIONS.
       - name: cmake test
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
+        env:
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/.github/ubsan.supp
 
   # Phase-8 finding F9: with DTWC_ENABLE_ARROW defaulting to OFF (CMakeLists.txt:49)
   # and no workflow ever turning it on, tests/unit/test_io_readers.cpp self-SKIPped in
