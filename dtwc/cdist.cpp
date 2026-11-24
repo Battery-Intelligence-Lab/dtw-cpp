@@ -92,9 +92,6 @@ void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
     if (!reason.empty())
       throw detail::hybrid_refusal("cdist", reason);
   }
-  if (device_index < 0)
-    throw GpuRefusal("cdist: GPU device index must be non-negative, got " + std::to_string(device_index) + ".",
-                     "GPU device index " + std::to_string(device_index) + " is negative");
   if (f32)
     reject_cdist_gpu("computes from Float64 series, but precision = Float32 was requested",
                      "Load the series as Float64, or use device cpu.");
@@ -110,6 +107,7 @@ void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
                        + missing_label(cfg.missing) + " was requested",
                      "Use device cpu, or missing_strategy Error for data without NaN.");
 #if !defined(DTWC_HAS_CUDA) && defined(DTWC_HAS_METAL)
+  (void)device_index; // Metal runs on the system default GPU, and has no cross-collection kernel for any index
   metal::validate_metal_precision(gpu_precision);
   reject_cdist_gpu("cross-collection rectangular cdist is not implemented on Metal",
                    "Use device cpu.");
@@ -161,8 +159,6 @@ void check_collection_series(const Data &data, std::string_view side, core::Miss
 
 void check_cross_band(const Data &X, const Data &Y, const core::DistanceConfig &cfg)
 {
-  if (cfg.band < -1) // as Problem::set_distance refuses it
-    throw InvalidInput("cdist: band must be -1 (full DTW) or at least 0; got " + std::to_string(cfg.band) + ".");
   const auto n_x = static_cast<std::size_t>(X.size());
   const auto n_y = static_cast<std::size_t>(Y.size());
   if (n_x == 0 || n_y == 0 || cfg.band < 0) return;
@@ -433,6 +429,12 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
                           double gpu_share,
                           bool fallback)
 {
+  // The settings no device can honour, refused before the device is asked and whatever `fallback` says, as
+  // Problem::set_device and Problem::set_distance refuse them.
+  if (device_index < 0)
+    throw InvalidInput("cdist: the GPU index must be >= 0; got " + std::to_string(device_index) + ".");
+  if (distance.band < -1)
+    throw InvalidInput("cdist: band must be -1 (full DTW) or at least 0; got " + std::to_string(distance.band) + ".");
   if (gpu_share != -1.0 && (std::isnan(gpu_share) || gpu_share < 0.0 || gpu_share > 1.0)) {
     throw InvalidInput("cdist: gpu_share must be -1 (automatic) or in [0, 1]; got "
                        + std::to_string(gpu_share) + ".");

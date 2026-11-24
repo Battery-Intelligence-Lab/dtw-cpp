@@ -33,6 +33,7 @@ struct Config;
  *
  * A GPU request the build, the machine or the kernels cannot honour (see Config::fallback) is a DeviceError
  * before any pair is computed, or, with `fallback`, a computation on the CPU with one line on stderr saying so.
+ * A GPU index below 0 and a band below -1 are InvalidInput before the device is asked, whatever `fallback` says.
  */
 std::vector<double> cdist(const Data &X, const Data &Y,
                           const core::DistanceConfig &distance = {},
