@@ -31,9 +31,11 @@ computes on the CPU instead of raising a device error, and says so: one line on
 stderr, `[dtwc] <device> requested: <reason>; running on cpu (fallback)`, the run
 report's configuration row (`device cpu (<device> requested; fallback: <reason>)`),
 and a result whose device is `cpu`; `<device>` is the one asked for (`gpu`, `gpu:1`,
-`cpu+gpu`). A run says it once the CPU run has passed its own checks, so a request
-that fails them anyway announces no fallback. It is off by default and belongs to one
-call; the process-wide `device(...)` has none.
+`cpu+gpu`). A run says it once the CPU run has passed its own checks that need no
+series, so a request that fails one of those anyway announces no fallback; what needs
+a series (a NaN, a band narrower than a length difference, a text file's memory plan)
+comes after the line. It is off by default and belongs to one call; the process-wide
+`device(...)` has none.
 
 | Where | How |
 |---|---|
@@ -68,7 +70,8 @@ setters does not matter. The stderr line comes once per call that falls back, so
 fill and then `cluster()` say it twice, and `auto` is resolved for the device that
 computes the call: on a fallback, as on the CPU (PAM up to 5,000 series, CLARA above),
 whether or not the matrix is already filled. Changing only `fallback` keeps a filled
-matrix, whichever device computed it.
+matrix, whichever device computed it; a checkpoint saved afterwards is identified by the
+device the Problem then asks for.
 
 ## A Problem's device
 
