@@ -108,7 +108,7 @@ Checks: >
 #   misc-include-cleaner: too aggressive on template-exported symbols.
 #   fuchsia-*, google-*, llvm-*: project-specific conventions not ours.
 #   cert-msc51-cpp: tests seed their random engines with constants, so that a run repeats.
-#   performance-inefficient-string-concatenation: error messages are built with + chains, also in loops that end in a throw.
+#   performance-inefficient-string-concatenation: messages are built with + chains, and the check flags those inside loops.
 
 WarningsAsErrors: ''
 
