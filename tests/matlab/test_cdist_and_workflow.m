@@ -71,14 +71,14 @@ function test_cdist_ragged_cells_and_multivariate(testCase)
     D_mv = dtwc.cdist(X_mv, Y_mv, 'Ndim', 2, 'MvMode', 'dependent', 'Band', 2);
     verifySize(testCase, D_mv, [4 3]);
 
-    % dtwc.cluster clusters a Dataset in its Ndim: one that has read an Arrow IPC file of ndim 2 holds its
-    % series and that Ndim, and costs what C++ reading the file itself gives
-    ipc = fullfile(fileparts(mfilename('fullpath')), '..', 'data', 'reader', 'ipc_ndim2.arrow');
-    from_file = dtwc.cluster(ipc, 1);
-    mv = dtwc.load(ipc);
-    [~, ~, ndim] = mv.as_series();
-    verifyEqual(testCase, ndim, 2);
-    verifyEqual(testCase, dtwc.cluster(mv, 1).cost, from_file.cost);
+    % dtwc.cluster clusters a Dataset in its Ndim: what Tier 2 gives the series at 2 values a step, not what 1
+    % value a step gives
+    mv = dtwc.load(X_mv, 'Ndim', 2);
+    prob = dtwc.Problem('mv_oracle');
+    prob.set_data(X_mv, {}, 2);
+    oracle = dtwc.fast_pam(prob, 2);
+    verifyEqual(testCase, dtwc.cluster(mv, 2, 'Method', 'pam').cost, oracle.total_cost, 'RelTol', 1e-12);
+    verifyNotEqual(testCase, dtwc.cluster(X_mv, 2, 'Method', 'pam').cost, oracle.total_cost);
 end
 
 function test_cluster_writes_the_files_and_checkpoint_it_is_asked_for(testCase)

@@ -18,7 +18,8 @@ function res = cluster(data, k, varargin)
 %
 %   Dtype is dtwc.load's, for a path or series in memory that cluster loads:
 %   'float32' stores the series as single, half the memory. A dtwc.Dataset keeps
-%   its own: a Dtype given that differs is refused.
+%   its own: a Dtype given that differs is refused. A multivariate input is made
+%   by dtwc.load, which takes Ndim: dtwc.cluster(dtwc.load(X, 'Ndim', 2), k).
 %
 %   The name-value pairs are these dtwc_cl keys, by their long names in
 %   CamelCase, the words of Python's cluster() keywords:
