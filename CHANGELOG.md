@@ -179,14 +179,21 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   argument of `cdist`; Python `fallback=True` in `cluster`, `cdist`, `DTWClustering` and `Problem`; MATLAB
   `'Fallback', true` in `dtwc.cluster`, `dtwc.distance.cdist`, `dtwc.Problem` and `dtwc.DTWClustering`): a GPU request
   that cannot be honoured (no GPU backend or usable GPU, a variant, missing-data strategy, precision or number of
-  features the kernels lack, a method with no GPU path, `cpu+gpu` without CUDA or on a streamed run) runs on the CPU,
-  before a series is read, instead of raising `DeviceError`, with one line on stderr, the run report saying why, and
-  `Result.device` `cpu`. It belongs to one call (the process-wide `device()` has none), is off by default, and a
-  failure once the GPU has begun is a `DeviceError` either way; `hpc` with it is `InvalidInput` in Python. Without it,
+  features the kernels lack, a method with no GPU path, `cpu+gpu` without CUDA or on a streamed run) runs on the CPU
+  instead of raising `DeviceError`, with one line on stderr naming the device asked for (`[dtwc] gpu:1 requested:
+  <reason>; running on cpu (fallback)`), said once the CPU run has passed its own checks, the run report saying why,
+  and `Result.device` `cpu`. The decision is made before a series is read where C++ reads the input (`dtwc_cl`,
+  `dtwc::run` with a path, a path Python or MATLAB pass on); Python and MATLAB read a Parquet file, and Python's `cdist`
+  a path or Dataset, first. It belongs to one call (the process-wide `device()` has none), is off by default, and a
+  failure once the GPU has begun is a `DeviceError` either way; `hpc` with it is `InvalidInput` in Python. A `Problem`
+  given it is identified for checkpoints and mapped matrices by the precision of the device that computes. Without it,
   `one_batch_pam(prob)`, `tadpole(prob)` and `Problem::cluster()` with either method on a GPU `Problem` (`gpu`, not
-  only `cpu+gpu`) raise `DeviceError`, as `dtwc_cl`, Python and MATLAB `cluster` do.
+  only `cpu+gpu`) raise `DeviceError`, as `dtwc_cl`, Python and MATLAB `cluster` do; with a forced `gpu_share` on any
+  device but `cpu+gpu` they raise `InvalidInput`, fallback or not.
 - `dtwc::run` asks for its GPU (CUDA: device count, ordinal, compute capability 8.0, a context; Metal: its default
   device) before it reads a series, so `--device gpu:99 --checkpoint d` is the device's error, not `--gpu-precision`'s.
+  A refused CUDA device probe leaves the thread's current device as it was. `cdist` refuses a negative GPU index
+  (`InvalidInput`, on every build and device) and a band below -1 before it asks for the device.
 - Input: Arrow IPC, the file and the stream format, in every build and language, read by the vendored nanoarrow without
   Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each series is a
   view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's `Data.p_vec`
