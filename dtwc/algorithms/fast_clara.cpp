@@ -382,6 +382,7 @@ std::string describe(const core::HybridSplit &split, std::size_t n_points)
 core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 {
   detail::validate_clara_request(prob, opts);
+  const dtwc::detail::DeviceScope device_scope(prob, "fast_clara", Method::CLARA);
 
   const auto plan = detail::resolve_clara_plan(prob.size(), opts, "fast_clara");
   const index_t N = plan.n_points;
