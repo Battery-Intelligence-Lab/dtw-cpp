@@ -64,7 +64,7 @@ dtwc::Problem make_problem(size_t N, size_t L, unsigned seed)
   dtwc::Data data{std::move(vecs), std::move(names)};
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.band = -1;
+  prob.set_band(-1);
   return prob;
 }
 } // namespace

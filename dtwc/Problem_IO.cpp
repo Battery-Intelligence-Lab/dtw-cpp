@@ -168,7 +168,6 @@ void Problem::writeBestRep(int best_rep)
  */
 void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComputed not_computed)
 {
-  sync_band(); // the matrix is read for the band the Problem computes with
   // Values read into a mapped matrix would persist in its file under this
   // Problem's fingerprint, whatever they were computed from.
   if (distMat.is_mapped())

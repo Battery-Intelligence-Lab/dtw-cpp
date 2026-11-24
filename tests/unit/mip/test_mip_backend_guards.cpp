@@ -43,7 +43,7 @@ Problem make_problem(const std::vector<double> &values, int k)
   prob.set_n_clusters(k);
   prob.set_method(Method::MIP);
   prob.mip_settings.verbose_solver = false;
-  prob.band = -1;
+  prob.set_band(-1);
   return prob;
 }
 

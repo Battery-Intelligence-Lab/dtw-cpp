@@ -227,7 +227,7 @@ TEST_CASE("Problem mv_mode=Independent matches direct kernel and differs from De
   for (int i = 0; i < N; ++i)
     for (int j = i + 1; j < N; ++j) {
       const double ref = dtw_independent_mv<double>(
-        base.p_vec[i].data(), steps, base.p_vec[j].data(), steps, ndim, prob_i.band);
+        base.p_vec[i].data(), steps, base.p_vec[j].data(), steps, ndim, prob_i.distance().band);
       REQUIRE_THAT(prob_i.dist_by_ind(i, j), WithinRel(ref, 1e-10) || WithinAbs(ref, 1e-10));
       if (std::abs(prob_i.dist_by_ind(i, j) - prob_d.dist_by_ind(i, j)) > 1e-6)
         any_diff = true;

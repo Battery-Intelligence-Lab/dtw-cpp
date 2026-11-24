@@ -420,13 +420,6 @@ TEST_CASE("Problem and DataLoader entry points match hand oracles",
         highs_solver_available()
           ? "0,0,0,1,1,1 1,4 69 "
           : "HiGHS solver is unavailable; rebuild with -DDTWC_ENABLE_HIGHS=ON / 1,1,1,0,0,0 " },
-      { "cluster_by_kmedoids_lloyd", true, [](Problem &p, const fs::path &) {
-          p.N_repetition = 0; // set_n_repetitions(0) throws; only the field reaches Lloyd's check
-          try { p.cluster_by_kmedoids_lloyd(); }
-          catch (const InvalidInput &e) {
-            return std::string{ e.what() } + " / " + obs(ids(p.labels()), ids(p.medoids())); }
-          return std::string{ "no InvalidInput" }; },
-        "Lloyd k-medoids requires n_repetitions >= 1. / 0,0,0,1,1,1 1,4 " },
       { "DataLoader::start_column", true, [](Problem &, const fs::path &) {
           DataLoader loader;
           loader.start_row(19);
@@ -443,8 +436,8 @@ TEST_CASE("Problem and DataLoader entry points match hand oracles",
         [](Problem &p, const fs::path &) {
           p.set_n_repetitions(41);
           p.set_max_iter(17);
-          return obs(p.max_iter(), p.n_repetitions(), p.maxIter, p.N_repetition); },
-        "17 41 17 41 " },
+          return obs(p.max_iter(), p.n_repetitions()); },
+        "17 41 " },
       { "set_variant rebinds the DTW function", true,
         [](Problem &, const fs::path &) {
           // x = {0,0}, y = {0,1,2}, L1, full band: Standard = 3; ADTW with penalty 1 = 4.

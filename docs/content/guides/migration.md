@@ -56,7 +56,8 @@ behaviour listed further down.
 | `cluster_by_MIP()`, `cluster_by_kMedoidsPAM()` | `cluster_by_mip()`, `cluster_by_kmedoids_lloyd()` (Lloyd's k-medoids, as before) |
 | `set_clusters(std::vector<int>&)` | `set_clusters(const std::vector<index_t>&)` |
 | public fields `method`, `output_folder`, `name`, `data` | `method()` / `set_method`, `output_folder()` / `set_output_folder`, `name()` / `set_name`, `data()` / `set_data` |
-| public fields `maxIter`, `N_repetition`, `band`, `clusters_ind`, `centroids_ind` | still public (the last two now hold `index_t`); also `set_max_iter`, `set_n_repetitions`, `set_band`, which check their value |
+| public fields `maxIter`, `N_repetition`, `band` | `max_iter()` / `set_max_iter`, `n_repetitions()` / `set_n_repetitions`, `distance().band` / `set_band`; the setters check their value |
+| public fields `clusters_ind`, `centroids_ind` | still public, now holding `index_t`; `labels()` and `medoids()` read them |
 | `init::random(prob)`, `init::Kmeanspp(prob)`, and `Problem::init_fun`, a `std::function<void(Problem &)>` | `init::random(prob, seed)`, `init::Kmeanspp(prob, seed)`; `init_fun` is a `std::function<void(Problem &, std::uint64_t)>` that Lloyd's k-medoids calls with `random_seed() + r` for repetition r (`prob.init_fun = init::Kmeanspp;` still works), and `init()` seeds from `random_seed()`. An initialiser that takes only the `Problem` needs the second parameter |
 | `Problem::cluster()` returning `void` | returns the `core::ClusteringResult` (labels, medoids, cost, iterations, converged) |
 | `distMat`, `distMat_t` (Armadillo) | `distance_matrix()`, a `core::DistanceMatrix` |
@@ -152,10 +153,8 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   naming the smallest band that works; `dtwBanded` and `distance::dtw` return
   the no-path value, `std::numeric_limits<T>::max()`, for such a pair.
 - The setters check their values: `set_n_clusters`, `set_max_iter` and
-  `set_n_repetitions` below 1 and `set_band` below -1 are `InvalidInput`. A
-  direct write to a public field is checked where it is used: a `band` below -1
-  at the next fill, a `maxIter` or `N_repetition` below 1 when Lloyd's
-  k-medoids runs.
+  `set_n_repetitions` below 1 and `set_band` below -1 are `InvalidInput`
+  (v1.0.0 took any value written to its public fields).
 - A NaN or ±inf in a series is `InvalidInput` before any distance is computed,
   unless a missing-data strategy says what NaN means (`set_missing_strategy`).
   A series with no values is `InvalidInput` too, a blank line in a file of one
@@ -193,9 +192,9 @@ The library's writers (`write_clusters`, `write_silhouettes`,
 - The MIP starts from FastPAM's clustering, and both solvers stop at a relative
   gap of 1e-5; v1.0.0 started cold, left HiGHS at its own gap, and set Gurobi's
   NumericFocus to 3 (now 1; MIPFocus is 2). `mip_settings` sets each of them.
-- A direct write to the `band` field takes effect at the next
-  `fill_distance_matrix()`; v1.0.0 kept the distances computed under the old
-  band.
+- `set_band` drops the distance matrix and the clustering, so the next
+  `fill_distance_matrix()` computes under the new band; v1.0.0 kept the
+  distances computed under the old band.
 - Series are stored as `double`, as in v1.0.0. Storing them as `float` is new, and
   opt-in where they are loaded: `DataLoader::dtype`, `dtwc::load(..., dtype)`,
   Python's and MATLAB's `load`, `dtwc_cl --dtype float32`. A `float` read from text

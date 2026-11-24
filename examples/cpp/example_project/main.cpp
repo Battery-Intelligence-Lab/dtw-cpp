@@ -32,7 +32,7 @@ int main(int argc, char **argv)
     std::cerr << "The requested MIP solver is not in this build of DTWC++.\n";
     return EXIT_FAILURE;
   }
-  prob.band = -1; // Sakoe chiba band length.
+  prob.set_band(-1); // Sakoe chiba band length.
 
   prob.cluster_by_mip();
 

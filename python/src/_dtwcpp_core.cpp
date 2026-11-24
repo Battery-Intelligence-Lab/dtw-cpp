@@ -985,7 +985,7 @@ NB_MODULE(_dtwcpp_core, m)
     .def_prop_rw("max_iter", &dtwc::Problem::max_iter, &dtwc::Problem::set_max_iter)
     .def_prop_rw("n_repetitions", &dtwc::Problem::n_repetitions, &dtwc::Problem::set_n_repetitions, "Repetitions for iterative methods.")
     .def_prop_rw("random_seed", &dtwc::Problem::random_seed, &dtwc::Problem::set_random_seed, "Invocation-local seed for Lloyd and MIP warm starts.")
-    .def_prop_rw("band", [](const dtwc::Problem &p) { return p.band; }, [](dtwc::Problem &p, int value) { p.set_band(value); })
+    .def_prop_rw("band", [](const dtwc::Problem &p) { return p.distance().band; }, [](dtwc::Problem &p, int value) { p.set_band(value); })
     .def_prop_rw("variant_params", [](const dtwc::Problem &p) { return FrozenParams{ p.variant_params() }; }, [](dtwc::Problem &p, dtwc::core::DTWVariantParams value) { p.set_variant(value); },
                  "The DTW variant and its parameters, read-only: assign a DTWVariantParams\n"
                  "(or call set_variant_params) to change them, which drops the matrix.")

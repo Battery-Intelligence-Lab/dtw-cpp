@@ -37,7 +37,7 @@ int main(int argc, char **argv)
   prob.write_distance_matrix();
   // prob.print_distance_matrix();
   std::cout << "Finished calculating distances " << clk << std::endl;
-  std::cout << "Band used " << prob.band << "\n\n\n";
+  std::cout << "Band used " << prob.distance().band << "\n\n\n";
 
 
   std::string reportName = "DTW_MILP_results";

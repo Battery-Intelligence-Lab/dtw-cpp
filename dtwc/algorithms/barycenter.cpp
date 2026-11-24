@@ -136,7 +136,7 @@ void validate_problem_configuration(const Problem& prob, const char* entry_point
     throw InvalidInput(
       std::string(entry_point) + ": only DTWVariant::Standard is supported; "
       "set the Problem variant to DTWVariant::Standard.");
-  if (prob.band != settings::DEFAULT_BAND)
+  if (prob.distance().band != settings::DEFAULT_BAND)
     throw InvalidInput(
       std::string(entry_point) +
       ": banded DTW is not supported; set the Problem band to -1.");

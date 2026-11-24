@@ -113,12 +113,14 @@ report (`Result.report`, `Result.Report`) carries the same text.
 `dtwc::resolve_method(method, device, n_series)` returns the method `auto` stands for: `pam` on a
 GPU and on `cpu+gpu`, and on the CPU `pam` up to 5000 series and `clara` above.
 
-The C++ fields `band`, `maxIter`, `N_repetition`, `init_fun`, `clusters_ind` and
-`centroids_ind` stay public, as in v1.0.0, beside the new `mip_settings` and
-`checkpoint`; a direct write is not checked, where the setters are. `init_fun` is
-a `std::function<void(Problem &, std::uint64_t)>`, `init::random` by default:
-Lloyd's k-medoids calls it with the `Problem` and the seed of the repetition it
-starts, `random_seed() + r`.
+The C++ fields `init_fun`, `clusters_ind` and `centroids_ind` are public, as in
+v1.0.0, beside the new `mip_settings` and `checkpoint`; a direct write is not
+checked, where the setters are. The band, the iteration limit and the number of
+repetitions are set by `set_band`, `set_max_iter` and `set_n_repetitions`, which
+check their value, and read by `distance().band`, `max_iter()` and
+`n_repetitions()`. `init_fun` is a `std::function<void(Problem &, std::uint64_t)>`,
+`init::random` by default: Lloyd's k-medoids calls it with the `Problem` and the
+seed of the repetition it starts, `random_seed() + r`.
 
 ### The distance matrix
 

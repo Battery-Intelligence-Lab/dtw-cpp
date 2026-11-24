@@ -291,10 +291,10 @@ TEST_CASE("set_band refuses a band below -1 and keeps the band it had", "[proble
     REQUIRE_THROWS_MATCHES(prob.set_band(bad), dtwc::InvalidInput,
                            MessageMatches(ContainsSubstring("Problem::set_band")
                                           && ContainsSubstring("got " + std::to_string(bad))));
-    CHECK(prob.band == 2);
+    CHECK(prob.distance().band == 2);
   }
   prob.set_band(-1); // full DTW
-  CHECK(prob.band == -1);
+  CHECK(prob.distance().band == -1);
   prob.set_band(0);
-  CHECK(prob.band == 0);
+  CHECK(prob.distance().band == 0);
 }

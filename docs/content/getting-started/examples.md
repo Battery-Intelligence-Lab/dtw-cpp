@@ -57,7 +57,7 @@ int main()
 
   dtwc::Problem prob("demo");
   prob.set_data(dtwc::Data(std::move(series), std::move(names)));
-  prob.band = 10;
+  prob.set_band(10);
   prob.set_n_clusters(2);
 
   auto result = dtwc::fast_pam(prob, 2, 100);

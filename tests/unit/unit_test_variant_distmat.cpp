@@ -52,21 +52,6 @@ Data make_data_f32(std::vector<std::vector<float>> series, size_t ndim = 1)
 TEST_CASE("Problem dense cache never survives a semantic configuration change",
           "[variant][distmat][dense][semantic_mutation]")
 {
-  SECTION("a direct write to the v1 band field")
-  {
-    Problem prob{"dense_band_mutation"};
-    prob.set_data(make_data({{0.0, 0.0, 10.0}, {0.0, 10.0, 10.0}}));
-
-    prob.fill_distance_matrix();
-    REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
-    prob.band = 0; // the v1 field; the next fill takes it
-
-    REQUIRE_FALSE(prob.is_distance_matrix_filled());
-    prob.fill_distance_matrix();
-    REQUIRE(prob.distance().band == 0);
-    REQUIRE(prob.dist_by_ind(0, 1) == 10.0);
-  }
-
   SECTION("every variant parameter and multivariate mode")
   {
     using Mutator = std::function<void(core::DTWVariantParams &)>;
@@ -369,9 +354,9 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
       Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
   }
 
-  SECTION("a direct band write detaches at the next fill without rewriting the old cache")
+  SECTION("a fill after set_band leaves the old cache as it was")
   {
-    const ScratchDirectory cache_dir{ "mmap_post_bind_direct_band" };
+    const ScratchDirectory cache_dir{ "mmap_post_bind_refill" };
     const fs::path cache = cache_dir.path / "distances.dtwcache";
     Problem prob{"cache_mutation"};
     prob.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
@@ -379,7 +364,7 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
     prob.fill_distance_matrix();
     const double full = prob.dist_by_ind(0, 1);
 
-    prob.band = 0; // the v1 field; the next fill takes it
+    prob.set_band(0);
     REQUIRE_FALSE(prob.is_distance_matrix_filled());
     prob.fill_distance_matrix();
     REQUIRE(!prob.distance_matrix().is_mapped());

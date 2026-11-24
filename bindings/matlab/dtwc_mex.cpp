@@ -861,7 +861,7 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
   mxSetField(s, 0, "name", mxCreateString(prob.name().c_str()));
   mxSetField(s, 0, "size", mxCreateDoubleScalar(static_cast<double>(prob.size())));
-  mxSetField(s, 0, "band", mxCreateDoubleScalar(static_cast<double>(prob.band)));
+  mxSetField(s, 0, "band", mxCreateDoubleScalar(static_cast<double>(prob.distance().band)));
   mxSetField(s, 0, "verbose", mxCreateLogicalScalar(prob.verbose()));
   mxSetField(s, 0, "max_iter", mxCreateDoubleScalar(prob.max_iter()));
   mxSetField(

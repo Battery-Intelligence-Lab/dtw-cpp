@@ -148,8 +148,10 @@ private:
   core::DistanceMatrix distMat;                     /*!< Distance matrix, on the heap or mapped (use_mmap_distance_matrix). */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   /// What every distance of this Problem means. Only the setters change it;
-  /// `band` is the v1 field's value when it was bound, and `ndim` the series'.
+  /// `ndim` is the series'.
   core::DistanceConfig distance_{};
+  int max_iter_{ 100 };      ///< Iteration limit of the iterative methods (set_max_iter)
+  int n_repetitions_{ 1 };   ///< Restarts of the iterative methods (set_n_repetitions)
   Device device_{ Device::CPU };
   int device_index_{ 0 }; ///< The GPU ordinal of Device::GPU.
   GpuPrecision gpu_precision_{ GpuPrecision::Auto };
@@ -202,8 +204,6 @@ private:
   Data data_;
 
   void rebind_dtw_fn(); ///< Resolve the distance functions from distance_ and the series.
-  /// A direct write to the v1 field `band` takes effect here, as set_band(band).
-  void sync_band();
   /// core::validate(config) for `data`'s channels and precision, before a setter
   /// or set_data changes anything.
   static void validate_distance(core::DistanceConfig config, const Data &data);
@@ -220,9 +220,9 @@ private:
   /// Under Soft-DTW, self_terms_ of every series, in parallel, unless they are there: after a check of every series.
   void fill_self_terms();
   class SeriesCheck;
-  /// The check of a distance request in parts (SeriesCheck), for a pass that checks the series as it reads them: a
-  /// direct write to `band` taken (sync_band), with `f32` float32's hold on the variant's parameters (core::validate),
-  /// then the empty series and the band. `where` begins every refusal.
+  /// The check of a distance request in parts (SeriesCheck), for a pass that checks the series as it reads them:
+  /// with `f32` float32's hold on the variant's parameters (core::validate), then the empty series and the band.
+  /// `where` begins every refusal.
   SeriesCheck series_check(std::string_view where, bool f32);
   /// The bound functions, no series checked: `check` (this Problem's, else std::logic_error; the float32 function's
   /// for dtw_function_f32) checks them as they are read. The float32 one is bound on first use, as dtw_function_f32().
@@ -258,11 +258,6 @@ private:
   }
 
 public:
-  int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
-  int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
-  /// Band length for Sakoe-Chiba band, -1 for full DTW (the v1 field). Prefer
-  /// set_band(); a direct write takes effect at the next fill.
-  int band{ settings::DEFAULT_BAND };
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
   CheckpointOptions checkpoint;              /*!< Automatic mid-fill checkpointing (see checkpoint.hpp). */
 
@@ -391,14 +386,8 @@ public:
   {
     method_ = m;
   }
-  /// The distance settings: variant, metric, missing-data strategy, band (the
-  /// v1 field, a direct write included) and the series' ndim.
-  core::DistanceConfig distance() const noexcept
-  {
-    auto config = distance_;
-    config.band = band;
-    return config;
-  }
+  /// The distance settings: variant, metric, missing-data strategy, band and the series' ndim.
+  core::DistanceConfig distance() const noexcept { return distance_; }
   const core::DTWVariantParams &variant_params() const noexcept { return distance_.variant; }
   core::MissingStrategy missing_strategy() const noexcept { return distance_.missing; }
   core::MetricType metric() const noexcept { return distance_.metric; }
@@ -415,10 +404,10 @@ public:
   /// @throws InvalidInput for n < 1: no iteration would report the initial
   ///         medoids' cost as a clustering result.
   void set_max_iter(int n);
-  int max_iter() const { return maxIter; }
+  int max_iter() const { return max_iter_; }
   /// @throws InvalidInput for n < 1: at least one run is needed.
   void set_n_repetitions(int n);
-  int n_repetitions() const { return N_repetition; }
+  int n_repetitions() const { return n_repetitions_; }
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
   void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
   /// CLARA's subsample size and count, OneBatchPAM's batch size and the hierarchical
@@ -529,8 +518,7 @@ public:
   }
 
   /// The bound DTW distance function (float64), for methods that compute the
-  /// pairs they need instead of filling the matrix. Each call first takes a
-  /// direct write to `band` into account and checks the request against the
+  /// pairs they need instead of filling the matrix. Each call checks the request against the
   /// series (the fill's check, a SeriesCheck of every series, O(N·L)), so call it once, serially, before a
   /// parallel loop; the function itself only reads what it holds and checks
   /// nothing, so a caller passing spans other than the Problem's own owns their
@@ -551,7 +539,7 @@ public:
 
   /// True when the matrix holds every pair under the current settings: after a
   /// fill, a complete read or load, or binding a complete mapped file. O(1).
-  bool is_distance_matrix_filled() const { return filled_ && band == distance_.band; }
+  bool is_distance_matrix_filled() const { return filled_; }
 
   /// The distance matrix, on the heap or mapped, to read.
   const core::DistanceMatrix &distance_matrix() const { return distMat; }
@@ -562,7 +550,6 @@ public:
   /// const distance_matrix(), which changes nothing.
   core::DistanceMatrix &writable_distance_matrix()
   {
-    sync_band();
     filled_ = false;
     written_ = true;
     // A mapped file's rows never written become NaN on the device first, so a write there is kept by the fill.

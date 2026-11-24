@@ -302,7 +302,7 @@ static void BM_fillDistanceMatrix(benchmark::State &state)
     state.PauseTiming();
     dtwc::Problem prob("bench");
     prob.set_data(make_random_data(N, L));
-    prob.band = band;
+    prob.set_band(band);
     state.ResumeTiming();
 
     prob.fill_distance_matrix();
@@ -339,7 +339,7 @@ static void BM_fillDistanceMatrix_variant(benchmark::State &state)
     state.PauseTiming();
     dtwc::Problem prob("bench_variant");
     prob.set_data(make_random_data(N, L));
-    prob.band = band;
+    prob.set_band(band);
     configure_problem_variant(prob, variant);
     state.ResumeTiming();
 

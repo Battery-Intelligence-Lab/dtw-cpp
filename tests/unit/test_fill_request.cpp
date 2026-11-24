@@ -526,8 +526,7 @@ TEST_CASE("An empty series, an infeasible band and float32's parameters come bef
         hold(prob, s, view);
         prob.set_band(2);
         CHECK(message_of<dtwc::InvalidInput>([&] { call(prob, where); }) == band_text(where, 2));
-        prob.set_band(-1);
-        prob.band = 7; // the v1 field, taken at the next check
+        prob.set_band(7);
         CHECK(message_of<dtwc::InvalidInput>([&] { call(prob, where); }) == band_text(where, 7));
       }
   }
