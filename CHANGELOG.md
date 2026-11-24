@@ -21,6 +21,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `maxIter`, `N_repetition`, `band`, `init_fun`, `clusters_ind` and `centroids_ind` stay public.
 - `dtwc.hpp` under `-ffinite-math-only` (implied by `-ffast-math`) is a compile error, since NaN marks missing values
   and uncomputed distances: add `-fno-finite-math-only`.
+- `dtwc::Range`, `dtwc::Index` and `settings::isDebug` are removed (v1.0.0 had them, undocumented): write the loop.
+- `dtwc::randGenerator` is removed, and with it the one-argument `init::random(prob)` and `init::Kmeanspp(prob)`: they
+  are `init::random(prob, seed)` and `init::Kmeanspp(prob, seed)`, and `Problem::init_fun` is a
+  `std::function<void(Problem &, std::uint64_t)>` that Lloyd's k-medoids calls with `random_seed() + r`
+  (`prob.init_fun = init::Kmeanspp;` still works; `init()` seeds from `random_seed()`). Code that calls the
+  one-argument forms, or assigns an initialiser that takes only the `Problem`, stops compiling.
 - Errors are typed exceptions under `dtwc::Error` (a `std::runtime_error`): `InvalidInput`, `IOError`, `DeviceError`,
   `SolverError`, `UndefinedScore`; v1.0.0 printed a message and went on, or threw a bare `std::runtime_error` or an `int`.
 - `dtwc_cl` needs `-k` and `-i` (without `--Nc`, v1.0.0 exited 0 having clustered nothing) and refuses v1.0.0's range
@@ -87,8 +93,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   file's series keep its `ndim` (multivariate), where the MEX's read gave every series one feature; and the
   `dtwc.Result` carries the run report, `Report` (`'NoReport', true` makes none), which `save` writes last.
 - DTW variants DDTW, WDTW, ADTW, Soft-DTW, MSM and TWE (`--variant`; Soft-DTW, MSM and TWE ignore the band, and
-  Soft-DTW clusters on its divergence, never negative, while the distance functions give its raw value), a squared
-  Euclidean local cost for Standard DTW and DDTW (`--metric`), and `dtwc::distance::dtw` for one pair.
+  Soft-DTW clusters on its divergence, never negative, while the distance functions give its raw value), a Euclidean
+  and a squared Euclidean local cost for Standard DTW and DDTW (`--metric euclidean`, `squared_euclidean`; Euclidean
+  is the norm over a time step's channels, L1 on one channel), and `dtwc::distance::dtw` for one pair.
 - Missing values as NaN (`--missing-strategy zero_cost`, `arow` or `interpolate`) and multivariate series (`ndim` values
   per step, `--mv-mode dependent` or `independent`).
 - Series stored as `float`, half the memory, chosen where they are loaded: `dtwc_cl --dtype float32`, C++
@@ -163,8 +170,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   writing only the rows filled since the last one, in place, the first the whole matrix: a fill writes at most twice
   the matrix's bytes. A `.dtwm` file is a 64-byte header (version 5; among its fields the bytes of a value, 8 or 4 for
   `matrix_dtype` float32, and the rows written) and the packed values. A file of the other `matrix_dtype` is refused
-  (`InvalidInput`, naming the one that reads it), never converted; version-4 files, from earlier 2.0 builds, are still
-  read and mapped as float64.
+  (`InvalidInput`, naming the one that reads it), never converted.
 - A memory plan: `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run
   plans for. Its default, 0, is 90 % of the memory available (or of a Linux cgroup's limit, which a SLURM job's memory
   request sets) for `dtwc_cl`, `dtwc::run`, `dtwc::cluster` and Python's and MATLAB's `cluster()` (a build without
@@ -247,8 +253,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   lengths), so their banded distances change; a `Problem` refuses a band narrower than their length difference.
 - Lloyd's k-medoids fills the matrix first, seeds repetition r with `random_seed() + r` (42 + r by default), keeps the
   lowest-cost one (v1.0.0: the last, seeded by `randGenerator`) and reassigns at `maxIter` before taking the cost.
-- `init::random(prob)` and `init::Kmeanspp(prob)` take one draw of `randGenerator` as the seed of a sampler that picks
-  the same medoids on every platform, never one twice: they pick other medoids than v1.0.0 did.
+- `init::random` and `init::Kmeanspp` take a seed and sample so that one seed picks the same medoids on every
+  platform, never one twice: they pick other medoids than v1.0.0 did.
 - The MIP starts from FastPAM's clustering, both solvers stop at a relative gap of 1e-5, and Gurobi runs NumericFocus 1
   and MIPFocus 2 (v1.0.0: a cold start, HiGHS's own gap, NumericFocus 3); `mip_settings` sets each. Its costs are
   scaled so that the largest is 2 at any distance scale (v1.0.0 left them unscaled where the largest distance was
@@ -267,9 +273,6 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   writes as before.
 - `set_solver` is `[[nodiscard]]`, and `set_solver(Solver::Gurobi)` on a build without Gurobi returns `false` silently;
   `cluster_by_mip()` raises `SolverError` for a solver not built or a run without a proven optimum.
-- `dtwc::randGenerator` is one engine per program, in `dtwc/base/random_engine.hpp`, which `dtwc.hpp` includes and
-  `settings.hpp` no longer does; v1.0.0 had a `static` copy in each translation unit.
-- `Index::difference_type` (what `operator-` returns) is `std::ptrdiff_t`, where v1.0.0's was `size_t`.
 - `run(task, n, numMaxParallelWorkers = 0)` uses all available OpenMP threads when 0 and applies a positive limit;
   v1.0.0 used every OpenMP thread for any value but 1.
 - A `.txt` file is tab-separated unless a delimiter is given (v1.0.0: comma); `DataLoader::path()` matches extensions

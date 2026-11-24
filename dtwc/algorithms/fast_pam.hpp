@@ -43,7 +43,7 @@ class Problem; // Forward declaration
  *                  BUILD phase is observed alone; k = 1 needs no SWAP and always
  *                  returns the exact 1-median.
  * @param seed      BUILD seed (default settings::DEFAULT_RANDOM_SEED): one seed gives
- *                  one result on every platform; dtwc::randGenerator is not read.
+ *                  one result on every platform.
  * @return core::ClusteringResult containing labels, medoid indices, total cost, etc.
  *
  * @note Writes the result back into `prob` (`centroids_ind`, `clusters_ind`,
