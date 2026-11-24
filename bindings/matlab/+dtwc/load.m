@@ -26,12 +26,12 @@ function ds = load(source, varargin)
 %   which dtwc.cluster takes for Parquet; dtwc.cluster hands any other path to C++
 %   dtwc::run, which reads it at every call (and may stream an Arrow IPC file
 %   under RamLimit); to read it once, cluster its series: dtwc.cluster(ds.as_series(), k).
-%   A Dataset passes through with the options it was made with, as dtwc.load_data
-%   takes it: a SkipCols, SkipRows, Delimiter or Dtype given here that differs from
-%   the Dataset's, at its default too, is refused, naming both values; one equal
-%   to it runs, and a Name is refused.
+%   A Dataset passes through with the options it was made with: a SkipCols,
+%   SkipRows, Delimiter or Dtype given here that differs from the Dataset's, at
+%   its default too, is refused, naming both values; one equal to it runs, and a
+%   Name is refused.
 %
-%   See also dtwc.Dataset, dtwc.load_data, dtwc.cluster
+%   See also dtwc.Dataset, dtwc.cluster
 
 %> @file load.m
 %> @brief Lazy dataset loader.
@@ -46,11 +46,32 @@ function ds = load(source, varargin)
     parse(p, varargin{:});
     if isa(source, 'dtwc.Dataset')
         if ~ismember('Name', p.UsingDefaults)
-            error('dtwc:invalidArgument', 'load_data: Dataset keeps the options it was made with; unexpected Name.');
+            error('dtwc:invalidArgument', 'load: Dataset keeps the options it was made with; unexpected Name.');
         end
-        ds = dtwc.load_data(source, varargin{:});
+        for key = {'SkipCols', 'SkipRows', 'Delimiter', 'Dtype'}
+            if ismember(key{1}, p.UsingDefaults)
+                continue
+            end
+            given = p.Results.(key{1});
+            if strcmp(key{1}, 'Dtype')
+                given = dtwc_mex('dtype', char(given));   % the C++ table's canonical name, as a Dataset holds it
+            elseif strcmp(key{1}, 'Delimiter')
+                given = char(given);
+            end
+            if ~same(given, source.(key{1}))
+                error('dtwc:invalidArgument', ['load: the Dataset was made with %s %s and %s %s was given; ' ...
+                      'a Dataset keeps the options it was made with, so pass %s to dtwc.load, or leave it out.'], ...
+                      key{1}, mat2str(source.(key{1})), key{1}, mat2str(given), key{1});
+            end
+        end
+        ds = source;
         return
     end
     ds = dtwc.Dataset(source, p.Results.SkipCols, p.Results.SkipRows, ...
                       char(p.Results.Delimiter), char(p.Results.Name), char(p.Results.Dtype));
+end
+
+function tf = same(a, b)
+%SAME Whether two option values are one: equal in value whatever their class, or both empty ('' and "").
+    tf = isequal(a, b) || (isempty(a) && isempty(b));
 end
