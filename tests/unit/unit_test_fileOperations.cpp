@@ -143,7 +143,7 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
       matrix.set(i, j, dist(rng));
   }
 
-  // Write via Problem's write_distance_matrix mechanism (inline CSV).
+  // Write the matrix as an inline CSV.
   const ScratchDirectory scratch{ "distmat_csv" };
   const fs::path tempFilePath = scratch.path / "test_distmat.csv";
   {
@@ -181,18 +181,19 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
   } // close inFile before the directory is removed
 }
 
-TEST_CASE("Problem::write_distance_matrix + read_distance_matrix end-to-end roundtrip",
+TEST_CASE("io::write_csv + Problem::read_distance_matrix end-to-end roundtrip",
           "[fileOperations][problem]")
 {
   // Full end-to-end roundtrip through Problem: fill a distance matrix from
-  // DTW calls, write to CSV via Problem::write_distance_matrix, load into a
-  // fresh Problem via Problem::read_distance_matrix, and verify the loaded
-  // values are returned by dist_by_ind without recomputation.
+  // DTW calls, write it to CSV with io::write_csv (the writer of
+  // <name>_distance_matrix.csv), load into a fresh Problem via
+  // Problem::read_distance_matrix, and verify the loaded values are returned
+  // by dist_by_ind without recomputation.
   //
   // The existing "Write and Read Distance Matrices via Problem" test
   // (above) wrote the CSV manually and only called read_distance_matrix to
   // verify it doesn't throw. This complements it by exercising both I/O
-  // methods on matching real DTW values.
+  // routes on matching real DTW values.
 
   constexpr int N = 6;
   constexpr int L = 12;
@@ -224,8 +225,8 @@ TEST_CASE("Problem::write_distance_matrix + read_distance_matrix end-to-end roun
     for (int j = 0; j < N; ++j)
       snapshot[i][j] = prob1.dist_by_ind(i, j);
 
-  prob1.write_distance_matrix("rt_distmat.csv");
   const auto csv_path = tmp / "rt_distmat.csv";
+  dtwc::io::write_csv(prob1.distance_matrix(), csv_path);
   REQUIRE(std::filesystem::exists(csv_path));
 
   // Fresh Problem with identical data; its matrix is empty until loaded.

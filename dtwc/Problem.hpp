@@ -100,13 +100,15 @@ std::string describe(const core::FillSplit &fill);
 namespace detail {
 
 /**
- * @brief Write a clustered Problem's result files into `directory`, which is created if missing.
+ * @brief Write a clustered Problem's result files into `directory`, which is created if missing: the one writer of
+ *        them, which dtwc_cl and Result::save call and a caller that holds a Problem may too.
  *
  * `<name>_labels.csv` and `<name>_medoids.csv`, then, when the distance matrix is filled,
  * `<name>_distance_matrix.csv` and, for k > 1, `<name>_silhouettes.csv`. An undefined silhouette is a
  * warning on stderr; any other failure propagates. A Problem without series (a streamed run: RAM-limited
  * Parquet or Arrow IPC) names its series by `streamed_names`, the reader's names (else `series_<i>`), and has
- * no matrix or silhouettes to write.
+ * no matrix or silhouettes to write. A Problem that holds no clustering gets label and medoid files of no rows:
+ * cluster it first (Problem::cluster, Problem::set_result).
  *
  * @param complete  true (Result::save of a run held in RAM, the Python save): fill the matrix first, so all
  *                  four files are written, and throw InvalidInput after the labels and medoids when the
@@ -194,9 +196,6 @@ private:
   algorithms::Linkage linkage_{ algorithms::Linkage::Average };
   std::size_t ram_limit_{ 0 }; ///< bytes; 0: core::available_memory() when the matrix is filled
   bool verbose_{ false };
-  /// Run-artifact files (per-repetition medoids, best-repetition record) belong
-  /// to cluster_and_process(); cluster() itself is side-effect free.
-  bool persist_run_artifacts_{ false };
   path_t output_folder_{ "./results/" }; //!< Relative to the working directory; set_output_folder.
   std::string name_{};
   Data data_;
@@ -241,9 +240,6 @@ private:
 
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
-
-  void writeBestRep(int best_rep);
-  void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
 
   /// An empty series has no finite DTW distance to anything: unrejected, it would
   /// cluster with DBL_MAX distances.
@@ -349,8 +345,8 @@ public:
 
   // Getters and setters:
   /// The centroid of the cluster of i_p, i_p in [0, N). Unchecked like dist_by_ind:
-  /// write_clusters and the bindings call it per series, so a caller that cannot
-  /// vouch for the clustering calls require_clustered() once first.
+  /// the bindings call it per series, so a caller that cannot vouch for the
+  /// clustering calls require_clustered() once first.
   index_t centroid_of(index_t i_p) const { return centroids_ind[clusters_ind[i_p]]; }
 
   /// `not_computed`: NaN reads an empty field or NaN as a pair never computed;
@@ -624,35 +620,9 @@ public:
   [[deprecated("use print_distance_matrix")]] void printDistanceMatrix() const { print_distance_matrix(); }
 
   // Canonical I/O owns behavior; retained 1.x names are deprecated forwarders.
-  void write_distance_matrix(const std::string &file_name) const;
-  void write_distance_matrix() const
-  {
-    write_distance_matrix(name_ + "_distanceMatrix.csv");
-  }
-  [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix(const std::string &file_name) const
-  {
-    write_distance_matrix(file_name);
-  }
-  [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix() const { write_distance_matrix(); }
-
   void print_clusters() const;
   [[deprecated("use print_clusters")]]
   void printClusters() const { print_clusters(); }
-  void write_clusters();
-  [[deprecated("use write_clusters")]]
-  void writeClusters() { write_clusters(); }
-
-  void write_medoid_members(int iter, int rep = 0) const;
-  [[deprecated("use write_medoid_members")]]
-  void writeMedoidMembers(int iter, int rep = 0) const
-  {
-    write_medoid_members(iter, rep);
-  }
-  void write_silhouettes();
-  [[deprecated("use write_silhouettes")]]
-  void writeSilhouettes() { write_silhouettes(); }
 
   // Initialisation of clusters:
   /// Runs init_fun with random_seed().
@@ -668,8 +638,6 @@ public:
   [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
   void cluster_by_kmedoids_lloyd();
   [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsPAM() { cluster_by_kmedoids_lloyd(); }
-
-  void cluster_and_process();
 
   // Auxiliary
   double find_total_cost();

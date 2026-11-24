@@ -66,6 +66,8 @@ from dtwcpp._dtwcpp_core import (
     save_checkpoint,
     load_checkpoint,
     CheckpointOptions,
+    # The files dtwc_cl writes, for a clustered Problem
+    write_result_files,
 )
 
 from dtwcpp._dtwcpp_core import device as _core_device
@@ -318,6 +320,7 @@ __all__ = [
     "gpu_available", "gpu_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
     "save_checkpoint", "load_checkpoint",
+    "write_result_files",
     "CheckpointOptions",
     "DTWClustering",
     "save_dataset_csv", "load_dataset_csv",

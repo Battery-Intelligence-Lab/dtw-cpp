@@ -1542,27 +1542,6 @@ core::ClusteringResult Problem::cluster()
   return result;
 }
 
-/**
- * @brief Executes the clustering process and additional post-processing tasks.
- * @details Performs clustering, then prints and writes the cluster results, including silhouettes, to files.
- */
-void Problem::cluster_and_process()
-{
-  // cluster() is side-effect free by contract; the heuristic run artifacts
-  // (per-repetition medoids, best-repetition record) belong to this entry point.
-  struct ArtifactScope
-  {
-    bool &flag;
-    explicit ArtifactScope(bool &f) : flag{ f } { flag = true; }
-    ~ArtifactScope() { flag = false; }
-  } artifact_scope{ persist_run_artifacts_ };
-  cluster();
-  print_clusters();
-  write_distance_matrix();
-  write_clusters();
-  write_silhouettes();
-}
-
 void Problem::cluster_by_mip()
 {
   // A negative `mip_gap` would otherwise reach HiGHS as an out-of-domain option
@@ -1687,7 +1666,6 @@ void Problem::cluster_by_kmedoids_lloyd()
 
     auto oldmedoids = centroids_ind;
     bool converged = false;
-    std::vector<std::vector<index_t>> centroids_all;
     int actual_iters = 0;
     const int iteration_limit = max_iter();
     for (int i = 0; i < iteration_limit; i++) {
@@ -1697,8 +1675,6 @@ void Problem::cluster_by_kmedoids_lloyd()
         for (auto medoid : centroids_ind)
           std::cout << series_name(medoid) << ' ';
       }
-      if (persist_run_artifacts_)
-        centroids_all.push_back(centroids_ind);
 
       assign_clusters();
       if (verbose_) {
@@ -1723,8 +1699,6 @@ void Problem::cluster_by_kmedoids_lloyd()
     const double total_cost = find_total_cost();
     if (verbose_)
       std::cout << "Procedure is completed with cost: " << total_cost << '\n';
-    if (persist_run_artifacts_)
-      writeMedoids(centroids_all, i_rand, total_cost);
 
     last_iterations_ = actual_iters;
     if (verbose_) {
@@ -1747,9 +1721,7 @@ void Problem::cluster_by_kmedoids_lloyd()
   centroids_ind = std::move(best_medoids);
   clusters_ind = std::move(best_labels);
   last_iterations_ = best_iterations;
-  if (persist_run_artifacts_)
-    writeBestRep(best_rep);
-  else if (verbose_)
+  if (verbose_)
     std::cout << "Best repetition: " << best_rep << '\n';
 }
 

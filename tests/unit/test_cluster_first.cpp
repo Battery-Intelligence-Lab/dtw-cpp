@@ -5,7 +5,7 @@
  *
  * @details `set_n_clusters` used to size and zero-fill `clusters_ind` and
  *   `centroids_ind`, so a Problem that had only been sized looked clustered:
- *   `find_total_cost()` and `write_clusters()` read the zeros (or, on a Problem
+ *   `find_total_cost()` and `print_clusters()` read the zeros (or, on a Problem
  *   never sized, an empty vector: an access violation in Python and in MATLAB).
  *   A Problem is clustered when it holds one label per series and one medoid per
  *   cluster; every call that reads the whole clustering checks that once and
@@ -65,8 +65,6 @@ std::vector<Reader> whole_clustering_readers()
   return {
     { "find_total_cost", [](Problem &p) { (void)p.find_total_cost(); } },
     { "print_clusters", [](Problem &p) { p.print_clusters(); } },
-    { "write_clusters", [](Problem &p) { p.write_clusters(); } },
-    { "write_medoid_members", [](Problem &p) { p.write_medoid_members(0); } },
     { "calculate_medoids", [](Problem &p) { p.calculate_medoids(); } },
     { "silhouette", [](Problem &p) { (void)scores::silhouette(p); } },
     { "davies_bouldin", [](Problem &p) { (void)scores::davies_bouldin(p); } },
@@ -84,13 +82,6 @@ void require_every_reader_refuses(Problem &prob)
                            MessageMatches(ContainsSubstring(reader.who + ": ")
                                           && ContainsSubstring("cluster it first")));
   }
-}
-
-std::size_t files_in(const fs::path &dir)
-{
-  std::size_t n = 0;
-  for (const auto &entry : fs::directory_iterator(dir)) { (void)entry; ++n; }
-  return n;
 }
 
 } // namespace
@@ -135,7 +126,6 @@ TEST_CASE("every whole-clustering reader refuses a Problem never clustered",
   ScratchDirectory dir{ "cluster_first_fresh" };
   auto prob = six_series(dir.path);
   require_every_reader_refuses(prob);
-  CHECK(files_in(dir.path) == 0); // the refusal comes before any file is opened
 }
 
 TEST_CASE("every whole-clustering reader refuses a Problem that was only sized",
@@ -145,7 +135,6 @@ TEST_CASE("every whole-clustering reader refuses a Problem that was only sized",
   auto prob = six_series(dir.path);
   prob.set_n_clusters(2);
   require_every_reader_refuses(prob);
-  CHECK(files_in(dir.path) == 0);
 }
 
 TEST_CASE("every whole-clustering reader refuses a Problem given only initial medoids",
@@ -157,7 +146,6 @@ TEST_CASE("every whole-clustering reader refuses a Problem given only initial me
   std::vector<dtwc::index_t> initial{ 0, 3 };
   prob.set_clusters(initial);
   require_every_reader_refuses(prob);
-  CHECK(files_in(dir.path) == 0);
 }
 
 TEST_CASE("a clustering goes stale when the cluster count changes", "[problem][cluster-first]")
@@ -187,7 +175,6 @@ TEST_CASE("a clustering goes stale when the cluster count changes", "[problem][c
     prob.set_data(dtwc::Data(std::move(more), std::move(names)));
     require_every_reader_refuses(prob);
   }
-  CHECK(files_in(dir.path) == 0);
 }
 
 TEST_CASE("replacing the series drops the clustering, even with as many series",
@@ -215,7 +202,6 @@ TEST_CASE("replacing the series drops the clustering, even with as many series",
   CHECK(prob.medoids().empty());
   CHECK(prob.n_clusters() == 2); // the requested count is a setting, not an output
   require_every_reader_refuses(prob);
-  CHECK(files_in(dir.path) == 0);
 
   prob.cluster(); // a clustering of the new series is a clustering again
   CHECK_NOTHROW(prob.find_total_cost());
@@ -252,8 +238,6 @@ TEST_CASE("set_n_clusters then cluster still clusters, for every method that run
   }
   CHECK(prob.find_total_cost() == expected);
   CHECK(prob.centroid_of(4) == prob.medoids()[static_cast<std::size_t>(prob.labels()[4])]);
-  CHECK_NOTHROW(prob.write_clusters());
-  CHECK(files_in(dir.path) == 1);
 }
 
 TEST_CASE("set_n_clusters refuses k < 1 and keeps the count it had", "[problem][cluster-first]")

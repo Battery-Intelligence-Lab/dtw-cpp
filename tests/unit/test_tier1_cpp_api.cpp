@@ -214,9 +214,6 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
           "[api][tier1][seed][lloyd]")
 {
   auto problem = seed_sensitive_problem();
-  const ScratchDirectory scratch{ "lloyd_best" };
-  const fs::path &out = scratch.path;
-  problem.set_output_folder(out);
   problem.set_n_clusters(3);
   problem.set_n_repetitions(2);
 
@@ -228,11 +225,10 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
     current.set_clusters(medoids);
   };
 
-  problem.cluster_and_process(); // owns the run artifacts; cluster() does not
+  problem.cluster();
   CHECK(repetition == 2);
   CHECK(problem.find_total_cost() == 20.0);
   CHECK(problem.medoids() == std::vector<dtwc::index_t>{0, 3, 6});
-  CHECK(first_line(out / "tier1_seed_fixture_bestRepetition_Nc_3.csv") == "0");
 }
 
 TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers",

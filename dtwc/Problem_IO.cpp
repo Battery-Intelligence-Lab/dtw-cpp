@@ -2,9 +2,8 @@
  * @file Problem_IO.cpp
  * @brief Implementation of input/output functions for the Problem class.
  *
- * @details These functions handle the writing of medoids, clusters, silhouettes, and
- * distance matrices to files, as well as reading distance matrices from files, and
- * detail::write_result_files, the result files of a clustered Problem.
+ * @details These functions print a Problem's clusters, read a distance matrix from a file,
+ * and, in detail::write_result_files, write the result files of a clustered Problem.
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
@@ -29,23 +28,6 @@
 
 namespace dtwc {
 
-void Problem::writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost)
-{
-  const auto outPath = output_folder_
-    / utf8_to_path(name_ + "medoids_rep_" + std::to_string(rep) + ".csv");
-  std::ofstream medoidsFile = open_output(outPath);
-
-  for (auto &c_ind : centroids_all) {
-    for (auto medoid : c_ind)
-      medoidsFile << series_name(medoid) << ',';
-
-    medoidsFile << '\n';
-  }
-
-  medoidsFile << "Procedure is completed with cost: " << total_cost << '\n';
-  close_output(medoidsFile, outPath);
-}
-
 void Problem::print_clusters() const
 {
   require_clustered("print_clusters");
@@ -64,93 +46,6 @@ void Problem::print_clusters() const
 
     std::cout << '\n';
   }
-}
-
-void Problem::write_clusters()
-{
-  require_clustered("write_clusters"); // before the file is opened: a refusal leaves none behind
-  const auto path = output_folder_ / utf8_to_path(name_ + "_Nc_" + std::to_string(Nc) + ".csv");
-  std::ofstream myFile = open_output(path);
-
-  myFile << "Cluster centroids:\n";
-
-  for (index_t i{ 0 }; i < Nc; i++) {
-    if (i != 0) myFile << ',';
-
-    myFile << series_name(centroids_ind[i]);
-  }
-
-  myFile << "\n\nData,its cluster\n";
-
-  for (std::size_t i = 0, n = static_cast<std::size_t>(size()); i < n; ++i)
-    myFile << series_name(i) << ',' << series_name(centroid_of(static_cast<index_t>(i))) << '\n';
-
-  myFile << "Procedure is completed with cost: " << find_total_cost() << '\n';
-
-  close_output(myFile, path);
-}
-
-/**
- *  @brief Writes silhouette scores for each data point to a CSV file.
- *  @details Calculates silhouette scores using the 'scores::silhouette' function.
- *
- *  s(i) is undefined with fewer than two realised clusters, where
- *  scores::silhouette() throws UndefinedScore. Writing output is not the place
- *  to abort a completed clustering: warn and skip the file, as the CLI does.
- *  Only that case is caught; a corrupt labelling still propagates.
- */
-void Problem::write_silhouettes()
-{
-  std::vector<double> silhouettes;
-  try {
-    silhouettes = scores::silhouette(*this);
-  } catch (const UndefinedScore &e) {
-    std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
-    return;
-  }
-
-  const auto path = output_folder_ / utf8_to_path(name_ + "_silhouettes_Nc_" + std::to_string(Nc) + ".csv");
-  std::ofstream myFile = open_output(path);
-
-  myFile << "Silhouettes:\n";
-  for (std::size_t i = 0, n = static_cast<std::size_t>(size()); i < n; ++i)
-    myFile << series_name(i) << ',' << silhouettes[i] << '\n';
-
-  close_output(myFile, path);
-}
-
-void Problem::write_medoid_members(int iter, int rep) const
-{
-  require_clustered("write_medoid_members");
-  const auto path = output_folder_
-    / utf8_to_path("medoidMembers_Nc_" + std::to_string(Nc) + "_rep_" + std::to_string(rep)
-                   + "_iter_" + std::to_string(iter) + ".csv");
-  std::ofstream medoidMembers = open_output(path);
-  for (std::size_t i_c = 0, n_c = static_cast<std::size_t>(Nc); i_c < n_c; ++i_c) {
-    for (std::size_t i_p = 0, n_p = static_cast<std::size_t>(size()); i_p < n_p; ++i_p)
-      if (clusters_ind[i_p] == i_c)
-        medoidMembers << series_name(i_p) << ',';
-
-    medoidMembers << '\n';
-  }
-
-  close_output(medoidMembers, path);
-}
-
-void Problem::write_distance_matrix(const std::string &file_name) const
-{
-  io::write_csv(distMat, output_folder_ / utf8_to_path(file_name));
-}
-
-void Problem::writeBestRep(int best_rep)
-{
-  const auto path = output_folder_
-    / utf8_to_path(name_ + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv");
-  std::ofstream bestRepFile = open_output(path);
-  bestRepFile << best_rep << '\n';
-  close_output(bestRepFile, path);
-
-  std::cout << "Best repetition: " << best_rep << '\n';
 }
 
 /**

@@ -133,7 +133,6 @@ void configure_dense_problem(dtwc::Problem &problem)
   auto &matrix = problem.writable_distance_matrix();
   matrix.resize(3);
   populate_contract_matrix(matrix);
-  problem.set_output_folder(test_root());
 }
 
 #ifdef DTWC_HAS_MMAP
@@ -146,7 +145,6 @@ void configure_mmap_problem(
   problem.use_mmap_distance_matrix(cache_path);
   auto &matrix = problem.writable_distance_matrix();
   populate_contract_matrix(matrix);
-  problem.set_output_folder(test_root());
 }
 #endif
 
@@ -269,7 +267,7 @@ TEST_CASE("F14 dense Problem visitor and print route are literal-identical",
   dtwc::Problem problem("f14_dense");
   configure_dense_problem(problem);
   const auto path = fresh_path("dense_problem.csv");
-  problem.write_distance_matrix(path.filename().string());
+  dtwc::io::write_csv(problem.distance_matrix(), path);
   CHECK(read_binary(path) == kExpected);
 
   cout_capture capture;
@@ -334,7 +332,7 @@ TEST_CASE("F14 negative infinity rejects before dense Problem output",
   const auto path = fresh_path("negative_existing.csv");
   seed_binary(path, "seed");
   const auto file_rejection = capture_rejection(
-    [&] { problem.write_distance_matrix(path.filename().string()); });
+    [&] { dtwc::io::write_csv(problem.distance_matrix(), path); });
   CHECK(file_rejection.typed);
   CHECK(file_rejection.message == kNegativeInfinityMessage);
   CHECK(read_binary(path) == "seed");
@@ -393,7 +391,7 @@ TEST_CASE("F14 mmap Problem visitor and print route are literal-identical",
   const auto path = fresh_path("mmap_problem.csv");
   {
     global_locale_guard guard(hostile_locale());
-    problem.write_distance_matrix(path.filename().string());
+    dtwc::io::write_csv(problem.distance_matrix(), path);
   }
   CHECK(read_binary(path) == kExpected);
 
@@ -415,9 +413,8 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
     dtwc::Problem empty_problem("f14_mmap_empty");
     empty_problem.use_mmap_distance_matrix(
       fresh_path("empty_problem.dtwm"));
-    empty_problem.set_output_folder(test_root());
     const auto empty_path = fresh_path("mmap_empty.csv");
-    empty_problem.write_distance_matrix(empty_path.filename().string());
+    dtwc::io::write_csv(empty_problem.distance_matrix(), empty_path);
     CHECK(read_binary(empty_path).empty());
     cout_capture capture;
     empty_problem.print_distance_matrix();
@@ -456,7 +453,7 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
   const auto path = fresh_path("mmap_nonfinite.csv");
   seed_binary(path, "seed");
   const auto file_rejection = capture_rejection(
-    [&] { problem.write_distance_matrix(path.filename().string()); });
+    [&] { dtwc::io::write_csv(problem.distance_matrix(), path); });
   CHECK(file_rejection.typed);
   CHECK(file_rejection.message == kNegativeInfinityMessage);
   CHECK(read_binary(path) == "seed");

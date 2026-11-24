@@ -47,9 +47,10 @@ with a warning. What needs attention is the behaviour listed further down.
 | v1.0.0 | 2.0 |
 |---|---|
 | `Problem::set_numberOfClusters(n)`, `cluster_size()` | `set_n_clusters(k)`, `n_clusters()` |
-| `refreshDistanceMatrix`, `readDistanceMatrix`, `maxDistance`, `isDistanceMatrixFilled`, `fillDistanceMatrix`, `printDistanceMatrix`, `writeDistanceMatrix` | `refresh_distance_matrix`, `read_distance_matrix`, `max_distance`, `is_distance_matrix_filled`, `fill_distance_matrix`, `print_distance_matrix`, `write_distance_matrix` |
+| `refreshDistanceMatrix`, `readDistanceMatrix`, `maxDistance`, `isDistanceMatrixFilled`, `fillDistanceMatrix`, `printDistanceMatrix` | `refresh_distance_matrix`, `read_distance_matrix`, `max_distance`, `is_distance_matrix_filled`, `fill_distance_matrix`, `print_distance_matrix` |
 | `distByInd(i, j)` | `dist_by_ind(i, j)`, which reads the filled matrix and computes nothing; the old name fills the whole matrix on its first call |
-| `printClusters`, `writeClusters`, `writeMedoidMembers`, `writeSilhouettes` | `print_clusters`, `write_clusters`, `write_medoid_members`, `write_silhouettes` |
+| `printClusters` | `print_clusters` |
+| `writeClusters`, `writeMedoidMembers`, `writeSilhouettes`, `writeDistanceMatrix`, `cluster_and_process()` (and the per-repetition `…medoids_rep_<r>.csv` and `…_bestRepetition_Nc_<k>.csv` it wrote) | removed: `dtwc::detail::write_result_files(prob, directory, true)` writes the files `dtwc_cl` writes (the output table under [dtwc_cl](#dtwc_cl)), and `cluster()` then `print_clusters()` is the rest of what `cluster_and_process()` did; `dtwc::io::write_csv(prob.distance_matrix(), path)` writes the matrix alone |
 | `findTotalCost`, `assignClusters`, `calculateMedoids` | `find_total_cost`, `assign_clusters`, `calculate_medoids` |
 | `cluster_by_MIP()`, `cluster_by_kMedoidsPAM()` | `cluster_by_mip()`, `cluster_by_kmedoids_lloyd()` (Lloyd's k-medoids, as before) |
 | `set_clusters(std::vector<int>&)` | `set_clusters(const std::vector<index_t>&)` |
@@ -122,8 +123,10 @@ The v1.0.0 spellings still work: they are hidden from `--help` and print
 | `<name>medoids_rep_<r>.csv`, `<name>_bestRepetition_Nc_<k>.csv` | not written |
 | (none) | `<name>_report.txt`: the run report, written last; `--no-report` writes none |
 
-The library's writers (`write_clusters`, `write_silhouettes`,
-`write_distance_matrix`) keep v1.0.0's file names.
+The library writes these files and no others: `Problem`'s own writers, which kept
+v1.0.0's file names, are gone (C++ names above). A `Problem` holding a clustering
+writes them with C++ `dtwc::detail::write_result_files(prob, directory, true)` and
+Python `write_result_files(prob, directory)`; a result of `cluster()` has `save(directory)`.
 
 ## Behaviour to check
 
@@ -136,7 +139,6 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   distance is negative, Soft-DTW's being its divergence. v1.0.0 read every
   negative entry as not computed.
 - `cluster()` writes no files, and prints only after `set_verbose(true)`.
-  `cluster_and_process()` clusters and writes the files, as before.
 - Lloyd's k-medoids fills the whole distance matrix first. Its repetitions start
   from `random_seed() + r` (42 by default) instead of drawing from
   `randGenerator`, and the lowest-cost repetition is kept (v1.0.0 kept the last).
@@ -158,13 +160,13 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   unless a missing-data strategy says what NaN means (`set_missing_strategy`).
   A series with no values is `InvalidInput` too, a blank line in a file of one
   series per row no longer being one.
-- The scores, `find_total_cost` and the writers raise `InvalidInput` on a
+- The scores and `find_total_cost` raise `InvalidInput` on a
   `Problem` that holds no clustering (`scores::silhouette` printed a line and
   returned `-1` per series). `scores::silhouette` raises `UndefinedScore` below
   two non-empty clusters, where v1.0.0 gave every series about 1.
 - `read_distance_matrix` refuses a file of another size, a matrix that is not
-  square and symmetric, ±inf, and a negative entry (above). The CSV it writes
-  carries every digit of a double and LF line endings.
+  square and symmetric, ±inf, and a negative entry (above). The matrix CSV the
+  library writes carries every digit of a double and LF line endings.
 - Text input: a blank line is no longer an empty series; each file of a folder
   holds one value per line after the skipped columns (a pandas `index,value` file needs
   `start_row(1)` and `start_column(1)`, or `--skip-rows 1 --skip-cols 1`); a folder is read in sorted order; a

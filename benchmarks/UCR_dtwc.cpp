@@ -85,7 +85,7 @@ inline void UCR_2018(const fs::path &data_dir, const fs::path &results_dir)
 
   std::ofstream timing_file(out_folder / "timing_all.csv", std::ios_base::out);
 
-  timing_file << "Name,fill_distance_matrix,MIPclustering,write_silhouettes\n";
+  timing_file << "Name,fill_distance_matrix,MIPclustering,write_result_files\n";
   std::string reportName = "MILP_results";
   // UCR_list
   std::vector<fs::path> dataofInterest{
@@ -136,9 +136,7 @@ inline void UCR_2018(const fs::path &data_dir, const fs::path &results_dir)
     std::cout << "Band used " << prob.band << "\n\n\n";
 
     prob.print_clusters(); // Prints to screen.
-    prob.write_distance_matrix();
-    prob.write_clusters(); // Prints to file.
-    prob.write_silhouettes();
+    dtwc::detail::write_result_files(prob, prob.output_folder(), true); // The files dtwc_cl writes.
 
     const auto time_3 = clk.duration();
     timing_file << stem_str << ',' << time_1 << ',' << time_2 << ',' << time_3 << '\n';
