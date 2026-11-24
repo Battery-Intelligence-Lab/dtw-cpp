@@ -68,7 +68,7 @@ memory plan and the streaming rules are on the [CLI page](../../getting-started/
 
 When `sample_size = -1` (auto), the size is computed as:
 
-$$s = \max(40 + 2k, \min(N, 10k + 100))$$
+$$s = \min(N, 10k + 100)$$
 
 The size is then limited to the range $$[k, N]$$. This follows the recommendation from Schubert & Rousseeuw (2021).
 

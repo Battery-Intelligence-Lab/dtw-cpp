@@ -90,12 +90,8 @@ namespace detail {
     }
 
     index_t requested = options.sample_size;
-    if (requested == -1) {
-      const index_t k = options.n_clusters;
-      const index_t classical = 40 + 2 * k;
-      const index_t improved = std::min<index_t>(n_points, 10 * k + 100);
-      requested = std::max(classical, improved);
-    }
+    if (requested == -1)
+      requested = std::min<index_t>(n_points, 10 * options.n_clusters + 100);
     requested = std::max(requested, options.n_clusters);
     requested = std::min(requested, n_points);
     return { n_points, requested };

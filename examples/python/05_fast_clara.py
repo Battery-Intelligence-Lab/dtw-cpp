@@ -47,7 +47,7 @@ prob.band = -1  # full DTW
 result = dtwcpp.fast_clara(
     prob,
     n_clusters=n_clusters,
-    sample_size=80,    # subsample size (default auto: 40 + 2*k)
+    sample_size=80,    # subsample size (default auto: min(N, 10*k + 100))
     n_samples=5,       # number of subsamples
     max_iter=100,
     seed=42,
