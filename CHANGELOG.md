@@ -17,8 +17,34 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   it, and such a build says so when it runs.
 - Counts, labels, medoids and indices are `dtwc::index_t` (`std::int64_t`): code that keeps `clusters_ind` or
   `centroids_ind` in a `std::vector<int>` stops compiling; declare it `std::vector<dtwc::index_t>`.
-- A `Problem` moves but no longer copies. Its fields `method`, `output_folder`, `name` and `data` are accessors now;
-  `maxIter`, `N_repetition`, `band`, `init_fun`, `clusters_ind` and `centroids_ind` stay public.
+- A `Problem` moves but no longer copies. Its fields `method`, `output_folder`, `name`, `data`, `maxIter`, `N_repetition`
+  and `band` are accessors and setters now (`method()`, `max_iter()` / `set_max_iter`, `n_repetitions()` /
+  `set_n_repetitions`, `distance().band` / `set_band`, ...); `init_fun`, `clusters_ind` and `centroids_ind` stay public.
+- The `[[deprecated]]` v1.0.0 spellings are removed, so code that still calls them stops compiling (the migration
+  guide gives each new name): on `Problem` `set_numberOfClusters`, `cluster_size`, `refreshDistanceMatrix`,
+  `readDistanceMatrix`, `maxDistance`, `distByInd`, `isDistanceMatrixFilled`, `fillDistanceMatrix`,
+  `printDistanceMatrix`, `writeDistanceMatrix`, `printClusters`, `writeClusters`, `writeMedoidMembers`,
+  `writeSilhouettes`, `cluster_by_MIP`, `cluster_by_kMedoidsPAM`, `findTotalCost`, `assignClusters`, `calculateMedoids`
+  and `set_clusters(std::vector<int>&)`; on `DataLoader` `startColumn(n)` and `startRow(n)` (the no-argument getters
+  stay).
+- `dtwc/settings.hpp`, `parallelisation.hpp` and `timing.hpp`, which only forwarded to `dtwc/base/`, are deleted: include
+  `base/settings.hpp`, `base/parallelisation.hpp` and `base/timing.hpp` (`dtwc.hpp` includes all three).
+- `dtwFull(x, y)` and `dtwFull_L(x, y)` are `dtwBanded(x, y)`: band -1, the default, is full DTW. `dtwBanded` and the
+  other per-pair distance functions (`ddtwBanded`, `wdtwBanded`, `adtwBanded`, `dtwMissing_banded`, `dtwAROW_banded`,
+  `soft_dtw`, `core::msm_distance`, `core::twe_distance`, `distance::dtw` and its siblings) take series that are
+  `std::vector`s, `std::span`s, `std::array`s or C arrays of `float` or `double` and deduce the element type from them,
+  so an explicit element type (`dtwFull_L<double>(x, y)`) no longer compiles. A pointer and a length pass as
+  `std::span<const T>(p, n)`.
+- `Problem` writes no result files of its own: `cluster_and_process()`, `write_clusters()`, `write_silhouettes()`,
+  `write_distance_matrix()` and `write_medoid_members()` (v1.0.0's `writeClusters`, `writeSilhouettes`,
+  `writeDistanceMatrix`, `writeMedoidMembers`) are removed, with the files they wrote (`<name>_Nc_<k>.csv`,
+  `<name>_silhouettes_Nc_<k>.csv`, `<name>_distanceMatrix.csv`, `medoidMembers_*.csv`, `<name>medoids_rep_<r>.csv`,
+  `<name>_bestRepetition_Nc_<k>.csv`). One writer remains, the one `dtwc_cl` and `Result::save` use: C++
+  `dtwc::detail::write_result_files(prob, directory, true)`, Python `write_result_files(prob, directory)`;
+  `io::write_csv(prob.distance_matrix(), path)` writes the matrix alone.
+- `load_folder` and `load_batch_file` take their options as a `LoadOptions` (`Ndata`, `verbose`, `start_row`,
+  `start_col`, `delimiter`), not as arguments after the path: `load_folder<T>(path, LoadOptions{ Ndata, verbose,
+  start_row, start_col, delimiter })`; a field left out keeps v1.0.0's default.
 - `dtwc.hpp` under `-ffinite-math-only` (implied by `-ffast-math`) is a compile error, since NaN marks missing values
   and uncomputed distances: add `-fno-finite-math-only`.
 - `dtwc::Range`, `dtwc::Index` and `settings::isDebug` are removed (v1.0.0 had them, undocumented): write the loop.
@@ -36,8 +62,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   failed write; v1.0.0 went on.
 - `dtwc_cl` writes `<name>_labels.csv` and `<name>_medoids.csv`, and `<name>_distance_matrix.csv` and
   `<name>_silhouettes.csv` when its method filled the matrix; v1.0.0 wrote `<name>_Nc_<k>.csv` and per-repetition files.
-- `set_n_clusters` (v1.0.0's `set_numberOfClusters`) below 1 is `InvalidInput`, and so is a band below -1, set or
-  written to `band` (v1.0.0 ran full DTW), and a `set_clusters` medoid outside [0, N), which v1.0.0 took. A ±inf in a
+- `set_n_clusters` (v1.0.0's `set_numberOfClusters`) below 1 is `InvalidInput`, and so is a band below -1 (v1.0.0 ran
+  full DTW), in a `Problem` and in `cdist`, and a `set_clusters` medoid outside [0, N), which v1.0.0 took. A ±inf in a
   series is refused, a NaN unless a missing-data strategy applies.
 - A series with no values is `InvalidInput`, and a blank line in a file of one series per row is no longer an empty
   series. Every `Problem` fill and `dtw_function()` refuses one, for a series emptied through `Data::p_vec` after
@@ -147,6 +173,18 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   and `tadpole(prob)` on such a `Problem` too), a run that streams its
   series and a build without CUDA raise `DeviceError`. `test.gpu()` (C++, Python, MATLAB) reports `hybrid` and
   `hybrid_reason` as it reports `available` and `reason`.
+- `fallback` (`dtwc_cl --fallback`; C++ `Config::fallback`, `Problem::set_device(device, index, fallback)` and the last
+  argument of `cdist`; Python `fallback=True` in `cluster`, `cdist`, `DTWClustering` and `Problem`; MATLAB
+  `'Fallback', true` in `dtwc.cluster`, `dtwc.distance.cdist`, `dtwc.Problem` and `dtwc.DTWClustering`): a GPU request
+  that cannot be honoured (no GPU backend or usable GPU, a variant, missing-data strategy, precision or number of
+  features the kernels lack, a method with no GPU path, `cpu+gpu` without CUDA or on a streamed run) runs on the CPU,
+  before a series is read, instead of raising `DeviceError`, with one line on stderr, the run report saying why, and
+  `Result.device` `cpu`. It belongs to one call (the process-wide `device()` has none), is off by default, and a
+  failure once the GPU has begun is a `DeviceError` either way; `hpc` with it is `InvalidInput` in Python. Without it,
+  `one_batch_pam(prob)`, `tadpole(prob)` and `Problem::cluster()` with either method on a GPU `Problem` (`gpu`, not
+  only `cpu+gpu`) raise `DeviceError`, as `dtwc_cl`, Python and MATLAB `cluster` do.
+- `dtwc::run` asks for its GPU (CUDA: device count, ordinal, compute capability 8.0, a context; Metal: its default
+  device) before it reads a series, so `--device gpu:99 --checkpoint d` is the device's error, not `--gpu-precision`'s.
 - Input: Arrow IPC, the file and the stream format, in every build and language, read by the vendored nanoarrow without
   Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each series is a
   view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's `Data.p_vec`
@@ -269,8 +307,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   each renamed v1.0.0 name stays as a `[[deprecated]]` alias.
 - `dist_by_ind(i, j)` reads the filled matrix in O(1) and computes nothing, so fill it first, as the library's methods
   do; the v1.0.0 name `distByInd` fills the whole matrix on its first call.
-- `Problem::cluster()` writes no files and prints only after `set_verbose(true)`; `cluster_and_process()` clusters and
-  writes as before.
+- `Problem::cluster()` writes no files and prints only after `set_verbose(true)`.
 - `set_solver` is `[[nodiscard]]`, and `set_solver(Solver::Gurobi)` on a build without Gurobi returns `false` silently;
   `cluster_by_mip()` raises `SolverError` for a solver not built or a run without a proven optimum.
 - `run(task, n, numMaxParallelWorkers = 0)` uses all available OpenMP threads when 0 and applies a positive limit;
@@ -284,8 +321,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   configure. `dtwc_cl` is built only when DTWC++ is the top-level project.
 - The maintainer CMake options are spelled `DTWC_*` (`DTWC_ENABLE_SANITIZER_ADDRESS`, `DTWC_WARNINGS_AS_ERRORS`, ...);
   v1.0.0's `dtwc_*` names still work for one release, with a warning.
-- `settings.hpp`, `timing.hpp` and `parallelisation.hpp` moved to `dtwc/base/` (the old paths work, with a message at
-  compile time); `dtwBanded`'s scalar type, where none is deduced, is `double` (v1.0.0: `float`).
+- `settings.hpp`, `timing.hpp` and `parallelisation.hpp` moved to `dtwc/base/` (the old paths are gone); `dtwBanded`
+  takes the element type of its series (v1.0.0's vector overload defaulted to `float`).
 - Numbers are read with fast_float and the matrix CSV written with `std::to_chars`, whatever the global C++ locale;
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
 
@@ -346,7 +383,8 @@ Soft-DTW, Python or CUDA), on the machine named.
   the 18-thread fill of 1,000 series of lengths 90–110 1.42–1.50× faster; bit for bit with Apple clang.
 - No DTW cell calls a library function (the MSVC STL made `std::min({…})` one): on an Intel Core Ultra 9 285, pinned,
   two 1,000-sample series take 1.4 ms, not 7.2 ms (band 100: 0.26 ms, not 1.4 ms); digit for digit.
-- `dtwFull` and Soft-DTW keep one column per thread, not an n × m matrix (512 MB for two 8,000-sample series): an
+- Full DTW (`dtwBanded` with band -1; v1.0.0's `dtwFull`) and Soft-DTW keep one column per thread, not an n × m matrix
+  (512 MB for two 8,000-sample series): an
   8-thread Soft-DTW fill of eight such series peaked at 3.4 GB, now 14 MB (Intel Core Ultra 9 285); digit for digit.
 - FastPAM's swap reads the matrix directly: 5.6–5.9× faster on an Intel Core Ultra 9 285 (loaded), the same result.
 - OneBatchPAM (N = 2,000, k = 10; Intel Core Ultra 9 285, 24 threads, loaded): its final assignment runs on every
