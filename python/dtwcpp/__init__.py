@@ -207,18 +207,12 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix
 
 # Unified high-level interface:
 #   PyTorch-style: device() -> load() -> cluster() -> result.plot()
-#   CasADi-style:  settings() -> load_data() -> do_clustering() -> write_data()
 from dtwcpp._api import (
     Dataset,
     load,
     cluster,
     Result,
     plot,
-    Settings,
-    settings,
-    load_data,
-    do_clustering,
-    write_data,
 )
 
 # Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
@@ -327,7 +321,6 @@ __all__ = [
     "compute_distance_matrix", "cdist",
     "device",
     "Dataset", "load", "cluster", "Result", "plot",
-    "Settings", "settings", "load_data", "do_clustering", "write_data",
     "distance",
     "gpu_available", "gpu_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",

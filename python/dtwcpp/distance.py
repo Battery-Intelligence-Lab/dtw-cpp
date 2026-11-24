@@ -23,7 +23,7 @@ dtw.__doc__ = _dtw.__doc__
 
 def _as_cdist_data(source, *, ndim: int, dtype):
     from dtwcpp import Data, InvalidInput, _dtwcpp_core
-    from dtwcpp._api import Dataset, _to_data, load_data
+    from dtwcpp._api import Dataset, _to_data
 
     if isinstance(source, (Data, Dataset)):  # each keeps its own dtype: refuse another, never drop it
         kind, own = (("Dataset", source.dtype) if isinstance(source, Dataset)
@@ -31,9 +31,8 @@ def _as_cdist_data(source, *, ndim: int, dtype):
         given = own if dtype is None else _dtwcpp_core._dtype(dtype)
         if given != own:
             raise InvalidInput(
-                f"cdist: the {kind} was made with dtype={own!r} and the settings give dtype={given!r}; "
-                f"a {kind} keeps the options it was made with, so pass dtype to load_data, or leave it out "
-                "of the settings.")
+                f"cdist: the {kind} was made with dtype={own!r} and dtype={given!r} was given; "
+                f"a {kind} keeps the options it was made with, so pass dtype to load, or leave it out.")
     if isinstance(source, Data):
         if ndim != 1 and source.ndim != ndim:
             raise InvalidInput(
@@ -49,7 +48,7 @@ def _as_cdist_data(source, *, ndim: int, dtype):
         return data
     dtype = "float64" if dtype is None else dtype
     if isinstance(source, (str, os.PathLike)):
-        return load_data(source, ndim=ndim, dtype=dtype).as_data()
+        return Dataset(source, dtype=dtype, ndim=ndim).as_data()
     return _to_data(source, ndim=ndim, dtype=dtype)
 
 

@@ -70,12 +70,12 @@ class TestLoad:
 
     def test_a_dataset_refuses_the_options_it_would_ignore(self):
         """A Dataset keeps the options it was made with, so load(Dataset, ...) refuses
-        a keyword other than its default that differs from them, naming both values,
-        as load_data does; the Dataset's own runs, and a name is refused."""
+        a keyword other than its default that differs from them, naming both values;
+        the Dataset's own runs, and a name is refused."""
         ds = dtwcpp.load([[0.0], [1.0], [2.0]], skip_rows=1)
         assert dtwcpp.load(ds) is ds
         assert dtwcpp.load(ds, skip_rows=1) is ds
-        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=2"):
+        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and skip_rows=2 was given"):
             dtwcpp.load(ds, skip_rows=2)
         with pytest.raises(dtwcpp.InvalidInput, match=r"unexpected \['name'\]"):
             dtwcpp.load(ds, name="x")
@@ -84,7 +84,7 @@ class TestLoad:
         """load('x.arrow') reads through the C++ reader, as dtwc_cl reads Arrow IPC:
         the series are the 'data' column, named by 'name', 'ndim' features a step,
         and the Data is a view of the file, its p_vec and p_names read through it.
-        Once read, the file's ndim is the Dataset's, which settings may give."""
+        Once read, the file's ndim is the Dataset's."""
         pa = pytest.importorskip("pyarrow")
         rows = [[0.0, 0.5, 1.0, 1.5], [2.5, 1.0]]
         table = pa.table({"data": pa.array(rows, type=pa.list_(pa.float64())),
@@ -97,7 +97,6 @@ class TestLoad:
         assert data.p_vec == rows
         assert data.p_names == ["a", "b"]
         assert data.ndim == 2
-        assert dtwcpp.load_data(dataset, dtwcpp.settings(ndim=2)) is dataset
 
     @pytest.mark.parametrize("suffix", [".csv", ".parquet"])
     def test_float32_load_clusters_as_the_from_float32_route(self, tmp_path, suffix):

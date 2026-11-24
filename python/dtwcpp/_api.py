@@ -183,7 +183,7 @@ class Dataset:
     """
 
     def __init__(self, source, *, skip_cols=0, skip_rows=0, delimiter=None,
-                 name=None, dtype="float64"):
+                 name=None, dtype="float64", ndim=1):
         from dtwcpp import InvalidInput
         # Checked where the handle is made, as C++ dtwc::load does, so a bad
         # count fails before any file is read or job submitted.
@@ -192,6 +192,10 @@ class Dataset:
                 raise TypeError(f"load: {key} must be an integer")
             if value < 0:
                 raise InvalidInput(f"load: {key} must be non-negative.")
+        if isinstance(ndim, (bool, np.bool_)) or not isinstance(ndim, (int, np.integer)):
+            raise TypeError(f"load: ndim must be an integer, got {type(ndim).__name__}")
+        if ndim < 1:
+            raise InvalidInput("load: ndim must be at least 1.")
         if not isinstance(dtype, str):
             raise TypeError(f"load: dtype must be a string such as 'float32', got {type(dtype).__name__}")
         from dtwcpp import _dtwcpp_core
@@ -205,7 +209,7 @@ class Dataset:
         # dtwc_cl's rule, so a run of "data/" is named "data" in every language.
         self.name = name if name is not None else _dtwcpp_core._default_name(
             os.fspath(source) if self.is_path else "")
-        self._ndim = source.ndim if isinstance(source, _dtwcpp_core.Data) else 1  # a Data carries its own
+        self._ndim = source.ndim if isinstance(source, _dtwcpp_core.Data) else int(ndim)  # a Data carries its own
         self._data = None
 
     @property
@@ -263,21 +267,42 @@ class Dataset:
         return self.as_data().p_names
 
 
+def _keep_options(dataset, given, where):
+    """``dataset``, which is read with the reader options it was made with, after
+    checking ``given``, the options (``skip_cols``, ``skip_rows``, ``delimiter``,
+    ``dtype``) the caller named, against them: one that differs raises
+    :class:`dtwcpp.InvalidInput` naming both values, one equal to the Dataset's
+    own is no refusal. A value is checked and spelled as a Dataset takes it
+    (``"f32"`` is ``"float32"``, ``""`` and ``None`` are one delimiter)."""
+    from dtwcpp import InvalidInput
+    asked = Dataset(dataset.source, **given)
+    for key in given:
+        made, wanted = getattr(dataset, key), getattr(asked, key)
+        if key == "delimiter":
+            made, wanted = made or None, wanted or None
+        if wanted != made:
+            raise InvalidInput(
+                f"{where}: the Dataset was made with {key}={made!r} and {key}={wanted!r} was given; "
+                f"a Dataset keeps the options it was made with, so pass {key} to load, or leave it out.")
+    return dataset
+
+
 def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64"):
     """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
     ``dtype="float32"`` stores the series as float32, half the memory: a file's
     reader rounds each value, never holding a float64 copy (float32 input data
     alone does not choose it). A Dataset passes through with the options it was
-    made with, as :func:`load_data` takes it: a keyword other than its default
-    that differs from the Dataset's raises :class:`dtwcpp.InvalidInput` naming
-    both values, one equal to it runs, and ``name`` is refused. ``load`` cannot
-    tell a keyword at its default from one not given; ``load_data`` and
-    :func:`cluster` can."""
+    made with: a keyword other than its default that differs from the Dataset's
+    raises :class:`dtwcpp.InvalidInput` naming both values, one equal to it
+    runs, and ``name`` is refused. ``load`` cannot tell a keyword at its default
+    from one not given; :func:`cluster` can."""
     if isinstance(source, Dataset):
-        return load_data(source, **{key: value for key, value, default in (
+        if name is not None:
+            from dtwcpp import InvalidInput
+            raise InvalidInput("load: Dataset keeps the options it was made with; unexpected ['name'].")
+        return _keep_options(source, {key: value for key, value, default in (
             ("skip_cols", skip_cols, 0), ("skip_rows", skip_rows, 0),
-            ("delimiter", delimiter, None), ("name", name, None),
-            ("dtype", dtype, "float64")) if value != default})
+            ("delimiter", delimiter, None), ("dtype", dtype, "float64")) if value != default}, "load")
     return Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                    delimiter=delimiter, name=name, dtype=dtype)
 
@@ -475,7 +500,7 @@ def _config(k, keys):
 
 
 def _run_local(dataset, config, device, backend, *, output="", checkpoint="", checkpoint_interval=0):
-    """The local run of :func:`cluster` and :func:`do_clustering`: C++ ``dtwc::run`` on ``device``."""
+    """The local run of :func:`cluster`: C++ ``dtwc::run`` on ``device``."""
     import dtwcpp
     from dtwcpp import _dtwcpp_core
     t0 = time.perf_counter()
@@ -508,17 +533,38 @@ def _run_local(dataset, config, device, backend, *, output="", checkpoint="", ch
                   cost=result.cost, name=config.name, result=result)
 
 
+def _run_files(keys):
+    """cluster()'s file options, taken out of ``keys``: ``output`` and ``checkpoint``,
+    directories as ``dtwc_cl --output`` and ``--checkpoint`` take them (``None`` and
+    ``""`` name none), ``checkpoint_interval``, a non-negative number of rows, and
+    ``upload_input``, a bool."""
+    from dtwcpp import InvalidInput
+    output = keys.pop("output", None)
+    checkpoint = keys.pop("checkpoint", None)
+    interval = keys.pop("checkpoint_interval", 0)
+    upload_input = keys.pop("upload_input", False)
+    if isinstance(interval, (bool, np.bool_)) or not isinstance(interval, (int, np.integer)):
+        raise TypeError(f"checkpoint_interval must be an integer, got {type(interval).__name__}")
+    if interval < 0:
+        raise InvalidInput("cluster: checkpoint_interval must be non-negative.")
+    if not isinstance(upload_input, (bool, np.bool_)):
+        raise TypeError(f"upload_input must be a bool, got {type(upload_input).__name__}")
+    return ("" if output is None else os.fspath(output), "" if checkpoint is None else os.fspath(checkpoint),
+            int(interval), bool(upload_input))
+
+
 def cluster(data, k, **keys):
     """Cluster a dataset into ``k`` clusters with DTW, on the global or given device.
 
     A local run is C++ ``dtwc::run``, the run ``dtwc_cl`` makes, without its
-    files: C++ reads a path itself (CSV/TSV, a folder or an Arrow IPC file),
-    pyarrow reads Parquet, and series in memory go as they are. ``data`` may be
+    files unless ``output`` asks for them: C++ reads a path itself (CSV/TSV, a
+    folder or an Arrow IPC file), pyarrow reads Parquet, and series in memory go
+    as they are. ``data`` may be
     a :class:`Dataset`, a path, or an array; ``dtype`` is
     :func:`load`'s, for a path or an array cluster() loads (``"float32"`` stores
     the series at half the memory), and a :class:`Dataset` keeps its own: one
     given that differs raises :class:`dtwcpp.InvalidInput`, as in
-    :func:`load_data`. ``keys`` are the
+    :func:`load`. ``keys`` are the
     keys of a dtwc_cl run — its long names in snake_case: ``method``, ``band``,
     ``metric``, ``variant`` and its parameters (``wdtw_g``, ``adtw_penalty``,
     ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
@@ -545,386 +591,60 @@ def cluster(data, k, **keys):
     names the GPU of an ``"hpc:gpu"`` run (``"a100"``, ``"a6000"``, ``"l40s"``,
     ``"h100"``); without it the run takes any GPU of compute capability 8.0 or
     newer.
+
+    ``output`` (a directory; ``None``, the default, and ``""`` write no file) is where
+    the run writes the files ``dtwc_cl`` writes, the run report last, as
+    ``dtwc_cl --output`` does: the matrix and the silhouettes only where the method
+    filled the matrix, where :meth:`Result.save` fills it first. ``checkpoint`` (a
+    directory) saves the distance matrix there as ``<name>.dtwm`` and resumes from
+    it where it holds one for these data; ``checkpoint_interval`` saves it every
+    that many rows (0, the default: once, at the end) and needs ``checkpoint``,
+    else the run raises :class:`dtwcpp.InvalidInput`. ``upload_input=True`` sends
+    the local file or folder a path names with a ``device="hpc"`` job, which
+    otherwise reads an absolute path on the cluster. An ``hpc`` run is the
+    cluster's: it refuses ``checkpoint`` and ``checkpoint_interval``, and its
+    ``output`` receives the files it downloaded. Keys kept in a dict run again as
+    ``cluster(data, 3, **opts)``.
     """
     import dtwcpp
     from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
     device = keys.pop("device", None)
     gpu_device = keys.pop("gpu_device", None)
-    given = {"dtype": keys.pop("dtype")} if "dtype" in keys else {}  # load_data's rule beside a Dataset
+    given = {"dtype": keys.pop("dtype")} if "dtype" in keys else {}  # a Dataset keeps its own: _keep_options
+    output, checkpoint, checkpoint_interval, upload_input = _run_files(keys)
     config = _config(k, keys)
     eff = device if device is not None else dtwcpp.device()
     backend, _ = _resolve_device(eff)
     if gpu_device is not None and eff.strip().lower() != "hpc:gpu":
         raise InvalidInput(f"cluster: gpu_device names the GPU of a device='hpc:gpu' "
                            f"run, and the device is '{eff}'.")
-    data = load_data(data, **given)
+    data = _keep_options(data, given, "cluster") if isinstance(data, Dataset) else Dataset(data, **given)
 
     if backend == "hpc":
+        if checkpoint or checkpoint_interval:  # the run is the cluster's: a local path names nothing there
+            raise InvalidInput("cluster: device='hpc' runs on the cluster, which would ignore a local "
+                               "checkpoint; leave checkpoint empty and checkpoint_interval at 0.")
         t0 = time.perf_counter()
         from dtwcpp import _hpc
         # As a local run, C++ checks every value before anything is written or
         # sent; the device stays the CPU here, since the GPU is the cluster's.
         _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or data.name))
-        details = _hpc.cluster_on_hpc(data, config, keys, device=eff,
-                                      gpu_device=gpu_device, return_details=True)
+        details = _hpc.cluster_on_hpc(data, config, keys, device=eff, gpu_device=gpu_device,
+                                      upload_input=upload_input, return_details=True)
         labels = details["labels"]
-        return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
-                      k=k, n_series=len(labels),
-                      medoid_indices=details.get("medoids"),
-                      name=config.name or data.name,
-                      report_text=details.get("report"),
-                      hpc_result_dir=details.get("result_dir"))
-    return _run_local(data, config, eff, backend)
+        result = Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
+                        k=k, n_series=len(labels),
+                        medoid_indices=details.get("medoids"),
+                        name=config.name or data.name,
+                        report_text=details.get("report"),
+                        hpc_result_dir=details.get("result_dir"))
+        if output:
+            result.save(output)
+        return result
+    return _run_local(data, config, eff, backend, output=output, checkpoint=checkpoint,
+                      checkpoint_interval=checkpoint_interval)
 
 
 def plot(result, **kwargs):
     """Top-level alias for ``result.plot(...)``."""
     return result.plot(**kwargs)
-
-
-# ---------------------------------------------------------------------------
-# CasADi + PyTorch device= workflow: settings -> load_data -> do_clustering -> write_data
-# ---------------------------------------------------------------------------
-class Settings:
-    """Validated workflow configuration shared across :func:`load_data`,
-    :func:`do_clustering`, and :func:`write_data`.
-
-    Supports both crash-safe persistent output + ``.dtwm`` checkpointing by
-    default (``output="./results"``) and pure in-memory execution
-    (``output=""``), plus PyTorch-style ``device="cpu" | "gpu" | "cpu+gpu" |
-    "hpc" | "hpc:gpu"`` switching.
-    """
-
-    _WORKFLOW_ATTRS = frozenset({
-        "input", "skip_cols", "skip_rows", "delimiter", "dtype", "ndim",
-        "output", "checkpoint", "checkpoint_interval", "device",
-        "gpu_device", "upload_input",
-    })
-
-    def __init__(self, **kwargs):
-        from dtwcpp import _dtwcpp_core
-
-        object.__setattr__(self, "_ready", False)
-        object.__setattr__(self, "input", "")
-        object.__setattr__(self, "skip_cols", 0)
-        object.__setattr__(self, "skip_rows", 0)
-        object.__setattr__(self, "delimiter", None)
-        object.__setattr__(self, "dtype", "float64")
-        object.__setattr__(self, "ndim", 1)
-        object.__setattr__(self, "output", "./results")
-        object.__setattr__(self, "checkpoint", "")
-        object.__setattr__(self, "checkpoint_interval", 0)
-        object.__setattr__(self, "device", None)
-        object.__setattr__(self, "gpu_device", None)
-        object.__setattr__(self, "upload_input", False)
-        object.__setattr__(self, "_config", _dtwcpp_core.Config())
-        object.__setattr__(self, "_clustering_keys", [])
-        self._update(**kwargs)
-        object.__setattr__(self, "_ready", True)
-
-    def __setattr__(self, name, value):
-        if name.startswith("_") or not self.__dict__.get("_ready", False):
-            object.__setattr__(self, name, value)
-            return
-        if (
-            name != "k"
-            and name not in self._WORKFLOW_ATTRS
-            and not hasattr(type(self._config), name)
-        ):
-            raise AttributeError(f"Unknown settings attribute {name!r}")
-        self._update(**{name: value})
-
-    def _update(self, **kwargs):
-        import dtwcpp
-        from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
-
-        if "k" in kwargs and "n_clusters" in kwargs and kwargs["k"] != kwargs["n_clusters"]:
-            raise InvalidInput("settings: k and n_clusters disagree; pass only one.")
-        if "k" in kwargs:
-            kwargs["n_clusters"] = kwargs.pop("k")
-
-        touched_config = []
-        prev_config = {}
-        prev_attrs = dict(self.__dict__)  # a refused update leaves the Settings as it was
-        try:
-            for key, value in kwargs.items():
-                if key in ("input", "output", "checkpoint"):
-                    object.__setattr__(self, key, "" if value is None else os.fspath(value))
-                elif key in ("skip_cols", "skip_rows", "checkpoint_interval"):
-                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-                        raise TypeError(f"settings: {key} must be an integer")
-                    if value < 0:
-                        raise InvalidInput(f"settings: {key} must be non-negative.")
-                    object.__setattr__(self, key, int(value))
-                elif key == "ndim":
-                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-                        raise TypeError("settings: ndim must be an integer")
-                    if value < 1:
-                        raise InvalidInput("settings: ndim must be at least 1.")
-                    object.__setattr__(self, "ndim", int(value))
-                elif key == "delimiter":
-                    if value is not None and (not isinstance(value, str) or len(value) > 1):
-                        raise InvalidInput("settings: delimiter must be None or a single character.")
-                    object.__setattr__(self, "delimiter", value)
-                elif key == "dtype":
-                    if not isinstance(value, str):
-                        raise TypeError(f"settings: dtype must be a string, got {type(value).__name__}")
-                    object.__setattr__(self, "dtype", _dtwcpp_core._dtype(value))
-                elif key == "device":
-                    if value is not None:
-                        _resolve_device(value)
-                    object.__setattr__(self, "device", value)
-                elif key == "gpu_device":
-                    if value is not None and not isinstance(value, str):
-                        raise TypeError("settings: gpu_device must be a string or None")
-                    object.__setattr__(self, "gpu_device", value)
-                elif key == "upload_input":
-                    if not isinstance(value, (bool, np.bool_)):
-                        raise TypeError("settings: upload_input must be a bool")
-                    object.__setattr__(self, "upload_input", bool(value))
-                else:
-                    if hasattr(self._config, key) and key not in prev_config:
-                        prev_config[key] = getattr(self._config, key)
-                    _set_key(self._config, key, value, name="k" if key == "n_clusters" else key)
-                    if key == "n_clusters" and self._config.n_clusters < 1:
-                        raise InvalidInput("settings: k (n_clusters) must be at least 1.")
-                    touched_config.append(key)
-
-            if touched_config or "device" in kwargs:
-                saved_k, saved_device = self._config.n_clusters, self._config.device
-                try:
-                    if saved_k < 1:
-                        self._config.n_clusters = 1
-                    # Checked on the device do_clustering runs on, the global one when none is set; hpc on the CPU.
-                    device = self.device if self.device is not None else dtwcpp.device()
-                    if _resolve_device(device)[0] != "hpc":
-                        self._config.device = device
-                    _dtwcpp_core.apply(self._config, _dtwcpp_core.Problem())
-                finally:
-                    if saved_k < 1:
-                        self._config.n_clusters = saved_k
-                    self._config.device = saved_device
-                for key in touched_config:
-                    if key != "n_clusters" and key not in self._clustering_keys:
-                        self._clustering_keys.append(key)
-        except Exception:
-            self.__dict__.update(prev_attrs)
-            for key, old_val in prev_config.items():
-                setattr(self._config, key, old_val)
-            raise
-
-    @property
-    def k(self):
-        return self._config.n_clusters
-
-    @k.setter
-    def k(self, value):
-        self._update(k=value)
-
-    def __getattr__(self, name):
-        if not name.startswith("_") and "_config" in self.__dict__ and hasattr(type(self._config), name):
-            return getattr(self._config, name)
-        raise AttributeError(f"'Settings' object has no attribute {name!r}")
-
-    def copy(self, **overrides):
-        """Return a new :class:`Settings` with ``overrides`` applied."""
-        cloned = Settings()
-        for attr in self._WORKFLOW_ATTRS:
-            object.__setattr__(cloned, attr, getattr(self, attr))
-        if self._config.n_clusters > 0:
-            _set_key(cloned._config, "n_clusters", self._config.n_clusters, name="k")
-        for key in self._clustering_keys:
-            setattr(cloned._config, key, getattr(self._config, key))
-        object.__setattr__(cloned, "_clustering_keys", list(self._clustering_keys))
-        if overrides:
-            cloned._update(**overrides)
-        return cloned
-
-    def to_dict(self):
-        """Return all workflow settings as a dictionary."""
-        out = {
-            "input": self.input,
-            "k": self._config.n_clusters,
-            "method": self._config.method,
-            "band": self._config.band,
-            "metric": self._config.metric,
-            "variant": self._config.variant,
-            "device": self.device,
-            "gpu_device": self.gpu_device,
-            "output": self.output,
-            "checkpoint": self.checkpoint,
-            "checkpoint_interval": self.checkpoint_interval,
-            "dtype": self.dtype,
-            "ndim": self.ndim,
-            "skip_cols": self.skip_cols,
-            "skip_rows": self.skip_rows,
-            "delimiter": self.delimiter,
-            "upload_input": self.upload_input,
-        }
-        for key in self._clustering_keys:
-            out[key] = getattr(self._config, key)
-        return out
-
-    def __repr__(self):
-        dev = self.device if self.device is not None else "default"
-        return (f"Settings(k={self.k}, method={self._config.method!r}, "
-                f"device={dev!r}, output={self.output!r})")
-
-
-def settings(base=None, **kwargs):
-    """Build or refine a CasADi-style :class:`Settings` object.
-
-    By default ``output="./results"`` writes result files automatically in
-    :func:`do_clustering`; pass ``output=""`` for pure in-memory clustering.
-    """
-    if base is not None:
-        if not isinstance(base, Settings):
-            raise TypeError(f"settings: base must be a Settings instance, got {type(base).__name__}")
-        return base.copy(**kwargs)
-    return Settings(**kwargs)
-
-
-_READER_OPTIONS = ("skip_cols", "skip_rows", "delimiter", "dtype", "ndim")  # a Dataset is read with its own
-
-
-def load_data(source=None, settings=None, **kwargs):
-    """Create a lazy :class:`Dataset` configured from ``settings`` and/or ``kwargs``.
-
-    On ``device="hpc"`` file paths stay lazy and are read on the SLURM cluster;
-    locally, NumPy arrays and Arrow buffers materialize directly into C++
-    ``Data`` without Python list conversion. A :class:`Dataset` passes through
-    with the reader options it was made with (``skip_cols``, ``skip_rows``,
-    ``delimiter``, ``dtype``, ``ndim``; once it has read an Arrow IPC file, the
-    file's ``ndim``): one of them given here, or one the settings give other
-    than its default, that differs from the Dataset's raises
-    :class:`dtwcpp.InvalidInput`. A :class:`Data` keeps
-    its own ``ndim``: one given, or one the settings give other than 1, that differs is refused too.
-    """
-    from dtwcpp import InvalidInput, _dtwcpp_core
-
-    s = settings if isinstance(settings, Settings) else Settings()
-    if settings is not None and not isinstance(settings, Settings):
-        raise TypeError(f"load_data: settings must be a Settings instance, got {type(settings).__name__}")
-
-    if source is None:
-        if not s.input:
-            raise InvalidInput("load_data: pass source or set input=... in settings().")
-        source = s.input
-
-    if isinstance(source, Dataset):
-        unexpected = sorted(set(kwargs) - set(_READER_OPTIONS))
-        if unexpected:
-            raise InvalidInput(
-                f"load_data: Dataset keeps the options it was made with; unexpected {unexpected}."
-            )
-        # It is read with its own reader options: one given here, or one the settings give other than its
-        # default, must be the same.
-        s = s.copy(**kwargs)  # the options given, checked as settings() checks them
-        made_ndim = source._ndim if source._data is None else source._data.ndim
-        for key, given, made, default in (
-                ("skip_cols", s.skip_cols, source.skip_cols, 0), ("skip_rows", s.skip_rows, source.skip_rows, 0),
-                ("delimiter", s.delimiter or None, source.delimiter or None, None),
-                ("dtype", s.dtype, source.dtype, "float64"), ("ndim", s.ndim, made_ndim, 1)):
-            if (key in kwargs or given != default) and given != made:
-                raise InvalidInput(
-                    f"load_data: the Dataset was made with {key}={made!r} and the settings give {key}={given!r}; "
-                    f"a Dataset keeps the options it was made with, so pass {key} to load_data, or leave it out "
-                    "of the settings.")
-        return source
-
-    ndim_given = "ndim" in kwargs
-    skip_cols = kwargs.pop("skip_cols", s.skip_cols)
-    skip_rows = kwargs.pop("skip_rows", s.skip_rows)
-    delimiter = kwargs.pop("delimiter", s.delimiter)
-    name = kwargs.pop("name", s._config.name or None)
-    dtype = kwargs.pop("dtype", s.dtype)
-    ndim = kwargs.pop("ndim", s.ndim)
-    if kwargs:
-        raise InvalidInput(f"load_data: unknown option(s): {', '.join(sorted(kwargs))}.")
-
-    if isinstance(ndim, (bool, np.bool_)) or not isinstance(ndim, (int, np.integer)):
-        raise TypeError("load_data: ndim must be an integer")
-    if ndim < 1:
-        raise InvalidInput("load_data: ndim must be at least 1.")
-    if isinstance(source, _dtwcpp_core.Data) and (ndim_given or ndim != 1) and ndim != source.ndim:
-        raise InvalidInput(f"load_data: Data already carries ndim={source.ndim}, which disagrees with ndim={ndim}.")
-
-    ds = Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
-                 delimiter=delimiter, name=name, dtype=dtype)
-    ds._ndim = int(ndim) if ndim != 1 else ds._ndim  # a Data keeps its own ndim (a given one equals it)
-    return ds
-
-
-def do_clustering(data=None, settings=None, **overrides):
-    """Execute clustering using ``settings`` (with optional ``overrides``).
-
-    Supports automatic result file persistence (``output="./results"`` by
-    default), crash-safe ``.dtwm`` checkpoints (``checkpoint=...``), pure
-    in-memory execution (``output=""``), and transparent ``device="cpu" | "gpu"
-    | "cpu+gpu" | "hpc" | "hpc:gpu"`` execution.
-    """
-    import dtwcpp
-    from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
-
-    if isinstance(data, Settings) and settings is None:
-        settings, data = data, None
-    if settings is not None and not isinstance(settings, Settings):
-        raise TypeError(f"do_clustering: settings must be a Settings instance, got {type(settings).__name__}")
-
-    eff = settings.copy(**overrides) if settings is not None else Settings(**overrides)
-    if eff.k < 1:
-        raise InvalidInput("do_clustering: k (n_clusters) must be at least 1.")
-
-    eff_dev = eff.device if eff.device is not None else dtwcpp.device()
-    backend, _ = _resolve_device(eff_dev)
-    if eff.gpu_device is not None and eff_dev.strip().lower() != "hpc:gpu":
-        raise InvalidInput(
-            f"do_clustering: gpu_device names the GPU of a device='hpc:gpu' "
-            f"run, and the device is '{eff_dev}'."
-        )
-
-    dataset = load_data(data, eff, **{key: overrides[key] for key in _READER_OPTIONS if key in overrides})
-    config = eff._config
-
-    if backend == "hpc":
-        t0 = time.perf_counter()
-        from dtwcpp import _hpc
-        if eff.checkpoint or eff.checkpoint_interval:  # the run is the cluster's: a local path names nothing there
-            raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would ignore a local "
-                               "checkpoint; leave checkpoint empty and checkpoint_interval at 0.")
-        _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or dataset.name))
-        details = _hpc.cluster_on_hpc(
-            dataset,
-            config,
-            eff._clustering_keys,
-            device=eff_dev,
-            gpu_device=eff.gpu_device,
-            upload_input=eff.upload_input,
-            return_details=True,
-        )
-        labels = details["labels"]
-        res = Result(
-            labels,
-            device="hpc",
-            elapsed_s=time.perf_counter() - t0,
-            k=eff.k,
-            n_series=len(labels),
-            medoid_indices=details.get("medoids"),
-            name=config.name or dataset.name,
-            report_text=details.get("report"),
-            hpc_result_dir=details.get("result_dir"),
-        )
-        if eff.output:
-            res.save(eff.output)
-        return res
-
-    return _run_local(dataset, config, eff_dev, backend, output=eff.output,
-                      checkpoint=eff.checkpoint, checkpoint_interval=eff.checkpoint_interval)
-
-
-def write_data(result, directory="./results"):
-    """Write ``result``'s files (labels, medoids, distance matrix, silhouettes,
-    and run report) into ``directory``."""
-    if not isinstance(result, Result):
-        raise TypeError(f"write_data: expected a Result, got {type(result).__name__}")
-    return result.save(directory)

@@ -1,12 +1,12 @@
 """
 @file test_cdist_workflow.py
-@brief Tests for cross-collection cdist, the CasADi + PyTorch device= workflow
-       (settings -> load_data -> do_clustering -> write_data), zero-copy ingest,
-       lazy sklearn import, and extended SLURM HPC staging/hydration.
+@brief Tests for cross-collection cdist, the files and checkpoint cluster() writes, zero-copy
+       ingest, lazy sklearn import, and extended SLURM HPC staging/hydration.
 @author Volkan Kumtepeli
 """
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -95,8 +95,8 @@ class TestCdist:
             np.testing.assert_allclose(D_hyb, D_cpu, rtol=1e-12)
 
 
-class TestCasadiWorkflowAndFastIngest:
-    def test_settings_load_data_do_clustering_write_data(self, tmp_path):
+class TestClusterFilesAndFastIngest:
+    def test_cluster_writes_the_files_and_checkpoint_it_is_asked_for(self, tmp_path, monkeypatch):
         csv = tmp_path / "sensor.csv"
         csv.write_text(
             "id,t0,t1,t2,t3\n"
@@ -111,19 +111,10 @@ class TestCasadiWorkflowAndFastIngest:
         auto_out = tmp_path / "auto_out"
         ckpt_dir = tmp_path / "ckpt"
         manual_out = tmp_path / "manual_out"
+        keys = {"method": "pam", "band": 2}
 
-        cfg = dtwcpp.settings(
-            k=2,
-            method="pam",
-            band=2,
-            skip_rows=1,
-            skip_cols=1,
-            output=auto_out,
-            checkpoint=ckpt_dir,
-            name="sensor",
-        )
-        ds = dtwcpp.load_data(csv, cfg)
-        res = dtwcpp.do_clustering(ds, cfg)
+        ds = dtwcpp.load(csv, skip_rows=1, skip_cols=1, name="sensor")
+        res = dtwcpp.cluster(ds, 2, output=auto_out, checkpoint=ckpt_dir, **keys)
         assert res.labels.shape == (6,)
         assert len(set(res.labels[:3])) == 1 and len(set(res.labels[3:])) == 1
         assert res.labels[0] != res.labels[3]
@@ -132,90 +123,46 @@ class TestCasadiWorkflowAndFastIngest:
         assert (auto_out / "sensor_report.txt").is_file()
         assert (ckpt_dir / "sensor.dtwm").is_file()
 
-        # Pure in-memory override (output="") writes nothing until write_data()
-        mem_res = dtwcpp.do_clustering(ds, cfg, output="", checkpoint="")
-        np.testing.assert_array_equal(mem_res.labels, res.labels)
-        assert mem_res.cost == pytest.approx(res.cost, rel=1e-12)
+        # The same checkpoint resumes.
+        resumed = dtwcpp.cluster(ds, 2, checkpoint=ckpt_dir, **keys)
+        assert re.search(r"the checkpoint\s+resumed", resumed.report)
+        np.testing.assert_array_equal(resumed.labels, res.labels)
 
-        dtwcpp.write_data(mem_res, manual_out)
+        # No output, or None or "", writes nothing; Result.save writes on request.
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        for given in ({}, {"output": None}, {"output": ""}):
+            mem_res = dtwcpp.cluster(ds, 2, **given, **keys)
+            np.testing.assert_array_equal(mem_res.labels, res.labels)
+            assert mem_res.cost == pytest.approx(res.cost, rel=1e-12)
+        assert list(cwd.iterdir()) == []
+        mem_res.save(manual_out)
         assert (manual_out / "sensor_labels.csv").is_file()
         assert (manual_out / "sensor_medoids.csv").is_file()
 
-    def test_a_dataset_refuses_reader_options_it_was_not_made_with(self):
-        """A Dataset is read with the options it was made with: settings, overrides or
-        a cluster() dtype that give one another value are refused, naming it, an
-        override or dtype even at its default; the same value, or a setting left at
-        its default, runs."""
+        # An interval saves a checkpoint, so it needs one.
+        with pytest.raises(dtwcpp.InvalidInput, match="checkpoint-interval requires"):
+            dtwcpp.cluster(ds, 2, checkpoint_interval=5, **keys)
+
+    def test_a_dataset_refuses_a_dtype_it_was_not_made_with(self):
+        """A Dataset is read with the options it was made with: a dtype given to cluster(),
+        even at its default, or to cdist(), that is another value is refused, naming both;
+        the same value, spelled either way, or none, runs."""
         ds = dtwcpp.load(np.vstack([np.zeros((3, 6)), np.full((3, 6), 9.0)]), skip_rows=1)
-        cfg = dtwcpp.settings(k=2, output="")
-        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=2"):
-            dtwcpp.do_clustering(ds, cfg, skip_rows=2)
-        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=0"):
-            dtwcpp.do_clustering(ds, cfg, skip_rows=0)
-        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float64' and the settings give dtype='float32'"):
-            dtwcpp.do_clustering(ds, dtwcpp.settings(cfg, dtype="float32"))
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Dataset was made with dtype='float64'"):
             dtwcpp.cdist(ds, dtype="float32")
         ds32 = dtwcpp.load(ds.source, dtype="float32")
-        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32' and the settings give dtype='float64'"):
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32' and dtype='float64' was given"):
             dtwcpp.cdist(ds32, dtype="float64")
-        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32' and the settings give dtype='float64'"):
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32' and dtype='float64' was given"):
             dtwcpp.cluster(ds32, 2, dtype="float64")
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Data was made with dtype='float64'"):
             dtwcpp.cdist(ds.as_data(), dtype="float32")
-        with pytest.raises(dtwcpp.InvalidInput, match="Data already carries ndim=2, which disagrees with ndim=3"):
-            dtwcpp.load_data(dtwcpp.load_data(ds.source, ndim=2).as_data(), ndim=3)
-        assert dtwcpp.do_clustering(ds, cfg, skip_rows=1).n_series == 5
-        assert dtwcpp.do_clustering(ds, cfg).n_series == 5
-        assert dtwcpp.load_data(ds, skip_rows=1) is ds
+        assert dtwcpp.cluster(ds, 2).n_series == 5
         assert dtwcpp.cluster(ds32, 2, dtype="float32").n_series == 6
+        assert dtwcpp.cluster(ds32, 2, dtype="f32").n_series == 6
         assert dtwcpp.cluster(ds32, 2).n_series == 6
-
-    def test_settings_post_init_attribute_mutation_and_validation(self):
-        rng = np.random.default_rng(31)
-        X = np.vstack([rng.normal(0.0, 0.1, size=(4, 10)), rng.normal(6.0, 0.1, size=(4, 10))])
-        ds = dtwcpp.load_data(X)
-
-        cfg = dtwcpp.settings(k=3, method="kmedoids", band=-1, output="", checkpoint="")
-        cfg.k = 2
-        cfg.method = "pam"
-        cfg.band = 1
-        assert cfg.to_dict()["k"] == 2
-        assert cfg.to_dict()["method"] == "pam"
-        assert cfg.to_dict()["band"] == 1
-        assert cfg.copy().band == 1
-
-        res = dtwcpp.do_clustering(ds, cfg)
-        assert len(res.medoids) == 2
-
-        with pytest.raises(dtwcpp.InvalidInput):
-            cfg.band = -5
-        assert cfg.band == 1
-
-        with pytest.raises(AttributeError, match="Unknown settings attribute"):
-            cfg.unknown_key = 123
-
-    def test_settings_check_a_forced_gpu_share_on_their_own_device(self, monkeypatch):
-        """settings() checks gpu_share on device="cpu+gpu", the device it names (or, with none, the
-        global one do_clustering runs on), not on the CPU: what is left to refuse is the build's own
-        lack of cpu+gpu, as cluster() refuses it. A device assigned later is checked too, and a refused
-        assignment leaves the Settings as it was."""
-        try:
-            cfg = dtwcpp.settings(k=2, device="cpu+gpu", gpu_share=0.5)
-        except dtwcpp.DeviceError as exc:
-            assert "device 'cpu+gpu' splits FastCLARA's assignment pass" in str(exc)
-        else:
-            assert cfg.gpu_share == 0.5
-        cfg = dtwcpp.settings(k=2, method="onebatch")  # onebatch refuses cpu+gpu on every build
-        with pytest.raises(dtwcpp.DeviceError):
-            cfg.device = "cpu+gpu"
-        assert cfg.device is None
-        real_device = dtwcpp.device
-        monkeypatch.setattr(dtwcpp, "device", lambda *name: real_device(*name) if name else "cpu+gpu")
-        try:
-            dtwcpp.settings(k=2, gpu_share=0.5)
-        except dtwcpp.DeviceError as exc:
-            assert "device 'cpu+gpu' splits FastCLARA's assignment pass" in str(exc)
 
     def test_direct_numpy_and_3d_ingest_and_estimator_transform(self):
         rng = np.random.default_rng(5)
@@ -253,7 +200,7 @@ class TestCasadiWorkflowAndFastIngest:
         assert proc.returncode == 0, proc.stderr
 
 
-class TestHpcWorkflowExtensions:
+class TestHpcExtensions:
     def test_upload_input_stages_local_file_and_hydrates_medoids_and_report(self, monkeypatch, tmp_path):
         local_csv = tmp_path / "local_series.csv"
         local_csv.write_text("0.0,0.1\n0.1,0.0\n9.0,9.1\n9.1,9.0\n", encoding="utf-8")
@@ -289,9 +236,8 @@ class TestHpcWorkflowExtensions:
         monkeypatch.setattr(_hpc, "SlurmRemoteRunner", FakeRunner)
         monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
 
-        cfg = dtwcpp.settings(k=2, method="pam", device="hpc", upload_input=True, name="staged")
-        ds = dtwcpp.load_data(local_csv, cfg)
-        res = dtwcpp.do_clustering(ds, cfg)
+        res = dtwcpp.cluster(local_csv, 2, method="pam", device="hpc", upload_input=True, name="staged",
+                             output=tmp_path / "auto_copied")
 
         assert captured["files"] == ["input.csv", "job.toml"]
         assert 'input = "input.csv"' in captured["job_toml"]
@@ -299,8 +245,9 @@ class TestHpcWorkflowExtensions:
         np.testing.assert_array_equal(res.medoids, [1, 2])
         assert res.report.startswith("DTWC++ run report")
 
+        assert (tmp_path / "auto_copied" / "staged_labels.csv").is_file()  # output receives the downloaded files
         saved_dir = tmp_path / "copied_local"
-        dtwcpp.write_data(res, saved_dir)
+        res.save(saved_dir)
         assert (saved_dir / "staged_labels.csv").is_file()
         assert (saved_dir / "staged_medoids.csv").is_file()
         assert (saved_dir / "staged_report.txt").is_file()
@@ -308,8 +255,7 @@ class TestHpcWorkflowExtensions:
         # Extensionless local input stages as "input" (comma default), never "input.tsv"
         raw_input = tmp_path / "sensor_rows"
         raw_input.write_text("0.0,0.1\n0.1,0.0\n9.0,9.1\n9.1,9.0\n", encoding="utf-8")
-        ds_raw = dtwcpp.load_data(raw_input, cfg)
-        dtwcpp.do_clustering(ds_raw, cfg)
+        dtwcpp.cluster(raw_input, 2, method="pam", device="hpc", upload_input=True, name="staged")
         assert captured["files"] == ["input", "job.toml"]
         assert 'input = "input"' in captured["job_toml"]
 
