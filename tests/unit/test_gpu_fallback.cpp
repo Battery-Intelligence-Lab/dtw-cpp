@@ -176,6 +176,16 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
       const std::string written = cerr.text();
       CHECK(std::count(written.begin(), written.end(), '\n') == 1);
     }
+    {
+      // Problem::cluster settles the request before its method's own work: TADPole's automatic cutoff samples
+      // distances first, and the nested fill and function do not say it again.
+      prob.set_method(Method::TADPole);
+      cpu.set_method(Method::TADPole);
+      const CerrCapture cerr;
+      const auto clustered = prob.cluster();
+      check_says_fallback(cerr.text());
+      CHECK(clustered.labels == cpu.cluster().labels);
+    }
     CHECK(prob.device() == std::pair{ Device::GPU, 0 }); // the request outlives the calls
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
     // Without fallback a GPU Problem has no part to give onebatch and tadpole: they are refused, as devices.md says.
@@ -184,6 +194,9 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
     strict.set_device(Device::GPU);
     CHECK_THROWS_AS(dtwc::algorithms::one_batch_pam(strict, { .n_clusters = 2 }), dtwc::DeviceError);
     CHECK_THROWS_AS(dtwc::algorithms::tadpole(strict, 2, 3.0), dtwc::DeviceError);
+    strict.set_n_clusters(2);
+    strict.set_method(Method::TADPole);
+    CHECK_THROWS_AS(strict.cluster(), dtwc::DeviceError);
 #endif
   }
 
