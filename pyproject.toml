@@ -29,8 +29,8 @@ maintainers = [
     { name = "Volkan Kumtepeli" },
 ]
 requires-python = ">=3.9"
-# highspy: method="mip" and lr_root="kelley" on the wheel, which links no HiGHS (dtwcpp._mip); 1.8 is the first with
-# Highs.resetGlobalScheduler, the newest call the routes make. No upper pin: a fresh install takes the newest.
+# highspy: method="mip" on the wheel, which links no HiGHS (dtwcpp._mip); 1.8 is the first with
+# Highs.resetGlobalScheduler, the newest call the route makes. No upper pin: a fresh install takes the newest.
 dependencies = [
     "numpy>=1.26",
     "highspy>=1.8",

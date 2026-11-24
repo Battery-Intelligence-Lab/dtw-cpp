@@ -115,9 +115,9 @@ std::size_t memory_budget(std::size_t ram_limit);
 namespace detail {
 
 /// run(config) (`data` empty) or run(config, *data), with `solver` (ExternalSolver, api.hpp) clustering in place of
-/// Problem::cluster where it is given and the run, in RAM, is Method::MIP on Solver::HiGHS or Method::LRCore with
-/// lr_root Kelley (any solver): the seam through which a binding that links no HiGHS solves those two with its own
-/// (Python's dtwcpp._mip on highspy, as its Problem.cluster override does); a stream (FastCLARA) never calls it. It is
+/// Problem::cluster where it is given and the run, in RAM, is Method::MIP on Solver::HiGHS: the seam through which a
+/// binding that links no HiGHS solves it with its own (Python's dtwcpp._mip on highspy, as its Problem.cluster
+/// override does); a stream (FastCLARA) never calls it. It is
 /// handed the run's own Problem, its settings applied and its series set, to co-own; what it returns is the run's
 /// clustering, published on the Problem (Problem::set_result, so the Result's labels and medoids are its), with its
 /// cost, iterations and convergence (dtwcpp._mip's: 0 iterations, converged). An exception it throws crosses the run
