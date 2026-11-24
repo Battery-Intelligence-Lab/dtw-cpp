@@ -156,10 +156,11 @@ given and differs, its default value included: Python's reader options are `None
 `None` being an option's default for a new source (`0`, `0`, the extension's delimiter, `float64`,
 `1`) and the `Dataset`'s or `Data`'s own beside one. A `name` given to `load` beside a `Dataset`
 is refused. Once a `Dataset` has read an Arrow IPC file, its `ndim` is the file's.
-`cdist` checks each `Dataset` by the same rule in Python and MATLAB for `dtype` and `ndim`
-(Python's checks a `Data`'s `ndim` too); its `dtype` (MATLAB `'Dtype'`) is not given unless passed
-(Python `None`, MATLAB `''`): a `Dataset`, or in Python a `Data`, refuses one other than its own, and
-other series are stored as `float64` unless it says otherwise.
+`cdist` checks each `Dataset` by the same rule in Python and MATLAB for `dtype` (MATLAB `'Dtype'`),
+which is not given unless passed (Python `None`, MATLAB `''`): a `Dataset`, or in Python a `Data`,
+refuses one other than its own, and other series are stored as `float64` unless it says otherwise.
+Its `ndim` (MATLAB `'Ndim'`) defaults to `1`, which it cannot tell from one given: only a value other
+than `1` is checked against the `Dataset`'s own (in Python, the `Data`'s too).
 
 ## Cluster
 
