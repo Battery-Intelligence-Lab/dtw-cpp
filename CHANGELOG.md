@@ -51,10 +51,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   Python 3.12 or newer is stable-ABI (`cp312-abi3`): one per platform serves every later CPython (not the
   free-threaded builds, for which no wheel is made).
 - One four-step API in C++, Python and MATLAB, `device()`, `load()`, `cluster()` and a `Result` (labels, medoids, cost,
-  `score`, `save`, `distance_matrix`; `plot` in Python and MATLAB), on the code `dtwc_cl` runs, plus a unified
-  CasADi-style workflow (`dtwc::make_settings` / `dtwc::settings::make` in C++, `dtwcpp.settings` in Python,
-  `dtwc.settings` in MATLAB → `load_data` → `do_clustering` → `write_data`) supporting both automatic output and
-  `.dtwm` checkpoint writing (`output="./results"` by default) and pure in-memory execution (`output=""`).
+  `score`, `save`, `distance_matrix`; `plot` in Python and MATLAB), on the code `dtwc_cl` runs. `cluster()` writes no
+  file unless asked: `output` names the directory the run writes its result files and report into, and `checkpoint`
+  and `checkpoint_interval` save and resume the distance matrix as a `.dtwm` file (Python keywords, MATLAB
+  `'Output'`, `'Checkpoint'` and `'CheckpointInterval'`, C++ `cluster(data, config)` with a `dtwc::Config`); Python's
+  `upload_input=True` sends a local input with an `hpc` job. `dtwcpp.load(..., ndim=)` and `dtwc.load(..., 'Ndim',
+  n)` take the values per time step of a multivariate series.
 - Cross-collection pairwise DTW distance matrices (`M × N`) in C++ (`dtwc::cdist` and `dtwc::distance::cdist`), Python
   (`dtwcpp.cdist` and `dtwcpp.distance.cdist`) and MATLAB (`dtwc.cdist` and `dtwc.distance.cdist`), dispatched across
   CPU OpenMP + SIMD panels, CUDA (`device="gpu"`), and heterogeneous `device="cpu+gpu"` work-sharing in both `float64`
@@ -232,7 +234,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   SIMD lane configuration).
 - Extended SLURM `.env` integration (`SLURM_ACCOUNT`, `SLURM_QOS`, `SLURM_MODULES`), `upload_input=True` for staging
   local datasets to remote scratch, and automatic hydration of `medoids` and `report` alongside `labels` for
-  `cluster()` and `do_clustering()` on `device="hpc"` and `device="hpc:gpu"` (an hpc `DTWClustering.fit()` sets `labels_` only).
+  `cluster()` on `device="hpc"` and `device="hpc:gpu"` (an hpc `DTWClustering.fit()` sets `labels_` only).
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
   `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
@@ -347,7 +349,7 @@ Soft-DTW, Python or CUDA), on the machine named.
 - OneBatchPAM (N = 2,000, k = 10; Intel Core Ultra 9 285, 24 threads, loaded): its final assignment runs on every
   thread (the call 1.82 s → 0.96 s), then its batch table on the SIMD lanes (0.98 s → 0.25 s; the lanes' FMA caveat).
 - LR-core's dual runs on OpenMP from 280 series: on an Apple M5 Pro (18 threads), at 800–3,200 series, its subgradient
-  root runs 3.5–7.3× and `dtwc_cl -m lrcore` 1.4–4.7× faster, its Kelley root 1.2–1.5× and 1.1–1.5×; bit for bit.
+  root runs 3.5–7.3× and `dtwc_cl -m lrcore` 1.4–4.7× faster; bit for bit.
 - The Python extension's binding file compiles at `-O3`, not nanobind's `-Os`: on an Apple M5 Pro `dtwcpp.dtw` runs
   1.1–1.5× and an unequal-length distance matrix 1.5× faster.
 - The CUDA fill writes the packed matrix: on an RTX 4000 Ada at N = 20,000 (FP32) host memory 6.0 → 1.6 GiB and GPU
