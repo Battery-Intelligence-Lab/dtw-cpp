@@ -583,7 +583,9 @@ public:
 
   /// Full data-plus-distance-semantics identity used by durable checkpoints,
   /// metric() included. Names and clustering outputs are
-  /// intentionally excluded because they do not affect any stored distance.
+  /// intentionally excluded because they do not affect any stored distance. It names the precision of the device that
+  /// computes: a Problem given `fallback` whose GPU request a fill would refuse is identified, in a fill and outside
+  /// one alike, as the CPU.
   core::DistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
   /// Map the distance matrix to the `.dtwm` file `cache_path`, bound to this
   /// Problem's exact data and distance settings, metric() included. An existing
