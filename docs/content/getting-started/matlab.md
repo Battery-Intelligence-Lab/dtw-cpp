@@ -105,6 +105,7 @@ res = dtwc.cluster({x1, x2, x3, x4}, 2);
 | `Delimiter` | `''` | the field delimiter of text; `''` infers it from the extension |
 | `Name` | `''` | the run's name: the file's name without its extension, the folder's name, or `'dataset'` |
 | `Dtype` | `'float64'` | the precision the series are stored in: `'float32'` keeps them `single`, half the memory, each value the double read rounded; `single` data alone stays `double` |
+| `Ndim` | `1` | the features per time step of a multivariate series: each series holds its steps interleaved, `[t0f0 t0f1 t1f0 ...]`, so its length is a multiple of `Ndim`; an Arrow IPC file gives its own in its metadata, and one given that differs is refused when the file is read |
 
 CSV/TSV text, folders of it and Arrow IPC (`.arrow`, `.ipc`, `.feather`: mapped, its
 series views of the file; decoded or read into memory where it cannot be viewed in place,
@@ -119,10 +120,9 @@ series, named by its file.
 
 `dtwc.load` reads nothing, and a `Dataset` of a path keeps no series: `dtwc.cluster`
 hands a text file, a folder or an Arrow IPC file to C++, which reads it at every
-call. Parquet is the exception: `Dataset.as_series()` reads it at the first
-`dtwc.cluster` call (`parquetread`) and keeps the series. So is a `Dataset` whose
-`as_series()` has read an Arrow IPC file of `ndim` above 1, its `Ndim` then the file's:
-`dtwc.cluster` clusters the series it keeps, in that `Ndim`. To read any file once for several
+call. Parquet is the exception, and so is a `Dataset` of `Ndim` above 1:
+`Dataset.as_series()` reads it at the first `dtwc.cluster` call (`parquetread` for
+Parquet) and keeps the series, which are clustered in the Dataset's `Ndim`. To read any file once for several
 runs, take its series and cluster those (`'Dtype'` again for `'float32'`):
 
 ```matlab
@@ -131,8 +131,8 @@ res = dtwc.cluster(series, 3);
 ```
 
 The clustering is the path's, with two differences. The result files name series in
-memory `0`, `1`, ..., not by `names`. And `dtwc.cluster` takes no `Ndim` for series in
-memory, so the third output of `as_series()`, the `Ndim`, does not reach it: an Arrow IPC
+memory `0`, `1`, ..., not by `names`. And `dtwc.cluster` takes no `Ndim` keyword (give it to
+`dtwc.load`), so the third output of `as_series()`, the `Ndim`, does not reach it: an Arrow IPC
 file whose schema says `ndim` above 1 clusters as multivariate from its path, and as
 univariate series (each row's interleaved values) from `as_series()`.
 

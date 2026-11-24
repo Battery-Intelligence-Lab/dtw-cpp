@@ -75,7 +75,7 @@ The process device is what `cluster()` uses when it is not given one. A Tier-2
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::load(source, skip_cols = 0, skip_rows = 0, delimiter = 0, name = "", dtype = core::Precision::Float64)` | `dtwcpp.load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64")` | `dtwc.load(source, 'SkipCols', 0, 'SkipRows', 0, 'Delimiter', '', 'Name', '', 'Dtype', 'float64')` |
+| call | `dtwc::load(source, skip_cols = 0, skip_rows = 0, delimiter = 0, name = "", dtype = core::Precision::Float64)` | `dtwcpp.load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64", ndim=1)` | `dtwc.load(source, 'SkipCols', 0, 'SkipRows', 0, 'Delimiter', '', 'Name', '', 'Dtype', 'float64', 'Ndim', 1)` |
 | a path | `std::filesystem::path` | `str` or `os.PathLike` | char or string |
 | series in memory | `std::vector<std::vector<double>>`, one series per row, any lengths | a 2-D array (one series per row), a list of 1-D arrays (any lengths), a pandas DataFrame (rows, named by its index) or an Arrow array | an N×L numeric matrix (one series per row) or a cell of numeric vectors (any lengths) |
 
@@ -89,17 +89,18 @@ without llfio, it is decoded or read into memory). Parquet is read by C++ in a b
 MATLAB through `parquetread`.
 
 A `Dataset` of a path keeps no series: every `cluster()` call on it reads the
-file again. The exception, in Python and MATLAB, is Parquet, which `pyarrow` or
-`parquetread` reads once: the `Dataset` keeps its series. To read a file once for several
+file again. The exceptions, in Python and MATLAB, are Parquet, which `pyarrow` or
+`parquetread` reads, and a `Dataset` made with an `ndim` above 1: each is read once
+and the `Dataset` keeps its series. To read a file once for several
 runs, read its series into memory first and cluster those: C++
 `dtwc::run(config, dtwc::read_data(path))`, Python `dtwcpp.cluster(data.as_series(), k)`,
 MATLAB `dtwc.cluster(data.as_series(), k)` (with `dtype` given again for float32). The
 clustering is the path's, with two differences in Python and MATLAB. `cluster()` names
 series in memory `0`, `1`, ... in the result files, not by the reader. And `cluster()`
-takes no `ndim` for series in memory (MATLAB's `as_series()` returns it as a third output,
-Python's returns the series only): an Arrow IPC file with `ndim` above 1 clusters as
-multivariate from its path and as univariate series from `as_series()`. C++'s `read_data`
-keeps both.
+takes no `ndim` keyword (a `Dataset` made with `ndim` carries it; MATLAB's `as_series()` returns it
+as a third output, Python's returns the series only): an Arrow IPC file with `ndim` above 1
+clusters as multivariate from its path and as univariate series from `as_series()`. C++'s
+`read_data` keeps both.
 
 - `skip_cols` drops the leading fields of each line (an id column), the leading
   columns of a Parquet file, or the leading values of each series in memory.
@@ -117,6 +118,15 @@ keeps both.
   `cluster()` runs; float32 data in memory alone (NumPy `float32`, MATLAB `single`)
   does not choose it. The dataset says which: `Dataset::dtype()`, Python
   `Dataset.dtype`, MATLAB `Dataset.Dtype`.
+- `ndim` (Python and MATLAB; for a path, C++ and `dtwc_cl` take it from an Arrow IPC file's metadata only,
+  and a C++ `Data` carries its own) is the number of values per time step of a multivariate series,
+  `1`, the default, being univariate: each series holds its steps interleaved,
+  `[t0f0 t0f1 t1f0 ...]`, so its length is a multiple of `ndim`,
+  and a Python array of shape `(n_series, n_steps, ndim)` takes it too. An Arrow IPC file gives its
+  own in its schema metadata: one given for a file whose metadata gives another `ndim` above 1 is
+  `InvalidInput` when the file is read, and given none, the series take the file's. A Python `Data`
+  carries its own: one given that differs is refused. `cluster()` takes it from its `Dataset`:
+  `cluster(load(X, ndim=2), k)`.
 - Each series has a name, which the result files carry: `1`, `2`, ... for the
   series of a text file, in the order read after `skip_rows`; the file's name
   without extension in a folder; `0`, `1`, ... for series in memory (in Python,
@@ -131,23 +141,22 @@ A negative `skip_cols` or `skip_rows` is `InvalidInput`. In C++,
 `load(path, 0, 0, ',')`.
 
 A `Dataset` is read with the reader options it was made with (`skip_cols`, `skip_rows`,
-`delimiter` and `dtype`), so a call that gives another value for one is `InvalidInput` (MATLAB
-`dtwc:invalidArgument`), naming the option and both values: pass it to `load` when the `Dataset`
-is made, or leave it out. One equal to the `Dataset`'s own runs, and one not given is never
-refused. In C++, `cluster(dataset, config)` and `cdist(X, Y, config)` read the options from the
-`Config`, whose defaults stand for "not given": a field that is not at its default and differs is
-refused, and so is a `column` beside series in memory (a C++ `Dataset` holds no `column`: a path's
-read takes the `Config`'s). In Python and MATLAB, `cluster(dataset, k, dtype=...)` refuses a
-`dtype` (`'Dtype'`) that was given and differs, its default value included, and so does MATLAB's
-`load(dataset, ...)` for each of its options; Python's `load` cannot tell a keyword left at its
-default from one not given, so it refuses a keyword only when it is not at its default. A `name`
-given to `load` beside a `Dataset` is refused. `cdist` checks each `Dataset` by the same rule in
-Python and MATLAB for `dtype` and `ndim` (Python's checks a `Data`'s `ndim` too); its `dtype`
-(MATLAB `'Dtype'`) is not given unless passed (Python `None`, MATLAB `''`): a `Dataset`, or in
-Python a `Data`, refuses one other than its own, and other series are stored as `float64` unless
-it says otherwise. Once a `Dataset` has read an Arrow IPC file, the `ndim` `cdist` compares is the
-file's; an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is
-refused when the file is read, and given none, the series take the file's `ndim`.
+`delimiter`, `dtype` and, in Python and MATLAB, `ndim`), so a call that gives another value for one is
+`InvalidInput` (MATLAB `dtwc:invalidArgument`), naming the option and both values: pass it to `load`
+when the `Dataset` is made, or leave it out. One equal to the `Dataset`'s own runs, and one not given
+is never refused. In C++, `cluster(dataset, config)` and `cdist(X, Y, config)` read the options from
+the `Config`, which has no `ndim` and whose defaults stand for "not given": a field that is not at its
+default and differs is refused, and so is a `column` beside series in memory (a C++ `Dataset` holds
+no `column`: a path's read takes the `Config`'s). In Python and MATLAB, `load(dataset, ...)` takes
+each option and `cluster(dataset, k, dtype=...)` only `dtype`; `cluster` refuses a `dtype`
+(`'Dtype'`) that was given and differs, its default value included, and so does MATLAB's `load` for
+each of its options, while Python's `load` cannot tell a keyword left at its default from one not
+given, so it refuses a keyword only when it is not at its default. A `name` given to `load` beside a
+`Dataset` is refused. Once a `Dataset` has read an Arrow IPC file, its `ndim` is the file's.
+`cdist` checks each `Dataset` by the same rule in Python and MATLAB for `dtype` and `ndim`
+(Python's checks a `Data`'s `ndim` too); its `dtype` (MATLAB `'Dtype'`) is not given unless passed
+(Python `None`, MATLAB `''`): a `Dataset`, or in Python a `Data`, refuses one other than its own, and
+other series are stored as `float64` unless it says otherwise.
 
 ## Cluster
 
