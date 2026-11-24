@@ -861,7 +861,7 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
   mxSetField(s, 0, "name", mxCreateString(prob.name().c_str()));
   mxSetField(s, 0, "size", mxCreateDoubleScalar(static_cast<double>(prob.size())));
-  mxSetField(s, 0, "band", mxCreateDoubleScalar(static_cast<double>(prob.band)));
+  mxSetField(s, 0, "band", mxCreateDoubleScalar(static_cast<double>(prob.distance().band)));
   mxSetField(s, 0, "verbose", mxCreateLogicalScalar(prob.verbose()));
   mxSetField(s, 0, "max_iter", mxCreateDoubleScalar(prob.max_iter()));
   mxSetField(
@@ -1424,7 +1424,7 @@ static void cmd_dtw(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   require_real(prhs[1], "x");
   require_real(prhs[2], "y");
   const auto c = distance_config(nrhs, prhs, 3);
-  plhs[0] = mxCreateDoubleScalar(dtwc::distance::dtw<double>(
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::dtw(
     std::span<const double>(mxGetDoubles(prhs[1]), mxGetNumberOfElements(prhs[1])),
     std::span<const double>(mxGetDoubles(prhs[2]), mxGetNumberOfElements(prhs[2])),
     c.variant,

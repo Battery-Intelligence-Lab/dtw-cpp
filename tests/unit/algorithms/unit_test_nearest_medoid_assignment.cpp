@@ -65,7 +65,7 @@ Problem no_path_problem(const std::string &name)
   std::vector<std::string> names{"short", "long"};
   Problem problem(name);
   problem.set_data(dtwc::Data(std::move(series), std::move(names)));
-  problem.band = 0;
+  problem.set_band(0);
   return problem;
 }
 

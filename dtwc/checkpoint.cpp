@@ -54,7 +54,6 @@ bool load_checkpoint(Problem &prob, const std::string &path)
 
 bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType metric)
 {
-  prob.sync_band(); // the file is checked against the band the Problem computes with
   const auto identity = prob.distance_checkpoint_identity(metric);
   const fs::path file = checkpoint_path(prob, path);
   std::error_code ec;

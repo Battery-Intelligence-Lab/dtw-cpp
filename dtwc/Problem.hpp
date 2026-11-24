@@ -148,8 +148,10 @@ private:
   core::DistanceMatrix distMat;                     /*!< Distance matrix, on the heap or mapped (use_mmap_distance_matrix). */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   /// What every distance of this Problem means. Only the setters change it;
-  /// `band` is the v1 field's value when it was bound, and `ndim` the series'.
+  /// `ndim` is the series'.
   core::DistanceConfig distance_{};
+  int max_iter_{ 100 };      ///< Iteration limit of the iterative methods (set_max_iter)
+  int n_repetitions_{ 1 };   ///< Restarts of the iterative methods (set_n_repetitions)
   Device device_{ Device::CPU };
   int device_index_{ 0 }; ///< The GPU ordinal of Device::GPU.
   GpuPrecision gpu_precision_{ GpuPrecision::Auto };
@@ -202,8 +204,6 @@ private:
   Data data_;
 
   void rebind_dtw_fn(); ///< Resolve the distance functions from distance_ and the series.
-  /// A direct write to the v1 field `band` takes effect here, as set_band(band).
-  void sync_band();
   /// core::validate(config) for `data`'s channels and precision, before a setter
   /// or set_data changes anything.
   static void validate_distance(core::DistanceConfig config, const Data &data);
@@ -220,9 +220,9 @@ private:
   /// Under Soft-DTW, self_terms_ of every series, in parallel, unless they are there: after a check of every series.
   void fill_self_terms();
   class SeriesCheck;
-  /// The check of a distance request in parts (SeriesCheck), for a pass that checks the series as it reads them: a
-  /// direct write to `band` taken (sync_band), with `f32` float32's hold on the variant's parameters (core::validate),
-  /// then the empty series and the band. `where` begins every refusal.
+  /// The check of a distance request in parts (SeriesCheck), for a pass that checks the series as it reads them:
+  /// with `f32` float32's hold on the variant's parameters (core::validate), then the empty series and the band.
+  /// `where` begins every refusal.
   SeriesCheck series_check(std::string_view where, bool f32);
   /// The bound functions, no series checked: `check` (this Problem's, else std::logic_error; the float32 function's
   /// for dtw_function_f32) checks them as they are read. The float32 one is bound on first use, as dtw_function_f32().
@@ -258,11 +258,6 @@ private:
   }
 
 public:
-  int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
-  int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
-  /// Band length for Sakoe-Chiba band, -1 for full DTW (the v1 field). Prefer
-  /// set_band(); a direct write takes effect at the next fill.
-  int band{ settings::DEFAULT_BAND };
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
   CheckpointOptions checkpoint;              /*!< Automatic mid-fill checkpointing (see checkpoint.hpp). */
 
@@ -300,7 +295,6 @@ public:
   auto size() const { return data_.size(); }
   /// Number of clusters.
   auto n_clusters() const { return Nc; }
-  [[deprecated("use n_clusters")]] auto cluster_size() const { return n_clusters(); }
 
   /// Mutable name access (owned names only). series_name(i) reads a name in
   /// every storage mode.
@@ -345,7 +339,6 @@ public:
   const std::vector<index_t> &medoids() const { return centroids_ind; }
 
   void refresh_distance_matrix();
-  [[deprecated("use refresh_distance_matrix")]] void refreshDistanceMatrix() { refresh_distance_matrix(); }
 
   // Getters and setters:
   /// The centroid of the cluster of i_p, i_p in [0, N). Unchecked like dist_by_ind:
@@ -356,24 +349,14 @@ public:
   /// `not_computed`: NaN reads an empty field or NaN as a pair never computed;
   /// Negative also every value below zero, as v1.0.0 wrote them (-1).
   void read_distance_matrix(const fs::path &distMat_path, core::NotComputed not_computed = core::NotComputed::NaN);
-  [[deprecated("use read_distance_matrix")]]
-  void readDistanceMatrix(const fs::path &p) { read_distance_matrix(p); }
 
   void set_n_clusters(index_t Nc_);
-  [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
 
   /// A Problem is clustered when it holds one label per series and one medoid per
   /// cluster. Every call that reads the whole clustering checks that once.
   /// @throws InvalidInput ("<who>: ... cluster it first") when it is not.
   void require_clustered(std::string_view who) const;
   void set_clusters(const std::vector<index_t> &candidate_centroids);
-  /// The v1.0.0 signature, kept so v1 code compiles; a braced list takes the
-  /// index_t overload.
-  [[deprecated("use set_clusters(const std::vector<index_t> &)")]]
-  void set_clusters(std::vector<int> &candidate_centroids)
-  {
-    set_clusters(std::vector<index_t>(candidate_centroids.begin(), candidate_centroids.end()));
-  }
   /// Publish a clustering: k = the number of medoids, which are distinct
   /// indices in [0, N), and one label in [0, k) per series. Anything else is
   /// InvalidInput and leaves the Problem unchanged.
@@ -403,14 +386,8 @@ public:
   {
     method_ = m;
   }
-  /// The distance settings: variant, metric, missing-data strategy, band (the
-  /// v1 field, a direct write included) and the series' ndim.
-  core::DistanceConfig distance() const noexcept
-  {
-    auto config = distance_;
-    config.band = band;
-    return config;
-  }
+  /// The distance settings: variant, metric, missing-data strategy, band and the series' ndim.
+  core::DistanceConfig distance() const noexcept { return distance_; }
   const core::DTWVariantParams &variant_params() const noexcept { return distance_.variant; }
   core::MissingStrategy missing_strategy() const noexcept { return distance_.missing; }
   core::MetricType metric() const noexcept { return distance_.metric; }
@@ -427,10 +404,10 @@ public:
   /// @throws InvalidInput for n < 1: no iteration would report the initial
   ///         medoids' cost as a clustering result.
   void set_max_iter(int n);
-  int max_iter() const { return maxIter; }
+  int max_iter() const { return max_iter_; }
   /// @throws InvalidInput for n < 1: at least one run is needed.
   void set_n_repetitions(int n);
-  int n_repetitions() const { return N_repetition; }
+  int n_repetitions() const { return n_repetitions_; }
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
   void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
   /// CLARA's subsample size and count, OneBatchPAM's batch size and the hierarchical
@@ -530,7 +507,6 @@ public:
   void set_variant(core::DTWVariantParams params);
 
   data_t max_distance() const { return distMat.max(); }
-  [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
   /// The distance between series i and j, read from the matrix: O(1), no check
   /// and no computation, so parallel loops read it freely. Unchecked like
@@ -540,17 +516,9 @@ public:
   {
     return distMat.get(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
   }
-  /// The v1.0.0 lookup, which computed a pair on demand: it fills the matrix on
-  /// its first call, then reads it.
-  [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j)
-  {
-    fill_distance_matrix();
-    return dist_by_ind(i, j);
-  }
 
   /// The bound DTW distance function (float64), for methods that compute the
-  /// pairs they need instead of filling the matrix. Each call first takes a
-  /// direct write to `band` into account and checks the request against the
+  /// pairs they need instead of filling the matrix. Each call checks the request against the
   /// series (the fill's check, a SeriesCheck of every series, O(N·L)), so call it once, serially, before a
   /// parallel loop; the function itself only reads what it holds and checks
   /// nothing, so a caller passing spans other than the Problem's own owns their
@@ -571,8 +539,7 @@ public:
 
   /// True when the matrix holds every pair under the current settings: after a
   /// fill, a complete read or load, or binding a complete mapped file. O(1).
-  bool is_distance_matrix_filled() const { return filled_ && band == distance_.band; }
-  [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
+  bool is_distance_matrix_filled() const { return filled_; }
 
   /// The distance matrix, on the heap or mapped, to read.
   const core::DistanceMatrix &distance_matrix() const { return distMat; }
@@ -583,7 +550,6 @@ public:
   /// const distance_matrix(), which changes nothing.
   core::DistanceMatrix &writable_distance_matrix()
   {
-    sync_band();
     filled_ = false;
     written_ = true;
     // A mapped file's rows never written become NaN on the device first, so a write there is kept by the fill.
@@ -618,41 +584,20 @@ public:
     const std::filesystem::path &cache_path, core::MetricType metric);
 
   void fill_distance_matrix();
-  [[deprecated("use fill_distance_matrix")]] void fillDistanceMatrix() { fill_distance_matrix(); }
 
   void print_distance_matrix() const;
-  [[deprecated("use print_distance_matrix")]] void printDistanceMatrix() const { print_distance_matrix(); }
 
-  // Canonical I/O owns behavior; retained 1.x names are deprecated forwarders.
   void write_distance_matrix(const std::string &file_name) const;
   void write_distance_matrix() const
   {
     write_distance_matrix(name_ + "_distanceMatrix.csv");
   }
-  [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix(const std::string &file_name) const
-  {
-    write_distance_matrix(file_name);
-  }
-  [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix() const { write_distance_matrix(); }
 
   void print_clusters() const;
-  [[deprecated("use print_clusters")]]
-  void printClusters() const { print_clusters(); }
   void write_clusters();
-  [[deprecated("use write_clusters")]]
-  void writeClusters() { write_clusters(); }
 
   void write_medoid_members(int iter, int rep = 0) const;
-  [[deprecated("use write_medoid_members")]]
-  void writeMedoidMembers(int iter, int rep = 0) const
-  {
-    write_medoid_members(iter, rep);
-  }
   void write_silhouettes();
-  [[deprecated("use write_silhouettes")]]
-  void writeSilhouettes() { write_silhouettes(); }
 
   // Initialisation of clusters:
   /// Runs init_fun with random_seed().
@@ -665,20 +610,15 @@ public:
   /// method converged within max_iter().
   core::ClusteringResult cluster();
   void cluster_by_mip();
-  [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
   void cluster_by_kmedoids_lloyd();
-  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsPAM() { cluster_by_kmedoids_lloyd(); }
 
   void cluster_and_process();
 
   // Auxiliary
   double find_total_cost();
-  [[deprecated("use find_total_cost")]] double findTotalCost() { return find_total_cost(); }
   void assign_clusters();
-  [[deprecated("use assign_clusters")]] void assignClusters() { assign_clusters(); }
 
   void calculate_medoids();
-  [[deprecated("use calculate_medoids")]] void calculateMedoids() { calculate_medoids(); }
 };
 
 /**

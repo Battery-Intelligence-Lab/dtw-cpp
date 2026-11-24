@@ -124,7 +124,7 @@ inline void UCR_2018(const fs::path &data_dir, const fs::path &results_dir)
     const auto time_1 = clk.duration();
 
     std::cout << "Finished calculating distances " << clk << std::endl;
-    std::cout << "Band used " << prob.band << "\n\n\n";
+    std::cout << "Band used " << prob.distance().band << "\n\n\n";
 
     prob.set_n_repetitions(2);
 
@@ -133,7 +133,7 @@ inline void UCR_2018(const fs::path &data_dir, const fs::path &results_dir)
 
     const auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';
-    std::cout << "Band used " << prob.band << "\n\n\n";
+    std::cout << "Band used " << prob.distance().band << "\n\n\n";
 
     prob.print_clusters(); // Prints to screen.
     prob.write_distance_matrix();

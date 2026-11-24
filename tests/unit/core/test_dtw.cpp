@@ -255,11 +255,11 @@ TEMPLATE_TEST_CASE("every variant, metric, band and channel count agrees with th
         // The checked routes refuse an empty series (unit_test_nonfinite_input.cpp).
         if (nx == 0 || ny == 0) continue;
         const auto sentinel = static_cast<double>(std::numeric_limits<T>::max());
-        if (config.ndim == 1) check("distance::dtw", dtwc::distance::dtw<T>(x, y, config.params, band, config.metric), sentinel);
+        if (config.ndim == 1) check("distance::dtw", dtwc::distance::dtw(x, y, config.params, band, config.metric), sentinel);
         if (config.ndim == 1 && config.params.variant == DTWVariant::Standard) {
           // Without a NaN the missing-data distances are Standard DTW.
-          check("distance::arow", dtwc::distance::arow<T>(x, y, band, config.metric), sentinel);
-          check("distance::missing", dtwc::distance::missing<T>(x, y, band, config.metric), sentinel);
+          check("distance::arow", dtwc::distance::arow(x, y, band, config.metric), sentinel);
+          check("distance::missing", dtwc::distance::missing(x, y, band, config.metric), sentinel);
         }
       }
     }
@@ -388,14 +388,13 @@ TEST_CASE("the oracle and the library reproduce the hand-computed values", "[dtw
 
 namespace {
 
-/// A v1.0.0 entry point (dtwFull, dtwFull_L, dtwBanded, as vectors and as pointers),
-/// or a multivariate wrapper over the same kernels.
+/// The banded entry point of Standard DTW, or a multivariate wrapper over the same kernels.
 template <typename T>
 struct V1Route
 {
   using Vec = std::vector<T>;
   const char *name;
-  bool banded, multivariate, independent;
+  bool multivariate, independent;
   std::function<T(const Vec &, const Vec &, int band, MetricType, std::size_t ndim)> call;
 };
 
@@ -405,35 +404,15 @@ std::vector<V1Route<T>> v1_routes()
   using Vec = std::vector<T>;
   using R = V1Route<T>;
   return {
-    R{ "dtwFull", false, false, false,
-       [](const Vec &x, const Vec &y, int, MetricType m, std::size_t) { return dtwc::dtwFull<T>(x, y, m); } },
-    R{ "dtwFull (pointers)", false, false, false,
-       [](const Vec &x, const Vec &y, int, MetricType m, std::size_t) {
-         return dtwc::dtwFull<T>(x.data(), x.size(), y.data(), y.size(), m);
-       } },
-    R{ "dtwFull_L", false, false, false,
-       [](const Vec &x, const Vec &y, int, MetricType m, std::size_t) { return dtwc::dtwFull_L<T>(x, y, T(-1), m); } },
-    R{ "dtwFull_L (pointers)", false, false, false,
-       [](const Vec &x, const Vec &y, int, MetricType m, std::size_t) {
-         return dtwc::dtwFull_L<T>(x.data(), x.size(), y.data(), y.size(), T(-1), m);
-       } },
-    R{ "dtwBanded", true, false, false,
+    R{ "dtwBanded", false, false,
        [](const Vec &x, const Vec &y, int band, MetricType m, std::size_t) {
-         return dtwc::dtwBanded<T>(x, y, band, T(-1), m);
+         return dtwc::dtwBanded(x, y, band, T(-1), m);
        } },
-    R{ "dtwBanded (pointers)", true, false, false,
-       [](const Vec &x, const Vec &y, int band, MetricType m, std::size_t) {
-         return dtwc::dtwBanded<T>(x.data(), x.size(), y.data(), y.size(), band, T(-1), m);
-       } },
-    R{ "dtwFull_L_mv", false, true, false,
-       [](const Vec &x, const Vec &y, int, MetricType m, std::size_t nd) {
-         return dtwc::dtwFull_L_mv<T>(x.data(), x.size() / nd, y.data(), y.size() / nd, nd, T(-1), m);
-       } },
-    R{ "dtwBanded_mv", true, true, false,
+    R{ "dtwBanded_mv", true, false,
        [](const Vec &x, const Vec &y, int band, MetricType m, std::size_t nd) {
          return dtwc::dtwBanded_mv<T>(x.data(), x.size() / nd, y.data(), y.size() / nd, nd, band, T(-1), m);
        } },
-    R{ "dtw_independent_mv", true, true, true,
+    R{ "dtw_independent_mv", true, true,
        [](const Vec &x, const Vec &y, int band, MetricType m, std::size_t nd) {
          return dtwc::dtw_independent_mv<T>(x.data(), x.size() / nd, y.data(), y.size() / nd, nd, band, m);
        } },
@@ -442,7 +421,7 @@ std::vector<V1Route<T>> v1_routes()
 
 } // namespace
 
-TEMPLATE_TEST_CASE("the v1.0.0 entry points and the multivariate wrappers agree with the oracle",
+TEMPLATE_TEST_CASE("dtwBanded and the multivariate wrappers agree with the oracle",
                    "[dtw][oracle][v1]", double, float)
 {
   using T = TestType;
@@ -457,7 +436,7 @@ TEMPLATE_TEST_CASE("the v1.0.0 entry points and the multivariate wrappers agree 
           const auto pair = draw<T>(kShapes[s], ndim, 5000 + 10 * static_cast<unsigned>(s));
           const auto xd = widen(pair.x), yd = widen(pair.second());
           const std::size_t nx = pair.steps_x(ndim), ny = pair.steps_y(ndim);
-          for (const int band : route.banded ? std::span<const int>(kBands) : std::span<const int>(kBands).first(1)) {
+          for (const int band : kBands) {
             const double want = ts::dtw_oracle(oracle_spec(config, band), xd, yd);
             const double got = route.call(pair.x, pair.second(), band, metric, ndim);
             ++rows;
@@ -526,14 +505,14 @@ TEST_CASE("early abandon never changes a distance it does not exceed", "[dtw][ea
     std::function<double(double threshold)> call;
   };
   const std::vector<Call> calls{
-    { "dtwFull_L", { .band = -1 }, [&](double t) { return dtwc::dtwFull_L<double>(x, y, t); } },
-    { "dtwBanded", { .band = 3 }, [&](double t) { return dtwc::dtwBanded<double>(x, y, 3, t); } },
-    { "dtwFull_L, squared", { .metric = ts::OracleMetric::SquaredL2, .band = -1 },
-      [&](double t) { return dtwc::dtwFull_L<double>(x, y, t, MetricType::SquaredL2); } },
-    { "adtwFull_L", { .variant = ts::OracleVariant::ADTW, .band = -1, .penalty = 2 },
-      [&](double t) { return dtwc::adtwFull_L<double>(x, y, 2.0, t); } },
-    { "adtwBanded", { .variant = ts::OracleVariant::ADTW, .band = 3, .penalty = 2 },
-      [&](double t) { return dtwc::adtwBanded<double>(x, y, 3, 2.0, t); } },
+    { "dtwBanded, band -1", { .band = -1 }, [&](double t) { return dtwc::dtwBanded(x, y, -1, t); } },
+    { "dtwBanded, band 3", { .band = 3 }, [&](double t) { return dtwc::dtwBanded(x, y, 3, t); } },
+    { "dtwBanded, band -1, squared", { .metric = ts::OracleMetric::SquaredL2, .band = -1 },
+      [&](double t) { return dtwc::dtwBanded(x, y, -1, t, MetricType::SquaredL2); } },
+    { "adtwBanded, band -1", { .variant = ts::OracleVariant::ADTW, .band = -1, .penalty = 2 },
+      [&](double t) { return dtwc::adtwBanded(x, y, -1, 2.0, t); } },
+    { "adtwBanded, band 3", { .variant = ts::OracleVariant::ADTW, .band = 3, .penalty = 2 },
+      [&](double t) { return dtwc::adtwBanded(x, y, 3, 2.0, t); } },
   };
   for (const auto &c : calls) {
     const double exact = ts::dtw_oracle(c.spec, x, y);

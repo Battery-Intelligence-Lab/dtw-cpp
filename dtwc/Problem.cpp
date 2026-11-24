@@ -386,7 +386,7 @@ void Problem::set_max_iter(int n)
       "Problem::set_max_iter: max_iter must be at least 1; got " + std::to_string(n)
       + ". With no iteration the initial medoids' cost would be reported as the "
         "clustering result.");
-  maxIter = n;
+  max_iter_ = n;
 }
 
 void Problem::set_n_repetitions(int n)
@@ -396,7 +396,7 @@ void Problem::set_n_repetitions(int n)
       "Problem::set_n_repetitions: n_repetitions must be at least 1; got "
       + std::to_string(n) + ". It counts the random restarts, and one run is the "
         "minimum.");
-  N_repetition = n;
+  n_repetitions_ = n;
 }
 
 /**
@@ -464,8 +464,7 @@ void Problem::print_distance_matrix() const
 
 /**
  * @brief Refreshes the distance matrix.
- * @details Drops the matrix and binds the distance functions again, a direct
- * write to `band` included. Does NOT allocate the dense N×N matrix — that is
+ * @details Drops the matrix and binds the distance functions again. Does NOT allocate the dense N×N matrix — that is
  * deferred to fill_distance_matrix() so that large-N algorithms (e.g.
  * FastCLARA) can load data without forcing quadratic memory usage. A mapped
  * matrix is detached and its file left as it is, so rebinding it under other
@@ -473,10 +472,6 @@ void Problem::print_distance_matrix() const
  */
 void Problem::refresh_distance_matrix()
 {
-  if (band != distance_.band) {
-    set_band(band); // drops the matrix too
-    return;
-  }
   distMat = core::DistanceMatrix(0, matrix_dtype_); // empty, of the width every resize keeps
   filled_ = false;
   fill_split_.reset(); // the split of the fill that made the matrix dropped here
@@ -504,11 +499,6 @@ void Problem::rebind_dtw_fn()
   }
 }
 
-void Problem::sync_band()
-{
-  if (band != distance_.band) set_band(band);
-}
-
 void Problem::set_distance(core::DistanceConfig config)
 {
   if (config.band < -1)
@@ -516,9 +506,8 @@ void Problem::set_distance(core::DistanceConfig config)
                        + std::to_string(config.band) + ".");
   config.ndim = data_.ndim;
   validate_distance(config, data_);
-  if (config == distance_ && band == config.band) return;
+  if (config == distance_) return;
   distance_ = config;
-  band = config.band;
   clusters_ind.clear(); // a clustering describes the distances it was computed with
   centroids_ind.clear();
   refresh_distance_matrix();
@@ -642,7 +631,6 @@ const Problem::dtw_fn_f32_t &Problem::dtw_function_f32()
 
 Problem::SeriesCheck Problem::series_check(std::string_view where, bool f32)
 {
-  sync_band();
   if (f32) core::validate(distance_, true); // the series may be Float64: float32 must hold the parameters
   return SeriesCheck(*this, where, f32);
 }
@@ -766,7 +754,6 @@ void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
 void Problem::use_mmap_distance_matrix(
   const std::filesystem::path &cache_path, core::MetricType metric)
 {
-  sync_band();
   // Every check, the identity and the mapping come before any change: a bind
   // that fails leaves this Problem's metric and matrix as they were.
   auto candidate = distance_;
@@ -1419,7 +1406,6 @@ void Problem::fill_distance_matrix()
   if (gpu_share_ != -1.0 && device_ != Device::CPU_GPU)
     throw InvalidInput(detail::share_ignored_message("Problem::fill_distance_matrix", "the fill", device_));
   validate_checkpoint_settings();
-  sync_band();
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
   // negative distance, which no variant gives, and a matrix they made complete needs no pair.
   if (written_ && !filled_ && data_.size() > 0 && distMat.size() == data_.size()) {
@@ -1508,9 +1494,9 @@ core::ClusteringResult Problem::cluster()
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie
     // keeps the earlier restart.
-    auto best = fast_pam(*this, Nc, maxIter, random_seed_);
-    for (int restart = 1; restart < N_repetition; ++restart) {
-      auto candidate = fast_pam(*this, Nc, maxIter, random_seed_ + static_cast<std::uint64_t>(restart));
+    auto best = fast_pam(*this, Nc, max_iter_, random_seed_);
+    for (int restart = 1; restart < n_repetitions_; ++restart) {
+      auto candidate = fast_pam(*this, Nc, max_iter_, random_seed_ + static_cast<std::uint64_t>(restart));
       if (candidate.total_cost < best.total_cost) best = std::move(candidate);
     }
     set_result(best); // each restart published its own
@@ -1518,10 +1504,10 @@ core::ClusteringResult Problem::cluster()
   }
   case Method::OneBatch:
     return algorithms::one_batch_pam(
-      *this, { .n_clusters = Nc, .batch_size = batch_size_, .max_iter = maxIter, .random_seed = random_seed_ });
+      *this, { .n_clusters = Nc, .batch_size = batch_size_, .max_iter = max_iter_, .random_seed = random_seed_ });
   case Method::CLARA:
     return algorithms::fast_clara(*this, { .n_clusters = Nc, .sample_size = sample_size_, .n_samples = n_samples_,
-                                           .max_iter = maxIter, .random_seed = random_seed_, .gpu_share = gpu_share_ });
+                                           .max_iter = max_iter_, .random_seed = random_seed_, .gpu_share = gpu_share_ });
   case Method::Hierarchical:
     return algorithms::cut_dendrogram(algorithms::build_dendrogram(*this, { .linkage = linkage_ }), *this, Nc);
   case Method::Kmedoids: cluster_by_kmedoids_lloyd(); break;
@@ -1656,12 +1642,7 @@ void Problem::calculate_medoids()
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
-  // The setters reject both; the public fields maxIter and N_repetition bypass them.
   const int repetitions = n_repetitions();
-  if (repetitions <= 0)
-    throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
-  if (max_iter() <= 0)
-    throw InvalidInput("Lloyd k-medoids requires max_iter >= 1.");
 
   fill_distance_matrix(); // Ensure all distances computed before parallel clustering.
 

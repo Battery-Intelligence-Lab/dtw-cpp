@@ -157,7 +157,7 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
       // the last bit may differ (observed: 1 ulp), so 1e-14 relative.
       CHECK_THAT(matrix[i * 6 + j],
                  Catch::Matchers::WithinRel(
-                   dtwc::distance::dtw<double>(data.p_vec[i], data.p_vec[j], -1,
+                   dtwc::distance::dtw(data.p_vec[i], data.p_vec[j], -1,
                                                dtwc::core::MetricType::SquaredL2),
                    1e-14));
 }

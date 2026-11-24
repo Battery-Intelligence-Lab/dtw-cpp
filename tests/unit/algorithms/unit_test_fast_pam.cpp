@@ -221,7 +221,7 @@ TEST_CASE("A Soft-DTW Problem clusters on the divergence: the exact methods and 
   prob.set_variant(params);
   prob.fill_distance_matrix();
   const auto sdtw = [&](std::size_t i, std::size_t j) {
-    return distance::soft_dtw<data_t>(std::span<const data_t>(series[i]), std::span<const data_t>(series[j]), gamma);
+    return distance::soft_dtw(std::span<const data_t>(series[i]), std::span<const data_t>(series[j]), gamma);
   };
   for (std::size_t i = 0; i < series.size(); ++i)
     for (std::size_t j = 0; j < series.size(); ++j) {

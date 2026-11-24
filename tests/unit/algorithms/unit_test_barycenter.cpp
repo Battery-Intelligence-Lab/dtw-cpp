@@ -216,7 +216,7 @@ TEST_CASE("soft-DTW recurrences agree exactly when their local costs coincide",
   const std::vector<data_t> binary_x{0.0, 1.0, 1.0, 0.0, 1.0};
   const std::vector<data_t> binary_y{1.0, 0.0, 1.0};
   for (const double gamma : {0.1, 1.0, 2.5}) {
-    const double l1_value = soft_dtw<double>(binary_x, binary_y, gamma);
+    const double l1_value = soft_dtw(binary_x, binary_y, gamma);
     const double squared_value =
       algorithms::detail::soft_dtw_squared_value_gradient(
         binary_x, binary_y, gamma).value;
@@ -228,7 +228,7 @@ TEST_CASE("soft-DTW recurrences agree exactly when their local costs coincide",
   // silently changed to the other's local cost, this sensitivity check fails.
   const std::vector<data_t> nonbinary_x{0.0, 2.0};
   const std::vector<data_t> nonbinary_y{0.0, 0.0};
-  const double l1_value = soft_dtw<double>(nonbinary_x, nonbinary_y, 1.0);
+  const double l1_value = soft_dtw(nonbinary_x, nonbinary_y, 1.0);
   const double squared_value =
     algorithms::detail::soft_dtw_squared_value_gradient(
       nonbinary_x, nonbinary_y, 1.0).value;

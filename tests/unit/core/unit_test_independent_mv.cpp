@@ -6,7 +6,7 @@
  * @details Independent-DTW (Shokoohi-Yekta et al., DMKD 2017) runs a separate
  *          univariate DTW on each channel and sums the per-channel distances:
  *          DTW_I = Σ_c DTW(x[:,c], y[:,c]). This is distinct from the existing
- *          dependent DTW_D (dtwFull_L_mv / dtwBanded_mv), which forces one
+ *          dependent DTW_D (dtwBanded_mv), which forces one
  *          warping path shared by all channels. Neither dominates for clustering
  *          accuracy (the paper's whole point) — both are provided.
  *
@@ -19,7 +19,7 @@
  *              per-channel cost; each channel is free to pick its own path).
  *              Checked L1 + SquaredL2, unbanded + banded, on random MV pairs.
  *            - BAND-DEINTERLEAVE [HARD]: dtw_independent_mv equals the manual
- *              sum of univariate dtwFull over channels extracted with an
+ *              sum of univariate dtwBanded over channels extracted with an
  *              independent de-interleave (guards the strided channel copy).
  *            - BAND-WIRING [HARD]: a Problem with mv_mode=Independent, ndim>1
  *              fills a matrix equal to the direct kernel, and different from the
@@ -50,8 +50,7 @@
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 using dtwc::dtw_independent_mv;
-using dtwc::dtwFull;
-using dtwc::dtwFull_L_mv;
+using dtwc::dtwBanded;
 using dtwc::dtwBanded_mv;
 using MT = dtwc::core::MetricType;
 
@@ -102,7 +101,7 @@ TEST_CASE("Independent MV DTW equals manual per-channel sum", "[indep][mv][deint
       for (std::size_t c = 0; c < p.ndim; ++c) {
         for (std::size_t t = 0; t < p.nx; ++t) cx[t] = p.x[t * p.ndim + c];
         for (std::size_t t = 0; t < p.ny; ++t) cy[t] = p.y[t * p.ndim + c];
-        manual += dtwFull<double>(cx.data(), p.nx, cy.data(), p.ny, m);
+        manual += dtwBanded(cx, cy, -1, -1, m);
       }
       const double got = dtw_independent_mv<double>(
         p.x.data(), p.nx, p.y.data(), p.ny, p.ndim, -1, m);
@@ -158,7 +157,7 @@ TEST_CASE("DTW_I <= DTW_D (independent has per-channel freedom)", "[indep][mv][i
     for (MT m : { MT::L1, MT::SquaredL2 }) {
       // Unbanded.
       const double di = dtw_independent_mv<double>(x.data(), nx, y.data(), ny, ndim, -1, m);
-      const double dd = dtwFull_L_mv<double>(x.data(), nx, y.data(), ny, ndim, -1, m);
+      const double dd = dtwBanded_mv<double>(x.data(), nx, y.data(), ny, ndim, -1, -1, m);
       REQUIRE(di <= dd + 1e-9);
       // Use the same feasible canonical band for both routes.
       const auto gap = (nx > ny) ? (nx - ny) : (ny - nx);
@@ -227,7 +226,7 @@ TEST_CASE("Problem mv_mode=Independent matches direct kernel and differs from De
   for (int i = 0; i < N; ++i)
     for (int j = i + 1; j < N; ++j) {
       const double ref = dtw_independent_mv<double>(
-        base.p_vec[i].data(), steps, base.p_vec[j].data(), steps, ndim, prob_i.band);
+        base.p_vec[i].data(), steps, base.p_vec[j].data(), steps, ndim, prob_i.distance().band);
       REQUIRE_THAT(prob_i.dist_by_ind(i, j), WithinRel(ref, 1e-10) || WithinAbs(ref, 1e-10));
       if (std::abs(prob_i.dist_by_ind(i, j) - prob_d.dist_by_ind(i, j)) > 1e-6)
         any_diff = true;
@@ -283,7 +282,7 @@ TEST_CASE("Independent MV DTW reduces to scalar DTW for ndim=1", "[indep][mv][un
     auto x = rnd_mv(g, nx, 1), y = rnd_mv(g, ny, 1);
     for (MT m : { MT::L1, MT::SquaredL2 }) {
       const double di = dtw_independent_mv<double>(x.data(), nx, y.data(), ny, 1, -1, m);
-      const double sc = dtwFull<double>(x.data(), nx, y.data(), ny, m);
+      const double sc = dtwBanded(x, y, -1, -1, m);
       REQUIRE_THAT(di, WithinRel(sc, 1e-12) || WithinAbs(sc, 1e-12));
     }
   }

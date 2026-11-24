@@ -166,7 +166,7 @@ TEST_CASE("Option counts hold values above INT_MAX", "[index_t]")
   CHECK(hierarchical.max_points == big);
 }
 
-TEST_CASE("set_clusters takes an index_t list and v1's std::vector<int>", "[index_t]")
+TEST_CASE("set_clusters takes an index_t list", "[index_t]")
 {
   std::vector<std::vector<dtwc::data_t>> series{ { 0.0 }, { 1.0 }, { 2.0 }, { 3.0 } };
   std::vector<std::string> names{ "a", "b", "c", "d" };
@@ -176,20 +176,4 @@ TEST_CASE("set_clusters takes an index_t list and v1's std::vector<int>", "[inde
 
   prob.set_clusters({ 1, 3 });
   CHECK(prob.medoids() == std::vector<index_t>{ 1, 3 });
-
-  std::vector<int> v1_medoids{ 0, 2 };
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-  prob.set_clusters(v1_medoids);
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-  CHECK(prob.medoids() == std::vector<index_t>{ 0, 2 });
 }

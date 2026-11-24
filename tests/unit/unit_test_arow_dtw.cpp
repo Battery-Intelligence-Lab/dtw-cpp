@@ -26,7 +26,7 @@ using namespace dtwc;
 
 static constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
 
-TEST_CASE("dtwAROW_L: hand-computed, nonzero with NaN", "[arow_dtw]")
+TEST_CASE("dtwAROW_banded, band -1: hand-computed, nonzero with NaN", "[arow_dtw]")
 {
   // x = {1, 2}, y = {NaN, 5}
   // C(0,0): y[0]=NaN -> 0
@@ -37,33 +37,33 @@ TEST_CASE("dtwAROW_L: hand-computed, nonzero with NaN", "[arow_dtw]")
   std::vector<double> x{ 1, 2 };
   std::vector<double> y{ NaN, 5 };
 
-  REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(3.0, 1e-12));
+  REQUIRE_THAT(dtwAROW_banded(x, y), WithinAbs(3.0, 1e-12));
 }
 
-TEST_CASE("dtwAROW_L: empty vectors return maxValue", "[arow_dtw][edge]")
+TEST_CASE("dtwAROW_banded, band -1: empty vectors return maxValue", "[arow_dtw][edge]")
 {
   std::vector<double> x{ 1, 2, 3 };
   std::vector<double> empty{};
   constexpr double maxValue = std::numeric_limits<double>::max();
 
-  REQUIRE(dtwAROW_L<double>(x, empty) == maxValue);
-  REQUIRE(dtwAROW_L<double>(empty, x) == maxValue);
+  REQUIRE(dtwAROW_banded(x, empty) == maxValue);
+  REQUIRE(dtwAROW_banded(empty, x) == maxValue);
 }
 
-TEST_CASE("dtwAROW_L: identical series gives zero", "[arow_dtw][edge]")
+TEST_CASE("dtwAROW_banded, band -1: identical series gives zero", "[arow_dtw][edge]")
 {
   std::vector<double> x{ 1, 2, 3, 4, 5 };
-  REQUIRE_THAT(dtwAROW_L<double>(x, x), WithinAbs(0.0, 1e-15));
+  REQUIRE_THAT(dtwAROW_banded(x, x), WithinAbs(0.0, 1e-15));
 }
 
-TEST_CASE("dtwAROW_L: single-element series", "[arow_dtw][edge]")
+TEST_CASE("dtwAROW_banded, band -1: single-element series", "[arow_dtw][edge]")
 {
   std::vector<double> x{ 5.0 };
   std::vector<double> y{ 3.0 };
   std::vector<double> y_nan{ NaN };
 
-  REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(2.0, 1e-12));
-  REQUIRE_THAT(dtwAROW_L<double>(x, y_nan), WithinAbs(0.0, 1e-15));
+  REQUIRE_THAT(dtwAROW_banded(x, y), WithinAbs(2.0, 1e-12));
+  REQUIRE_THAT(dtwAROW_banded(x, y_nan), WithinAbs(0.0, 1e-15));
 }
 
 TEST_CASE("MV AROW: per-channel skip when one channel is NaN", "[arow_dtw][mv]")
@@ -137,7 +137,7 @@ TEST_CASE("Problem::set_missing_strategy(AROW) selects the AROW kernel for the f
   prob.fill_distance_matrix();
 
   // The Problem's bound kernel and the free function are separate code paths.
-  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(dtwAROW_L<double>(x, y_nan), 1e-12));
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(dtwAROW_banded(x, y_nan), 1e-12));
 }
 
 TEST_CASE("DTW-AROW kernels equal the recurrence for every NaN pattern, in both argument orders",
@@ -158,12 +158,12 @@ TEST_CASE("DTW-AROW kernels equal the recurrence for every NaN pattern, in both 
       for (const bool swapped : { false, true }) {
         const auto& a = swapped ? y : x;
         const auto& b = swapped ? x : y;
-        const double arow = dtwAROW_L<double>(a, b, metric);
+        const double arow = dtwAROW_banded(a, b, -1, metric);
         CHECK(arow == want(-1));
         CHECK(arow >= zero_cost);
         // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
         for (const int band : { -1, 0, 2, 100 })
-          CHECK(ts::same_distance(dtwAROW_banded<double>(a, b, band, metric), want(band)));
+          CHECK(ts::same_distance(dtwAROW_banded(a, b, band, metric), want(band)));
       }
     }
   });

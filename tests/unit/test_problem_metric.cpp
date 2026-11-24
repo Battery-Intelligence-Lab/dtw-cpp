@@ -111,7 +111,7 @@ TEST_CASE("set_metric: the metric is part of refresh and of the checkpoint ident
   CHECK_FALSE(squared.is_distance_matrix_filled());
   squared.fill_distance_matrix();
   CHECK(squared.dist_by_ind(0, 1)
-        == dtwc::distance::dtw<double>(series[0], series[1]));
+        == dtwc::distance::dtw(series[0], series[1]));
 }
 
 TEST_CASE("set_metric: automatic checkpoints are tagged with the metric",
@@ -132,7 +132,7 @@ TEST_CASE("set_metric: automatic checkpoints are tagged with the metric",
   resumed.set_metric(MetricType::SquaredL2);
   REQUIRE(dtwc::load_checkpoint(resumed, prob.checkpoint.directory));
   CHECK_THAT(resumed.dist_by_ind(1, 2),
-             WithinRel(dtwc::distance::dtw<double>(series[1], series[2], -1,
+             WithinRel(dtwc::distance::dtw(series[1], series[2], -1,
                                                    MetricType::SquaredL2),
                        kCrossPathRel));
 }
@@ -157,7 +157,7 @@ TEST_CASE("set_metric: an mmap cache takes the metric, and the CPU fills it",
       for (std::size_t i = 0; i < series.size(); ++i)
         for (std::size_t j = i + 1; j < series.size(); ++j)
           CHECK_THAT(prob.dist_by_ind(int(i), int(j)),
-                     WithinRel(dtwc::distance::dtw<double>(
+                     WithinRel(dtwc::distance::dtw(
                                  series[i], series[j], band, MetricType::SquaredL2),
                                kCrossPathRel));
     }
@@ -223,7 +223,7 @@ TEST_CASE("FastCLARA samples compute with the parent's metric",
 
   double expected_cost = 0.0;
   for (const auto &s : series)
-    expected_cost += dtwc::distance::dtw<double>(s, series[medoid], -1,
+    expected_cost += dtwc::distance::dtw(s, series[medoid], -1,
                                                  MetricType::SquaredL2);
   CHECK_THAT(result.total_cost, WithinRel(expected_cost, 1e-12));
 }

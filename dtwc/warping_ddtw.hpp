@@ -145,7 +145,7 @@ std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t
 
 namespace detail {
 
-/// DDTW's two derivative series, one pair a T (ddtwBanded, ddtwFull_L and the multivariate DDTW the dispatcher binds
+/// DDTW's two derivative series, one pair a T (ddtwBanded and the multivariate DDTW the dispatcher binds
 /// share them): reached here so that core::release_thread_scratch() can empty them (detail::dispatch_scratch, core/dtw_dispatch.cpp); two
 /// thread_locals returned as references, as core::detail::lanes_bufs says why.
 template <typename T>
@@ -163,45 +163,22 @@ std::pair<std::vector<T> &, std::vector<T> &> derivative_bufs()
  * @details Computes the derivative transform of both input series, then
  *          calls dtwBanded on the derivative series.
  *
- * @tparam data_t Data type of the elements.
+ * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair).
  * @param x First time series.
  * @param y Second time series.
- * @param band Sakoe-Chiba band width. Use -1 for full (unconstrained) DTW.
+ * @param band Sakoe-Chiba band width. Use -1, the default, for full (unconstrained) DTW.
  * @return The DDTW distance.
  */
-template <typename data_t = dtwc::settings::default_data_t>
-data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
-                  int band = settings::DEFAULT_BAND,
-                  core::MetricType metric = core::MetricType::L1)
+template <typename X, typename Y>
+  requires core::SeriesPair<X, Y>
+core::series_value_t<X> ddtwBanded(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
+                                   core::MetricType metric = core::MetricType::L1)
 {
+  using data_t = core::series_value_t<X>;
   auto [dx, dy] = detail::derivative_bufs<data_t>();
-  derivative_transform_inplace(x, dx);
-  derivative_transform_inplace(y, dy);
-  return dtwBanded<data_t>(dx, dy, band, static_cast<data_t>(-1), metric);
-}
-
-/// DDTW using full linear-space DTW on derivative series.
-template <typename data_t = dtwc::settings::default_data_t>
-data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
-                  core::MetricType metric = core::MetricType::L1)
-{
-  return ddtwBanded<data_t>(x, y, -1, metric);
-}
-
-// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
-template <typename data_t = dtwc::settings::default_data_t>
-data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  int band = settings::DEFAULT_BAND,
-                  core::MetricType metric = core::MetricType::L1)
-{
-  return ddtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  core::MetricType metric = core::MetricType::L1)
-{
-  return ddtwFull_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
+  derivative_transform_inplace(std::span<const data_t>{ x }, dx);
+  derivative_transform_inplace(std::span<const data_t>{ y }, dy);
+  return dtwBanded(dx, dy, band, static_cast<data_t>(-1), metric);
 }
 
 } // namespace dtwc

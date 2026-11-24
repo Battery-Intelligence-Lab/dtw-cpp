@@ -42,6 +42,7 @@
 #include "core/dtw_kernel.hpp"   // run_dtw, AROWCell
 #include "core/dtw_cost.hpp"     // SpanAROWL1Cost / SpanAROWSquaredL2Cost
 #include "core/dtw_options.hpp"  // core::MetricType
+#include "core/series.hpp"       // core::SeriesPair
 
 #include <cstddef>     // size_t
 #include <span>
@@ -59,80 +60,36 @@ namespace dtwc {
  * @details Restricts the warping path to the fixed window
  * `|i-j| <= band`, in addition to the AROW missing-value constraint. A
  * non-negative band narrower than `|nx-ny|` has no endpoint-preserving path.
- * A negative band is unconstrained (dtwAROW_L).
+ * A negative band, the default, is unconstrained (linear space, O(min(m,n))
+ * memory, no backtracking).
  *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x First sequence (may contain NaN for missing values).
- * @param y Second sequence (may contain NaN for missing values).
+ * When x[i] or y[j] is NaN, the warping path is restricted to the diagonal
+ * direction only (zero local cost), preventing free stretching through
+ * missing regions.
+ *
+ * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair),
+ *              which may contain NaN for missing values.
+ * @param x First series.
+ * @param y Second series.
  * @param band Fixed Sakoe-Chiba diagonal half-width in samples. Negative
  *             means unconstrained.
  * @param metric Pointwise distance metric (default: L1).
  * @return The banded DTW-AROW distance, or
- *         `numeric_limits<data_t>::max()` for an infeasible window.
+ *         `numeric_limits<T>::max()` for an infeasible window.
  */
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW_banded(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
-                      int band = settings::DEFAULT_BAND,
-                      core::MetricType metric = core::MetricType::L1)
+template <typename X, typename Y>
+  requires core::SeriesPair<X, Y>
+core::series_value_t<X> dtwAROW_banded(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
+                                       core::MetricType metric = core::MetricType::L1)
 {
+  using data_t = core::series_value_t<X>;
+  const std::span<const data_t> xs{ x }, ys{ y };
   // A univariate L2 cost is L1: sqrt((a-b)^2) == |a-b|.
   if (metric == core::MetricType::SquaredL2)
-    return core::run_dtw<core::SpanAROWSquaredL2Cost>(x, nx, y, ny, band, core::AROWCell{}, data_t(-1));
-  return core::run_dtw<core::SpanAROWL1Cost>(x, nx, y, ny, band, core::AROWCell{}, data_t(-1));
-}
-
-/**
- * @brief Computes DTW-AROW distance (linear space, O(min(m,n)) memory).
- *
- * @details When x[i] or y[j] is NaN, the warping path is restricted to the
- * diagonal direction only (zero local cost), preventing free stretching through
- * missing regions. Uses O(min(m,n)) space — no backtracking.
- *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x First sequence (may contain NaN for missing values).
- * @param y Second sequence (may contain NaN for missing values).
- * @param metric Pointwise distance metric (default: L1).
- * @return The DTW-AROW distance.
- */
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW_L(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwAROW_banded<data_t>(x, nx, y, ny, -1, metric);
-}
-
-// =========================================================================
-//  Span + vector convenience overloads
-// =========================================================================
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW_L(std::span<const data_t> x, std::span<const data_t> y,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwAROW_L<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW_banded(std::span<const data_t> x, std::span<const data_t> y,
-                      int band = settings::DEFAULT_BAND,
-                      core::MetricType metric = core::MetricType::L1)
-{
-  return dtwAROW_banded<data_t>(x.data(), x.size(), y.data(), y.size(), band, metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwAROW_L<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                      int band = settings::DEFAULT_BAND,
-                      core::MetricType metric = core::MetricType::L1)
-{
-  return dtwAROW_banded<data_t>(x.data(), x.size(), y.data(), y.size(), band, metric);
+    return core::run_dtw<core::SpanAROWSquaredL2Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
+                                                      core::AROWCell{}, data_t(-1));
+  return core::run_dtw<core::SpanAROWL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band, core::AROWCell{},
+                                             data_t(-1));
 }
 
 } // namespace dtwc

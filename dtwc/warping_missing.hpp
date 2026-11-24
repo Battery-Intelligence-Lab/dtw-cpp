@@ -28,10 +28,11 @@
 #pragma once
 
 #include "base/settings.hpp"
-#include "warping.hpp" // transitive dtwFull_L visibility for callers
+#include "warping.hpp" // transitive dtwBanded visibility for callers
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
 #include "core/dtw_options.hpp"
+#include "core/series.hpp"
 
 #include <cstddef>
 #include <span>
@@ -40,69 +41,25 @@
 namespace dtwc {
 
 // =========================================================================
-//  Scalar missing-data DTW (ZeroCost) — pointer + length entry points
+//  Scalar missing-data DTW (ZeroCost)
 // =========================================================================
 
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwMissing_banded(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                         int band = settings::DEFAULT_BAND,
-                         data_t early_abandon = -1,
-                         core::MetricType metric = core::MetricType::L1)
+/// ZeroCost missing-data DTW of two series (core::SeriesPair; NaN marks a missing value); a negative band is
+/// unconstrained.
+template <typename X, typename Y>
+  requires core::SeriesPair<X, Y>
+core::series_value_t<X> dtwMissing_banded(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
+                                          core::series_value_t<X> early_abandon = -1,
+                                          core::MetricType metric = core::MetricType::L1)
 {
+  using data_t = core::series_value_t<X>;
+  const std::span<const data_t> xs{ x }, ys{ y };
   // A univariate L2 cost is L1: sqrt((a-b)^2) == |a-b|.
   if (metric == core::MetricType::SquaredL2)
-    return core::run_dtw<core::SpanNanAwareSquaredL2Cost>(x, nx, y, ny, band, core::StandardCell{}, early_abandon);
-  return core::run_dtw<core::SpanNanAwareL1Cost>(x, nx, y, ny, band, core::StandardCell{}, early_abandon);
-}
-
-template <typename data_t>
-data_t dtwMissing_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                    data_t early_abandon = -1,
-                    core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing_banded<data_t>(x, nx, y, ny, -1, early_abandon, metric);
-}
-
-// -------------------------------------------------------------------------
-// Span overloads
-// -------------------------------------------------------------------------
-
-template <typename data_t>
-data_t dtwMissing_L(std::span<const data_t> x, std::span<const data_t> y,
-                    data_t early_abandon = -1,
-                    core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing_L<data_t>(x.data(), x.size(), y.data(), y.size(), early_abandon, metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwMissing_banded(std::span<const data_t> x, std::span<const data_t> y,
-                         int band = settings::DEFAULT_BAND,
-                         data_t early_abandon = -1,
-                         core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing_banded<data_t>(x.data(), x.size(), y.data(), y.size(), band, early_abandon, metric);
-}
-
-// -------------------------------------------------------------------------
-// Vector convenience overloads
-// -------------------------------------------------------------------------
-
-template <typename data_t>
-data_t dtwMissing_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                    data_t early_abandon = -1,
-                    core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing_L<data_t>(std::span<const data_t>{ x }, std::span<const data_t>{ y }, early_abandon, metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwMissing_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                         int band = settings::DEFAULT_BAND,
-                         data_t early_abandon = -1,
-                         core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing_banded<data_t>(std::span<const data_t>{ x }, std::span<const data_t>{ y }, band, early_abandon, metric);
+    return core::run_dtw<core::SpanNanAwareSquaredL2Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
+                                                          core::StandardCell{}, early_abandon);
+  return core::run_dtw<core::SpanNanAwareL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
+                                                 core::StandardCell{}, early_abandon);
 }
 
 // =========================================================================
@@ -117,20 +74,14 @@ data_t dtwMissing_banded_mv(const data_t *x, size_t nx_steps, const data_t *y, s
                             data_t early_abandon = -1,
                             core::MetricType metric = core::MetricType::L1)
 {
-  if (ndim == 1) return dtwMissing_banded<data_t>(x, nx_steps, y, ny_steps, band, early_abandon, metric);
+  if (ndim == 1)
+    return dtwMissing_banded(std::span<const data_t>(x, nx_steps), std::span<const data_t>(y, ny_steps), band,
+                             early_abandon, metric);
   if (metric == core::MetricType::SquaredL2)
     return core::run_dtw<core::SpanMVNanAwareSquaredL2Cost>(x, nx_steps, y, ny_steps, band, core::StandardCell{}, early_abandon, ndim);
   if (metric == core::MetricType::L2)
     return core::run_dtw<core::SpanMVNanAwareL2Cost>(x, nx_steps, y, ny_steps, band, core::StandardCell{}, early_abandon, ndim);
   return core::run_dtw<core::SpanMVNanAwareL1Cost>(x, nx_steps, y, ny_steps, band, core::StandardCell{}, early_abandon, ndim);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwMissing_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                       size_t ndim, data_t early_abandon = -1,
-                       core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing_banded_mv<data_t>(x, nx_steps, y, ny_steps, ndim, -1, early_abandon, metric);
 }
 
 } // namespace dtwc

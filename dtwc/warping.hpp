@@ -3,8 +3,10 @@
  * @brief Time warping functions.
  *
  * @details This file contains functions for dynamic time warping, which is a method to
- * compare two temporal sequences that may vary in time or speed. It includes
- * different versions of the algorithm for full, light (L), and banded computations.
+ * compare two temporal sequences that may vary in time or speed. The banded
+ * functions take a Sakoe-Chiba band, and a negative one (the default) is the full,
+ * unconstrained DTW. A univariate series is any contiguous range of float or double
+ * (core::SeriesPair): a std::vector, a std::span, a std::array or a C array.
  *
  * Each public function accepts an optional core::MetricType parameter (default L1),
  * which picks the Cost functor (core/dtw_cost.hpp) once, outside the kernel;
@@ -35,6 +37,7 @@
 #include "core/dtw_options.hpp"    // for core::MetricType
 #include "core/dtw_kernel.hpp"     // unified DTW kernels, orient, run_dtw
 #include "core/dtw_cost.hpp"       // Span*Cost functors
+#include "core/series.hpp"         // core::SeriesPair, core::series_value_t
 
 #include <cstdint>   // for uint32_t, uint64_t
 #include <cstdlib>   // for abs, size_t
@@ -126,134 +129,45 @@ void require_finite(std::span<const data_t> x, std::span<const data_t> y,
 } // namespace detail
 
 // =========================================================================
-//  Public API — pointer + length overloads (zero-copy for bindings)
+//  Public API — univariate
 // =========================================================================
 
 /**
- * @brief Computes the banded DTW distance (pointer + length).
+ * @brief Computes the banded DTW distance of two series.
  *
  * @details Uses the canonical fixed Sakoe-Chiba window `|i-j| <= band`.
  *          A non-negative band narrower than `|nx-ny|` contains no endpoint-
- *          preserving path. A negative band requests unconstrained DTW.
+ *          preserving path. A negative band, the default, requests
+ *          unconstrained DTW.
  *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x Pointer to first sequence.
- * @param nx Length of first sequence.
- * @param y Pointer to second sequence.
- * @param ny Length of second sequence.
+ * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair),
+ *              a std::vector, std::span, std::array or C array of float or double. Their
+ *              element type is the type of the distance. A pointer and a length pass as
+ *              `std::span<const T>(pointer, length)`.
+ * @param x First series.
+ * @param y Second series.
  * @param band Fixed diagonal half-width in samples; negative means
  *             unconstrained.
  * @param early_abandon Threshold for early abandon; negative disables.
  * @param metric Pointwise distance metric (default: L1).
  * @return The dynamic time warping distance, or
- *         `numeric_limits<data_t>::max()` for empty input, an infeasible
+ *         `numeric_limits<T>::max()` for empty input, an infeasible
  *         window, or early abandonment. These cases share the finite sentinel.
  */
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
-                 int band = settings::DEFAULT_BAND,
-                 data_t early_abandon = -1,
-                 core::MetricType metric = core::MetricType::L1)
+template <typename X, typename Y>
+  requires core::SeriesPair<X, Y>
+core::series_value_t<X> dtwBanded(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
+                                  core::series_value_t<X> early_abandon = -1,
+                                  core::MetricType metric = core::MetricType::L1)
 {
+  using data_t = core::series_value_t<X>;
+  const std::span<const data_t> xs{ x }, ys{ y };
   // A univariate L2 cost is L1: sqrt((a-b)^2) == |a-b|.
   if (metric == core::MetricType::SquaredL2)
-    return core::run_dtw<core::SpanSquaredL2Cost>(x, nx, y, ny, band, core::StandardCell{}, early_abandon);
-  return core::run_dtw<core::SpanL1Cost>(x, nx, y, ny, band, core::StandardCell{}, early_abandon);
-}
-
-/**
- * @brief Computes the linear-space DTW distance (pointer + length).
- *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x Pointer to first sequence.
- * @param nx Length of first sequence.
- * @param y Pointer to second sequence.
- * @param ny Length of second sequence.
- * @param early_abandon Threshold for early abandon; negative disables.
- * @param metric Pointwise distance metric (default: L1).
- * @return The dynamic time warping distance.
- */
-template <typename data_t>
-data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
-                 data_t early_abandon = -1,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwBanded<data_t>(x, nx, y, ny, -1, early_abandon, metric);
-}
-
-/**
- * @brief Computes the full dynamic time warping distance (pointer + length):
- *        the v1 name of dtwFull_L, the same distance in linear space.
- *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x Pointer to first sequence.
- * @param nx Length of first sequence.
- * @param y Pointer to second sequence.
- * @param ny Length of second sequence.
- * @param metric Pointwise distance metric (default: L1).
- * @return The dynamic time warping distance.
- */
-template <typename data_t>
-data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
-               core::MetricType metric = core::MetricType::L1)
-{
-  return dtwFull_L<data_t>(x, nx, y, ny, data_t(-1), metric);
-}
-
-// =========================================================================
-//  Public API — vector overloads (forward to pointer versions)
-// =========================================================================
-
-/// Full DTW, the v1 name of dtwFull_L (span overload).
-template <typename data_t>
-data_t dtwFull(std::span<const data_t> x, std::span<const data_t> y,
-               core::MetricType metric = core::MetricType::L1)
-{
-  return dtwFull<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
-}
-
-/// Linear-space DTW (span overload).
-template <typename data_t>
-data_t dtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
-                 data_t early_abandon = -1,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwFull_L<data_t>(x.data(), x.size(), y.data(), y.size(), early_abandon, metric);
-}
-
-/// Banded DTW (span overload).
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwBanded(std::span<const data_t> x, std::span<const data_t> y,
-                 int band = settings::DEFAULT_BAND,
-                 data_t early_abandon = -1,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), band, early_abandon, metric);
-}
-
-// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
-template <typename data_t>
-data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
-               core::MetricType metric = core::MetricType::L1)
-{
-  return dtwFull<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
-}
-
-template <typename data_t>
-data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                 data_t early_abandon = -1,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwFull_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, early_abandon, metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                 int band = settings::DEFAULT_BAND,
-                 data_t early_abandon = -1,
-                 core::MetricType metric = core::MetricType::L1)
-{
-  return dtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, early_abandon, metric);
+    return core::run_dtw<core::SpanSquaredL2Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
+                                                  core::StandardCell{}, early_abandon);
+  return core::run_dtw<core::SpanL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band, core::StandardCell{},
+                                         early_abandon);
 }
 
 // =========================================================================
@@ -290,7 +204,9 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
                     data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {
-  if (ndim == 1) return dtwBanded(x, nx_steps, y, ny_steps, band, early_abandon, metric);
+  if (ndim == 1)
+    return dtwBanded(std::span<const data_t>(x, nx_steps), std::span<const data_t>(y, ny_steps), band,
+                     early_abandon, metric);
   if (metric == core::MetricType::SquaredL2)
     return core::run_dtw<core::SpanMVSquaredL2Cost>(x, nx_steps, y, ny_steps, band, core::StandardCell{},
                                                     early_abandon, ndim);
@@ -299,28 +215,6 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
                                              early_abandon, ndim);
   return core::run_dtw<core::SpanMVL1Cost>(x, nx_steps, y, ny_steps, band, core::StandardCell{},
                                            early_abandon, ndim);
-}
-
-/**
- * @brief Linear-space multivariate DTW (pointer + timestep counts + ndim):
- *        dtwBanded_mv without a band.
- *
- * @tparam data_t Data type of the elements.
- * @param x       Pointer to first series (interleaved, nx_steps * ndim elements).
- * @param nx_steps Number of timesteps in x.
- * @param y       Pointer to second series (interleaved, ny_steps * ndim elements).
- * @param ny_steps Number of timesteps in y.
- * @param ndim    Number of features per timestep.
- * @param early_abandon Threshold for early abandon; negative disables.
- * @param metric  Pointwise distance metric (default: L1).
- * @return The dynamic time warping distance.
- */
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
-                    size_t ndim, data_t early_abandon = -1,
-                    core::MetricType metric = core::MetricType::L1)
-{
-  return dtwBanded_mv<data_t>(x, nx_steps, y, ny_steps, ndim, -1, early_abandon, metric);
 }
 
 namespace detail {
@@ -341,14 +235,14 @@ std::pair<std::vector<T> &, std::vector<T> &> channel_bufs()
  *
  * @details Runs an independent univariate DTW on each channel and sums the
  *          per-channel distances: DTW_I = Σ_c DTW(x[:,c], y[:,c]). This differs
- *          from the dependent DTW_D (dtwBanded_mv / dtwFull_L_mv), which forces a
+ *          from the dependent DTW_D (dtwBanded_mv), which forces a
  *          single warping path shared by all channels. Neither mode dominates for
  *          clustering accuracy (Shokoohi-Yekta 2017) — both are provided. With an
  *          additive local cost and the same band, DTW_I ≤ DTW_D always (each
  *          channel is free to pick its own optimal path).
  *
  *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t
- *          (same as dtwFull_L_mv). Each channel runs dtwBanded (the linear-space
+ *          (same as dtwBanded_mv). Each channel runs dtwBanded (the linear-space
  *          kernel when band < 0). A non-negative band narrower than
  *          `|nx_steps-ny_steps|` returns the single finite no-path sentinel
  *          before channel summation. L1 / SquaredL2 metrics only (per-channel
@@ -372,7 +266,9 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
                           size_t ndim, int band = settings::DEFAULT_BAND,
                           core::MetricType metric = core::MetricType::L1)
 {
-  if (ndim == 1) return dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
+  if (ndim == 1)
+    return dtwBanded(std::span<const data_t>(x, nx_steps), std::span<const data_t>(y, ny_steps), band,
+                     data_t(-1), metric);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (band >= 0) {
     const auto min_steps = std::min(nx_steps, ny_steps);
@@ -392,7 +288,7 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
   for (size_t c = 0; c < ndim; ++c) {
     for (size_t t = 0; t < nx_steps; ++t) cx[t] = x[t * ndim + c];
     for (size_t t = 0; t < ny_steps; ++t) cy[t] = y[t * ndim + c];
-    total += dtwBanded<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, band, -1, metric);
+    total += dtwBanded(cx, cy, band, data_t(-1), metric);
   }
   return total;
 }

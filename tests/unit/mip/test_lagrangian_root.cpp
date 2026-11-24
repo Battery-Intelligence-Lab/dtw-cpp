@@ -160,7 +160,7 @@ Problem make_problem_1d(const std::vector<double> &values, int k)
   prob.set_method(Method::MIP);
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
-  prob.band = -1;
+  prob.set_band(-1);
   return prob;
 }
 

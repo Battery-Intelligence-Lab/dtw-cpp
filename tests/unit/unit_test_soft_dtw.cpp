@@ -35,7 +35,7 @@ TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
     // so the value is the softmin of three zeros: -gamma ln 3.
     const std::vector<T> x{T(0), T(0)};
     const std::vector<T> y{T(0), T(0)};
-    const T value = soft_dtw<T>(x, y, gamma);
+    const T value = soft_dtw(x, y, gamma);
     CHECK(std::isfinite(value));
     CHECK(value == -gamma * std::log(T(3)));
 
@@ -51,10 +51,10 @@ TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
   SECTION("float32") { check_precision.template operator()<float>(); }
 }
 
-TEST_CASE("soft_dtw: converges to dtwFull as gamma -> 0", "[soft_dtw]")
+TEST_CASE("soft_dtw: converges to dtwBanded (band -1) as gamma -> 0", "[soft_dtw]")
 {
   std::vector<double> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
-  const double hard_dtw = dtwFull_L<double>(x, y);
+  const double hard_dtw = dtwBanded(x, y);
   REQUIRE_THAT(soft_dtw(x, y, 0.001), WithinAbs(hard_dtw, 0.5));
 }
 

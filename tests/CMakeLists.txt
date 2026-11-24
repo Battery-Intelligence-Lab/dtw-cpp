@@ -1,40 +1,5 @@
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp")
 
-# The 1.x [[deprecated]] shims, kept until 3.0,
-# must still compile, and must warn (test_problem_api_2_0 proves they forward).
-# One use of each shim kind stands in for all 22, plus v1's std::vector<int>
-# set_clusters overload beside the index_t one. The probe is an EXCLUDE_FROM_ALL
-# object built by the configured compiler with dtwc++'s usage requirements; the
-# script deletes the object, rebuilds it, and passes only on exit 0 plus one
-# deprecation diagnostic naming each entry of _dtwc_shims. Flags differ per
-# compiler family: GCC, Clang and clang-cl print "'<name>' is deprecated", cl
-# prints C4996; -Wno-error keeps a -Werror in CMAKE_CXX_FLAGS from turning the
-# warning under test into a failed compile. SERIAL: it builds in this tree.
-set(_dtwc_shims set_numberOfClusters distByInd cluster_by_kMedoidsPAM startColumn fillDistanceMatrix set_clusters)
-add_library(deprecated_shims_probe OBJECT EXCLUDE_FROM_ALL integration/deprecated_shims_probe.cc)
-target_link_libraries(deprecated_shims_probe PRIVATE dtwc++ project_options)
-if(MSVC AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(_dtwc_shim_family msvc)
-    target_compile_options(deprecated_shims_probe PRIVATE /w14996)
-elseif(MSVC)
-    set(_dtwc_shim_family gnu)
-    target_compile_options(deprecated_shims_probe PRIVATE
-        /clang:-Wdeprecated-declarations /clang:-Wno-error=deprecated-declarations)
-else()
-    set(_dtwc_shim_family gnu)
-    target_compile_options(deprecated_shims_probe PRIVATE
-        -Wdeprecated-declarations -Wno-error=deprecated-declarations)
-endif()
-list(LENGTH _dtwc_shims _dtwc_shim_count)
-list(JOIN _dtwc_shims "," _dtwc_shim_csv)
-dtwc_add_script_test(NAME test_deprecated_shims_warn
-    SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_deprecated_shims_warn.cmake"
-    ARGS "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DCONFIG=$<CONFIG>"
-         "-DTARGET=deprecated_shims_probe" "-DOBJECT=$<TARGET_OBJECTS:deprecated_shims_probe>"
-         "-DFAMILY=${_dtwc_shim_family}" "-DSHIMS=${_dtwc_shim_csv}"
-    MARKER "DEPRECATED_SHIMS family=${_dtwc_shim_family} exit=0 warned=${_dtwc_shim_count}/${_dtwc_shim_count}"
-    LABELS compat b19 SERIAL TIMEOUT 300)
-
 # A DP cell makes no call: codegen_report.py compiles the probe (the univariate and multivariate kernels) to assembly
 # with dtw_dispatch.cpp's flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. Under a
 # sanitizer every loop calls its checks, so there the gate has nothing to prove.
@@ -79,8 +44,7 @@ endforeach()
 # Explicit registrations: subject markers, fixture roots, capability gating.
 # Everything not listed here is registered by pass 2 with the defaults (strict).
 
-# Every retained C++ compatibility surface forwards to its canonical name
-# (test_deprecated_shims_warn above proves the shims still warn).
+# Every Problem and DataLoader entry point against a hand oracle.
 dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_api_2_0}
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT)
 

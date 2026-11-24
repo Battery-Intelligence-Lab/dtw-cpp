@@ -43,26 +43,27 @@ std::vector<double> y = {1.0, 2.0, 3.0, 4.0};
 // Checked: ±inf raises InvalidInput (dtwc/distance.hpp)
 double dist_checked = dtwc::distance::missing(x, y, /*band=*/-1);
 
-// Linear-space (O(min(m,n)) memory)
-double dist = dtwc::dtwMissing_L(x, y);
+// Unbanded (band -1, the default; O(min(m,n)) memory)
+double dist = dtwc::dtwMissing_banded(x, y);
 
 // With early abandon threshold
-double dist_ea = dtwc::dtwMissing_L(x, y, /*early_abandon=*/5.0);
+double dist_ea = dtwc::dtwMissing_banded(x, y, /*band=*/-1, /*early_abandon=*/5.0);
 
 // Banded
 double dist_b = dtwc::dtwMissing_banded(x, y, /*band=*/3);
 
 // With squared-L2 metric
-double dist_sq = dtwc::dtwMissing_L(x, y, -1.0, dtwc::core::MetricType::SquaredL2);
+double dist_sq = dtwc::dtwMissing_banded(x, y, -1, -1.0, dtwc::core::MetricType::SquaredL2);
 ```
 
-### Pointer + length overloads
+### Pointer + length
 
-Zero-copy overloads are available for binding and performance use:
+The series are any contiguous range of float or double (`std::vector`,
+`std::span`, `std::array`, a C array); a pointer and a length pass as a span:
 
 ```cpp
-double dist = dtwc::dtwMissing_L(x_ptr, nx, y_ptr, ny);
-double dist_b = dtwc::dtwMissing_banded(x_ptr, nx, y_ptr, ny, /*band=*/5);
+double dist = dtwc::dtwMissing_banded(std::span<const double>(x_ptr, nx), std::span<const double>(y_ptr, ny));
+double dist_b = dtwc::dtwMissing_banded(std::span<const double>(x_ptr, nx), std::span<const double>(y_ptr, ny), /*band=*/5);
 ```
 
 ---
@@ -88,14 +89,14 @@ std::vector<double> y = {1.0, 2.0, 3.0, 4.0, 5.0};
 // Checked: ±inf raises InvalidInput (dtwc/distance.hpp)
 double dist_checked = dtwc::distance::arow(x, y, /*band=*/-1);
 
-// Linear-space (O(min(m,n)) memory)
-double dist = dtwc::dtwAROW_L(x, y);
+// Unbanded (band -1, the default; O(min(m,n)) memory)
+double dist = dtwc::dtwAROW_banded(x, y);
 
 // Banded
 double dist_b = dtwc::dtwAROW_banded(x, y, /*band=*/3);
 
 // With squared-L2 metric
-double dist_sq = dtwc::dtwAROW_L(x, y, dtwc::core::MetricType::SquaredL2);
+double dist_sq = dtwc::dtwAROW_banded(x, y, -1, dtwc::core::MetricType::SquaredL2);
 ```
 
 ---
@@ -151,7 +152,7 @@ Missing data support extends to multivariate time series with per-channel NaN ha
 #include <warping_missing.hpp>
 
 // Interleaved layout: [x1_ch1, x1_ch2, x2_ch1, x2_ch2, ...]
-double dist = dtwc::dtwMissing_L_mv(x_ptr, nx_steps, y_ptr, ny_steps, /*ndim=*/3);
+double dist = dtwc::dtwMissing_banded_mv(x_ptr, nx_steps, y_ptr, ny_steps, /*ndim=*/3);
 double dist_b = dtwc::dtwMissing_banded_mv(x_ptr, nx_steps, y_ptr, ny_steps, /*ndim=*/3, /*band=*/5);
 ```
 

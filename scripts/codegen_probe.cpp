@@ -66,7 +66,7 @@ T probe_mv(const T *x, std::size_t nx, const T *y, std::size_t ny, std::size_t n
          + core::run_dtw<core::SpanMVAROWL1Cost>(x, nx, y, ny, band, core::AROWCell{}, T(-1), ndim)
          + dtwc::wdtwBanded_mv<T>(x, nx, y, ny, ndim, { weights, n_weights }, band)
          + dtwc::adtwBanded_mv<T>(x, nx, y, ny, ndim, band, T(0.5))
-         + dtwc::dtwBanded<T>(x, nx, y, ny, band, T(-1), m);
+         + dtwc::dtwBanded(std::span<const T>(x, nx), std::span<const T>(y, ny), band, T(-1), m);
 }
 
 // The univariate kernels dtw_dispatch.cpp binds beside the lanes and dtwBanded: AROW's for missing data (its cost by the
@@ -74,8 +74,9 @@ T probe_mv(const T *x, std::size_t nx, const T *y, std::size_t ny, std::size_t n
 template <typename T>
 T probe_univariate(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, int metric, T gamma)
 {
-  return dtwc::dtwAROW_banded<T>(x, nx, y, ny, band, static_cast<dtwc::core::MetricType>(metric))
-         + dtwc::soft_dtw<T>({ x, nx }, { y, ny }, gamma);
+  return dtwc::dtwAROW_banded(std::span<const T>(x, nx), std::span<const T>(y, ny),
+                              band, static_cast<dtwc::core::MetricType>(metric))
+         + dtwc::soft_dtw(std::span<const T>(x, nx), std::span<const T>(y, ny), gamma);
 }
 
 } // namespace
@@ -93,29 +94,29 @@ T probe_univariate(const T *x, std::size_t nx, const T *y, std::size_t ny, int b
 // X-13/X-14 are about collapsing those twins, so the report should show both.
 extern "C" {
 
-double dtwc_probe_dtwFull_f64(const double *x, std::size_t nx, const double *y, std::size_t ny)
+double dtwc_probe_full_f64(const double *x, std::size_t nx, const double *y, std::size_t ny)
 {
-  return dtwc::dtwFull<double>(x, nx, y, ny);
+  return dtwc::dtwBanded(std::span<const double>(x, nx), std::span<const double>(y, ny));
 }
 
-float dtwc_probe_dtwFull_f32(const float *x, std::size_t nx, const float *y, std::size_t ny)
+float dtwc_probe_full_f32(const float *x, std::size_t nx, const float *y, std::size_t ny)
 {
-  return dtwc::dtwFull<float>(x, nx, y, ny);
+  return dtwc::dtwBanded(std::span<const float>(x, nx), std::span<const float>(y, ny));
 }
 
-double dtwc_probe_dtwFull_L_f64(
+double dtwc_probe_full_early_f64(
   const double *x, std::size_t nx, const double *y, std::size_t ny, double early_abandon)
 {
-  return dtwc::dtwFull_L<double>(x, nx, y, ny, early_abandon);
+  return dtwc::dtwBanded(std::span<const double>(x, nx), std::span<const double>(y, ny), -1, early_abandon);
 }
 
-float dtwc_probe_dtwFull_L_f32(
+float dtwc_probe_full_early_f32(
   const float *x, std::size_t nx, const float *y, std::size_t ny, float early_abandon)
 {
-  return dtwc::dtwFull_L<float>(x, nx, y, ny, early_abandon);
+  return dtwc::dtwBanded(std::span<const float>(x, nx), std::span<const float>(y, ny), -1, early_abandon);
 }
 
-// The remaining cells and kernels: ADTW, AROW, banded, MSM, TWE. The dtwFull_* wrappers above
+// The remaining cells and kernels: ADTW, AROW, banded, MSM, TWE. The full-DTW wrappers above
 // pass band -1, so no banded loop reaches the listing from them: each precision needs its own.
 double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, std::size_t ny)
 {
@@ -123,7 +124,7 @@ double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, 
   const auto cost = [x, y](std::size_t i, std::size_t j) noexcept { return AbsDiff{}(x[i], y[j]); };
   return core::dtw_kernel_linear<double>(nx, ny, cost, core::ADTWCell<double>{0.5})
          + core::dtw_kernel_banded<double>(nx, ny, 8, cost, core::AROWCell{})
-         + dtwc::dtwBanded<double>(x, nx, y, ny, 8, -1.0)
+         + dtwc::dtwBanded(std::span<const double>(x, nx), std::span<const double>(y, ny), 8, -1.0)
          + core::msm_distance<double>(x, nx, y, ny) + core::twe_distance<double>(x, nx, y, ny);
 }
 
@@ -133,7 +134,7 @@ float dtwc_probe_kernels_f32(const float *x, std::size_t nx, const float *y, std
   const auto cost = [x, y](std::size_t i, std::size_t j) noexcept { return AbsDiff{}(x[i], y[j]); };
   return core::dtw_kernel_linear<float>(nx, ny, cost, core::ADTWCell<float>{0.5f})
          + core::dtw_kernel_banded<float>(nx, ny, 8, cost, core::AROWCell{})
-         + dtwc::dtwBanded<float>(x, nx, y, ny, 8, -1.0f)
+         + dtwc::dtwBanded(std::span<const float>(x, nx), std::span<const float>(y, ny), 8, -1.0f)
          + core::msm_distance<float>(x, nx, y, ny) + core::twe_distance<float>(x, nx, y, ny);
 }
 

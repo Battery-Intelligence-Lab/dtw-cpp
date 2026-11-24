@@ -166,14 +166,13 @@ def plot_distance_matrix(results_list, labels):
 
 
 def plot_memory_efficiency(results_list, labels):
-    """Plot memory efficiency: Full vs Full_L vs Banded."""
+    """Plot memory efficiency: full (band -1) vs banded."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # Memory usage per algorithm for n=4000
     n = 4000
     algorithms = {
-        "dtwFull\n(= dtwFull_L)": n * 8,  # the v1 name of dtwFull_L: one rolling column
-        "dtwFull_L\n(rolling buffer)": n * 8,  # O(n) doubles
+        "dtwBanded\n(band=-1, rolling buffer)": n * 8,  # O(n) doubles
         "dtwBanded\n(band=50)": n * 8,  # O(n) rolling column
         "dtwBanded\n(band=100)": n * 8,  # O(n) rolling column
     }
@@ -181,7 +180,7 @@ def plot_memory_efficiency(results_list, labels):
     names = list(algorithms.keys())
     memory_kb = [v / 1024 for v in algorithms.values()]
 
-    colors = ["#e74c3c", "#2ecc71", "#3498db", "#9b59b6"]
+    colors = ["#2ecc71", "#3498db", "#9b59b6"]
     bars = ax.bar(names, memory_kb, color=colors, alpha=0.8)
 
     for bar, mem in zip(bars, memory_kb):

@@ -181,8 +181,8 @@ namespace algorithms {
                          + std::to_string(k) + ", N=" + std::to_string(N) + ".");
     if (!(dc > 0.0)) throw InvalidInput("tadpole: dc must be > 0.");
 
-    const auto distance = exact_distance(prob); // before the band is read: it takes a direct write
-    const int band = prob.band;
+    const auto distance = exact_distance(prob);
+    const int band = prob.distance().band;
     const bool can_prune = prune && !prob.is_distance_matrix_filled()
                            && detail::bounds_valid(prob.variant_params().variant, prob.metric(), prob.data().ndim,
                                                    prob.data().precision, prob.matrix_dtype(), prob.missing_strategy());

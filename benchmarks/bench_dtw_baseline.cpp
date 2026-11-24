@@ -2,7 +2,7 @@
  * @file bench_dtw_baseline.cpp
  * @brief Baseline microbenchmarks for DTW distance computations.
  *
- * @details Captures performance of dtwFull, dtwFull_L, dtwBanded, and
+ * @details Captures performance of dtwBanded (band -1 is full DTW) and
  *          fill_distance_matrix before any optimisation work begins.
  *          Uses Google Benchmark with deterministic random data (fixed seeds).
  *
@@ -73,29 +73,7 @@ static const char *variant_name(int variant_code)
 }
 
 // ---------------------------------------------------------------------------
-// BM_dtwFull — full O(n*m) DTW for varying series lengths
-// ---------------------------------------------------------------------------
-static void BM_dtwFull(benchmark::State &state)
-{
-  const auto len = static_cast<size_t>(state.range(0));
-  auto x = random_series(len, 42);
-  auto y = random_series(len, 43);
-  for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::dtwFull<double>(x, y));
-  }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
-  state.SetComplexityN(static_cast<int64_t>(len));
-}
-BENCHMARK(BM_dtwFull)
-  ->Arg(100)
-  ->Arg(500)
-  ->Arg(1000)
-  ->Arg(4000)
-  ->Unit(benchmark::kMicrosecond)
-  ->Complexity();
-
-// ---------------------------------------------------------------------------
-// BM_dtwFull_L — linear-space (light) DTW
+// BM_dtwFull_L — full DTW (band -1), linear space
 // ---------------------------------------------------------------------------
 static void BM_dtwFull_L(benchmark::State &state)
 {
@@ -103,7 +81,7 @@ static void BM_dtwFull_L(benchmark::State &state)
   auto x = random_series(len, 42);
   auto y = random_series(len, 43);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::dtwFull_L<double>(x, y));
+    benchmark::DoNotOptimize(dtwc::dtwBanded(x, y));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
   state.SetComplexityN(static_cast<int64_t>(len));
@@ -127,7 +105,7 @@ static void BM_dtwBanded(benchmark::State &state)
   auto x = random_series(len, 42);
   auto y = random_series(len, 43);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::dtwBanded<double>(x, y, band));
+    benchmark::DoNotOptimize(dtwc::dtwBanded(x, y, band));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
   state.SetComplexityN(static_cast<int64_t>(len));
@@ -150,7 +128,7 @@ static void BM_dtwBanded_fullFallback(benchmark::State &state)
   auto x = random_series(len, 42);
   auto y = random_series(len, 43);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::dtwBanded<double>(x, y, -1));
+    benchmark::DoNotOptimize(dtwc::dtwBanded(x, y, -1));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
@@ -170,7 +148,7 @@ static void BM_wdtwBanded_g(benchmark::State &state)
   auto x = random_series(len, 42);
   auto y = random_series(len, 43);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::wdtwBanded<double>(x, y, band, g));
+    benchmark::DoNotOptimize(dtwc::wdtwBanded(x, y, band, g));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
@@ -193,7 +171,7 @@ static void BM_wdtwBanded_precomputed(benchmark::State &state)
   const int max_dev = static_cast<int>(std::max(x.size(), y.size()));
   const auto weights = dtwc::wdtw_weights<double>(max_dev, g);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::wdtwBanded<double>(x, y, weights, band));
+    benchmark::DoNotOptimize(dtwc::wdtwBanded(x, y, weights, band));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
@@ -213,7 +191,7 @@ static void BM_ddtwBanded(benchmark::State &state)
   auto x = random_series(len, 42);
   auto y = random_series(len, 43);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::ddtwBanded<double>(x, y, band));
+    benchmark::DoNotOptimize(dtwc::ddtwBanded(x, y, band));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
@@ -234,7 +212,7 @@ static void BM_adtwBanded(benchmark::State &state)
   auto x = random_series(len, 42);
   auto y = random_series(len, 43);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::adtwBanded<double>(x, y, band, penalty));
+    benchmark::DoNotOptimize(dtwc::adtwBanded(x, y, band, penalty));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
@@ -302,7 +280,7 @@ static void BM_fillDistanceMatrix(benchmark::State &state)
     state.PauseTiming();
     dtwc::Problem prob("bench");
     prob.set_data(make_random_data(N, L));
-    prob.band = band;
+    prob.set_band(band);
     state.ResumeTiming();
 
     prob.fill_distance_matrix();
@@ -339,7 +317,7 @@ static void BM_fillDistanceMatrix_variant(benchmark::State &state)
     state.PauseTiming();
     dtwc::Problem prob("bench_variant");
     prob.set_data(make_random_data(N, L));
-    prob.band = band;
+    prob.set_band(band);
     configure_problem_variant(prob, variant);
     state.ResumeTiming();
 
@@ -435,7 +413,7 @@ BENCHMARK(BM_compute_envelopes)
   ->Unit(benchmark::kNanosecond);
 
 // ---------------------------------------------------------------------------
-// BM_dtwFull_L_SquaredL2 — linear-space DTW with SquaredL2 metric
+// BM_dtwFull_L_SquaredL2 — full DTW (band -1) with SquaredL2 metric
 // ---------------------------------------------------------------------------
 static void BM_dtwFull_L_SquaredL2(benchmark::State &state)
 {
@@ -444,8 +422,7 @@ static void BM_dtwFull_L_SquaredL2(benchmark::State &state)
   auto y = random_series(len, 43);
   for (auto _ : state) {
     benchmark::DoNotOptimize(
-      dtwc::dtwFull_L<double>(x.data(), x.size(), y.data(), y.size(), -1.0,
-                              dtwc::core::MetricType::SquaredL2));
+      dtwc::dtwBanded(x, y, -1, -1.0, dtwc::core::MetricType::SquaredL2));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
   state.SetComplexityN(static_cast<int64_t>(len));
@@ -468,9 +445,9 @@ static void BM_dtwBanded_earlyAbandon(benchmark::State &state)
   auto x = random_series(len, 42);
   auto y = random_series(len, 43);
   // Compute a tight upper bound to make early abandon effective
-  double ub = dtwc::dtwBanded<double>(x, y, band);
+  double ub = dtwc::dtwBanded(x, y, band);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(dtwc::dtwBanded<double>(x, y, band, ub * 1.01));
+    benchmark::DoNotOptimize(dtwc::dtwBanded(x, y, band, ub * 1.01));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
@@ -481,7 +458,7 @@ BENCHMARK(BM_dtwBanded_earlyAbandon)
   ->Unit(benchmark::kMicrosecond);
 
 // ---------------------------------------------------------------------------
-// BM_dtwFull_L_mv_ndim2 — multivariate DTW ndim=2
+// BM_dtwFull_L_mv_ndim2 — full multivariate DTW (band -1), ndim=2
 // ---------------------------------------------------------------------------
 static void BM_dtwFull_L_mv_ndim2(benchmark::State &state)
 {
@@ -490,7 +467,7 @@ static void BM_dtwFull_L_mv_ndim2(benchmark::State &state)
   auto y = random_series(steps * 2, 43);
   for (auto _ : state) {
     benchmark::DoNotOptimize(
-      dtwc::dtwFull_L_mv<double>(x.data(), steps, y.data(), steps, 2));
+      dtwc::dtwBanded_mv<double>(x.data(), steps, y.data(), steps, 2));
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
   state.SetComplexityN(static_cast<int64_t>(steps));

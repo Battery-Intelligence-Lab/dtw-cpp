@@ -63,12 +63,12 @@ The current channel-aware routes are:
 
 | Configuration | Implemented route |
 |---------------|-------------------|
-| Standard, dependent | `dtwFull_L_mv` / `dtwBanded_mv` |
+| Standard, dependent | `dtwBanded_mv` |
 | Standard, independent | `dtw_independent_mv` |
 | DDTW, dependent | per-channel derivative transform followed by Standard multivariate DTW |
-| WDTW, dependent | `wdtwFull_mv` / `wdtwBanded_mv` |
-| ADTW, dependent | `adtwFull_L_mv` / `adtwBanded_mv` |
-| ZeroCost missing data, dependent | `dtwMissing_L_mv` / `dtwMissing_banded_mv` |
+| WDTW, dependent | `wdtwBanded_mv` |
+| ADTW, dependent | `adtwBanded_mv` |
+| ZeroCost missing data, dependent | `dtwMissing_banded_mv` |
 | AROW missing data, dependent | the multivariate AROW cost in the `Problem` resolver |
 
 MSM, TWE, Soft-DTW and the Interpolate missing strategy have no channel-aware

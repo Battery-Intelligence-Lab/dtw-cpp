@@ -11,10 +11,11 @@ Python package `dtwcpp` and the MATLAB package `dtwc` are new in 2.0 (v1.0.0's
 source held an unpublished Python binding, which 2.0 does not carry over): start
 from [Tier 1](../../api/tier-1/).
 
-Most v1.0.0 code builds and runs unchanged. Every `Problem` and `DataLoader`
-method that 2.0 renamed keeps its v1.0.0 name as a `[[deprecated]]` alias that
-forwards to the new one, and `dtwc_cl` still reads v1.0.0's flag spellings,
-with a warning. What needs attention is the behaviour listed further down.
+`dtwc_cl` still reads v1.0.0's flag spellings, with a warning, so most
+command lines run unchanged. C++ code that calls a `Problem` or `DataLoader`
+method that 2.0 renamed stops compiling: the v1.0.0 names are gone, and the C++
+names table below gives the new one of each. What else needs attention is the
+behaviour listed further down.
 
 ## Building
 
@@ -39,8 +40,9 @@ with a warning. What needs attention is the behaviour listed further down.
 - Including `dtwc.hpp` under `-ffast-math` stops the build: NaN marks missing
   values, which `-ffinite-math-only` would let the compiler ignore. Add
   `-fno-finite-math-only` after `-ffast-math`.
-- `settings.hpp`, `timing.hpp` and `parallelisation.hpp` moved to `dtwc/base/`;
-  the old include paths still work and print a message at compile time.
+- `settings.hpp`, `timing.hpp` and `parallelisation.hpp` moved to `dtwc/base/`
+  (`#include "base/settings.hpp"`); the old include paths are gone. `dtwc.hpp`
+  includes all three.
 
 ## C++ names
 
@@ -48,13 +50,14 @@ with a warning. What needs attention is the behaviour listed further down.
 |---|---|
 | `Problem::set_numberOfClusters(n)`, `cluster_size()` | `set_n_clusters(k)`, `n_clusters()` |
 | `refreshDistanceMatrix`, `readDistanceMatrix`, `maxDistance`, `isDistanceMatrixFilled`, `fillDistanceMatrix`, `printDistanceMatrix`, `writeDistanceMatrix` | `refresh_distance_matrix`, `read_distance_matrix`, `max_distance`, `is_distance_matrix_filled`, `fill_distance_matrix`, `print_distance_matrix`, `write_distance_matrix` |
-| `distByInd(i, j)` | `dist_by_ind(i, j)`, which reads the filled matrix and computes nothing; the old name fills the whole matrix on its first call |
+| `distByInd(i, j)` | `dist_by_ind(i, j)`, which reads the filled matrix and computes nothing; the old name filled the whole matrix on its first call |
 | `printClusters`, `writeClusters`, `writeMedoidMembers`, `writeSilhouettes` | `print_clusters`, `write_clusters`, `write_medoid_members`, `write_silhouettes` |
 | `findTotalCost`, `assignClusters`, `calculateMedoids` | `find_total_cost`, `assign_clusters`, `calculate_medoids` |
 | `cluster_by_MIP()`, `cluster_by_kMedoidsPAM()` | `cluster_by_mip()`, `cluster_by_kmedoids_lloyd()` (Lloyd's k-medoids, as before) |
 | `set_clusters(std::vector<int>&)` | `set_clusters(const std::vector<index_t>&)` |
 | public fields `method`, `output_folder`, `name`, `data` | `method()` / `set_method`, `output_folder()` / `set_output_folder`, `name()` / `set_name`, `data()` / `set_data` |
-| public fields `maxIter`, `N_repetition`, `band`, `clusters_ind`, `centroids_ind` | still public (the last two now hold `index_t`); also `set_max_iter`, `set_n_repetitions`, `set_band`, which check their value |
+| public fields `maxIter`, `N_repetition`, `band` | `max_iter()` / `set_max_iter`, `n_repetitions()` / `set_n_repetitions`, `distance().band` / `set_band`; the setters check their value |
+| public fields `clusters_ind`, `centroids_ind` | still public, now holding `index_t`; `labels()` and `medoids()` read them |
 | `init::random(prob)`, `init::Kmeanspp(prob)`, and `Problem::init_fun`, a `std::function<void(Problem &)>` | `init::random(prob, seed)`, `init::Kmeanspp(prob, seed)`; `init_fun` is a `std::function<void(Problem &, std::uint64_t)>` that Lloyd's k-medoids calls with `random_seed() + r` for repetition r (`prob.init_fun = init::Kmeanspp;` still works), and `init()` seeds from `random_seed()`. An initialiser that takes only the `Problem` needs the second parameter |
 | `Problem::cluster()` returning `void` | returns the `core::ClusteringResult` (labels, medoids, cost, iterations, converged) |
 | `distMat`, `distMat_t` (Armadillo) | `distance_matrix()`, a `core::DistanceMatrix` |
@@ -67,7 +70,7 @@ with a warning. What needs attention is the behaviour listed further down.
 | `dtwc::Range`, `dtwc::Index`, `settings::isDebug` | none: write the loop (`for (std::size_t i = 0; i < n; ++i)`) |
 | `dtwc::randGenerator`, in `settings.hpp` | none: every function that draws takes its seed |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |
-| `dtwBanded`, `dtwFull`, `dtwFull_L` | the same names; the scalar type defaults to `double` (v1.0.0's `dtwBanded` defaulted to `float`), with new trailing defaulted parameters and span overloads |
+| `dtwFull(x, y)`, `dtwFull_L(x, y)` and `dtwBanded(x, y, band)` on `std::vector`s, with an explicit element type or without | `dtwBanded(x, y, band)`: band -1, the default, is `dtwFull` and `dtwFull_L`. `x` and `y` are `std::vector`s, `std::span`s, `std::array`s or C arrays of `float` or `double`, and the element type of the series is the type of the distance, so `dtwFull_L<double>(x, y)` is `dtwBanded(x, y)` (v1.0.0's `dtwBanded` defaulted to `float` where none was deduced); a pointer and a length pass as `std::span<const double>(p, n)`. `early_abandon` and `metric` follow the band |
 | `run(task, n, numMaxParallelWorkers = 32)` | the same name; the default is now `0`, every OpenMP thread, and a positive limit is applied (v1.0.0 used every OpenMP thread) |
 
 Counts of series and clusters, labels, medoids and indices are `index_t`
@@ -142,7 +145,7 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   `randGenerator`, and the lowest-cost repetition is kept (v1.0.0 kept the last).
   A medoid at distance 0 from another medoid (a duplicate series) keeps its own
   cluster, where v1.0.0 gave it to the first tied medoid and left its cluster
-  empty; a run that stops at `maxIter` assigns the series to its final medoids
+  empty; a run that stops at `max_iter` assigns the series to its final medoids
   before its cost is taken.
 - The band is the window |i − j| ≤ band for every pair. v1.0.0 centred it on
   the line joining the ends of two series of different lengths. In a `Problem`, a band
@@ -150,10 +153,8 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   naming the smallest band that works; `dtwBanded` and `distance::dtw` return
   the no-path value, `std::numeric_limits<T>::max()`, for such a pair.
 - The setters check their values: `set_n_clusters`, `set_max_iter` and
-  `set_n_repetitions` below 1 and `set_band` below -1 are `InvalidInput`. A
-  direct write to a public field is checked where it is used: a `band` below -1
-  at the next fill, a `maxIter` or `N_repetition` below 1 when Lloyd's
-  k-medoids runs.
+  `set_n_repetitions` below 1 and `set_band` below -1 are `InvalidInput`
+  (v1.0.0 took any value written to its public fields).
 - A NaN or ±inf in a series is `InvalidInput` before any distance is computed,
   unless a missing-data strategy says what NaN means (`set_missing_strategy`).
   A series with no values is `InvalidInput` too, a blank line in a file of one
@@ -191,9 +192,9 @@ The library's writers (`write_clusters`, `write_silhouettes`,
 - The MIP starts from FastPAM's clustering, and both solvers stop at a relative
   gap of 1e-5; v1.0.0 started cold, left HiGHS at its own gap, and set Gurobi's
   NumericFocus to 3 (now 1; MIPFocus is 2). `mip_settings` sets each of them.
-- A direct write to the `band` field takes effect at the next
-  `fill_distance_matrix()`; v1.0.0 kept the distances computed under the old
-  band.
+- `set_band` drops the distance matrix and the clustering, so the next
+  `fill_distance_matrix()` computes under the new band; v1.0.0 kept the
+  distances computed under the old band.
 - Series are stored as `double`, as in v1.0.0. Storing them as `float` is new, and
   opt-in where they are loaded: `DataLoader::dtype`, `dtwc::load(..., dtype)`,
   Python's and MATLAB's `load`, `dtwc_cl --dtype float32`. A `float` read from text

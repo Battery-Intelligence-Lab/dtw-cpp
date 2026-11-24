@@ -182,21 +182,21 @@ TEST_CASE("is_distance_matrix_filled flag is set correctly", "[Phase1][distance_
 // ---------------------------------------------------------------------------
 // 7. DTW full vs banded consistency: with default band=-1, banded == full
 // ---------------------------------------------------------------------------
-TEST_CASE("Default band produces same distances as dtwFull", "[Phase1][distance_matrix]")
+TEST_CASE("Default band produces same distances as dtwBanded with band -1", "[Phase1][distance_matrix]")
 {
   constexpr int N = 5;
   auto prob = make_problem(N);
 
   // Default band is -1 (full DTW).
-  REQUIRE(prob.band == settings::DEFAULT_BAND);
-  REQUIRE(prob.band == -1);
+  REQUIRE(prob.distance().band == settings::DEFAULT_BAND);
+  REQUIRE(prob.distance().band == -1);
 
   prob.fill_distance_matrix();
 
-  // Compare against dtwFull computed directly on the data vectors.
+  // Compare against dtwBanded computed directly on the data vectors.
   for (int i = 0; i < N; ++i) {
     for (int j = i; j < N; ++j) {
-      double expected = dtwFull<data_t>(prob.p_vec(i), prob.p_vec(j));
+      double expected = dtwBanded(prob.p_vec(i), prob.p_vec(j));
       REQUIRE(test_support::dtw_routes_agree<data_t>(
         prob.dist_by_ind(i, j), expected, prob.series(i).size(), prob.series(j).size()));
     }

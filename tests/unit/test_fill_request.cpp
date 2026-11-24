@@ -215,9 +215,8 @@ TEST_CASE("FX-1: a band narrower than the widest length difference is rejected",
   prob.fill_distance_matrix();
   for (int i = 0; i < 3; ++i)
     for (int j = i + 1; j < 3; ++j) {
-      const double oracle = dtwc::dtwBanded<double>(
-        series[static_cast<std::size_t>(i)], series[static_cast<std::size_t>(j)],
-        static_cast<int>(gap));
+      const double oracle = dtwc::dtwBanded(series[static_cast<std::size_t>(i)], series[static_cast<std::size_t>(j)],
+                                            static_cast<int>(gap));
       CHECK(oracle < 1e300);
       CHECK(prob.dist_by_ind(i, j) == oracle);
     }
@@ -286,7 +285,7 @@ TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair
   // Lengths 4 and 10 under band 2: no warping path fits, and the kernels would
   // return the finite max() sentinel for the pair (oracle below).
   const std::vector<std::vector<double>> series{ ramp(4, 0.0), ramp(10, 0.5) };
-  CHECK(dtwc::dtwBanded<double>(series[0], series[1], 2)
+  CHECK(dtwc::dtwBanded(series[0], series[1], 2)
         == std::numeric_limits<double>::max());
 
   dtwc::Problem prob("accessor_band");
@@ -311,7 +310,7 @@ TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair
   prob.set_band(6);
   const auto &distance = prob.dtw_function();
   CHECK(distance(prob.series(0), prob.series(1))
-        == dtwc::dtwBanded<double>(series[0], series[1], 6));
+        == dtwc::dtwBanded(series[0], series[1], 6));
 }
 
 TEST_CASE("FX-1: a series emptied through p_vec is refused on the CPU routes",
@@ -320,7 +319,7 @@ TEST_CASE("FX-1: a series emptied through p_vec is refused on the CPU routes",
   // set_data refuses an empty series, but p_vec edits one in place afterwards.
   // The kernels answer an empty pair with the finite max() sentinel (oracle),
   // which passes every isfinite() guard and which a clustering would sum.
-  CHECK(dtwc::dtwBanded<double>(std::vector<double>{}, ramp(4, 0.0), -1)
+  CHECK(dtwc::dtwBanded(std::vector<double>{}, ramp(4, 0.0), -1)
         == std::numeric_limits<double>::max());
 
   dtwc::Problem prob("cpu_empty");
@@ -359,10 +358,10 @@ TEST_CASE("FX-15: ±inf, and NaN under MissingStrategy::Error, are rejected by p
 
   // The kernels' answers the validator replaces (independent oracle: the raw
   // banded kernel on the same values): inf and NaN, neither a distance.
-  CHECK(std::isinf(dtwc::dtwBanded<double>(std::vector<double>{ 0.0, inf },
-                                           std::vector<double>{ 0.0, 1.0 }, -1)));
-  CHECK(std::isnan(dtwc::dtwBanded<double>(std::vector<double>{ inf },
-                                           std::vector<double>{ inf }, -1)));
+  CHECK(std::isinf(dtwc::dtwBanded(std::vector<double>{ 0.0, inf },
+                                    std::vector<double>{ 0.0, 1.0 }, -1)));
+  CHECK(std::isnan(dtwc::dtwBanded(std::vector<double>{ inf },
+                                    std::vector<double>{ inf }, -1)));
 
   SECTION("+inf on the fill")
   {
@@ -526,8 +525,7 @@ TEST_CASE("An empty series, an infeasible band and float32's parameters come bef
         hold(prob, s, view);
         prob.set_band(2);
         CHECK(message_of<dtwc::InvalidInput>([&] { call(prob, where); }) == band_text(where, 2));
-        prob.set_band(-1);
-        prob.band = 7; // the v1 field, taken at the next check
+        prob.set_band(7);
         CHECK(message_of<dtwc::InvalidInput>([&] { call(prob, where); }) == band_text(where, 7));
       }
   }

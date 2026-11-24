@@ -17,7 +17,7 @@
  *            - BAND-WIRING [HARD]: a Problem with variant=MSM/TWE fills a matrix
  *              whose entries equal core::msm_distance / twe_distance directly.
  *            - BAND-SPEED [ADVISORY, [.] bench]: per-pair kernel wall-time
- *              MSM/TWE <= 1.3x plain DTW DP (dtwFull_L, same DP structure).
+ *              MSM/TWE <= 1.3x plain DTW DP (dtwBanded with band -1, same DP structure).
  *
  *          Oracle values were generated from aeon 1.5.0 on reproducible LCG
  *          series (2026-07-08).
@@ -195,11 +195,11 @@ TEST_CASE("MSM/TWE speed vs plain DTW DP", "[.][msm][twe][bench]")
     };
     { volatile double s = 0;
       for (int p = 0; p < PAIRS; ++p) {
-        s += dtwc::dtwFull_L<double>(A[p], B[p]);
+        s += dtwc::dtwBanded(A[p], B[p]);
         s += msm_distance(A[p], B[p], 1.0);
         s += twe_distance(A[p], B[p], 0.001, 1.0);
       } (void)s; }
-    const double dtw = timeit([](const std::vector<double>& a, const std::vector<double>& b) { return dtwc::dtwFull_L<double>(a, b); });
+    const double dtw = timeit([](const std::vector<double>& a, const std::vector<double>& b) { return dtwc::dtwBanded(a, b); });
     const double msm = timeit([](const std::vector<double>& a, const std::vector<double>& b) { return msm_distance(a, b, 1.0); });
     const double twe = timeit([](const std::vector<double>& a, const std::vector<double>& b) { return twe_distance(a, b, 0.001, 1.0); });
     std::printf("  %4zu  %8.3f  %8.3f  %6.2fx  %8.3f  %6.2fx\n",

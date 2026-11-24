@@ -105,7 +105,7 @@ TEMPLATE_TEST_CASE("the facade and a Problem's fill accept the same configuratio
         const bool problem_refuses =
           refuses([&] { problem.set_distance(DistanceConfig{ params, metric, missing, -1 }); });
         const bool facade_refuses =
-          refuses([&] { (void)dtwc::distance::dtw<T>(clean_x, clean_y, params, -1, metric, missing); });
+          refuses([&] { (void)dtwc::distance::dtw(clean_x, clean_y, params, -1, metric, missing); });
         CHECK(problem_refuses == facade_refuses);
         if (problem_refuses || facade_refuses) continue;
         ++accepted;
@@ -117,7 +117,7 @@ TEMPLATE_TEST_CASE("the facade and a Problem's fill accept the same configuratio
             for (std::size_t j = i + 1; j < series.size(); ++j) {
               const double fill = problem.dist_by_ind(static_cast<dtwc::index_t>(i), static_cast<dtwc::index_t>(j));
               const auto dtw = [&](std::size_t a, std::size_t b) -> double {
-                return dtwc::distance::dtw<T>(std::span<const T>{ series[a] }, std::span<const T>{ series[b] }, params,
+                return dtwc::distance::dtw(std::span<const T>{ series[a] }, std::span<const T>{ series[b] }, params,
                                               band, metric, missing);
               };
               double facade = dtw(i, j);
@@ -171,7 +171,7 @@ template <typename T>
 std::string facade_message(const DistanceConfig &c)
 {
   const std::vector<T> x{ T(0), std::numeric_limits<T>::quiet_NaN() }, y{ T(0), T(1) };
-  return message_of([&] { (void)dtwc::distance::dtw<T>(x, y, c.variant, c.band, c.metric, c.missing); });
+  return message_of([&] { (void)dtwc::distance::dtw(x, y, c.variant, c.band, c.metric, c.missing); });
 }
 
 /// A configuration no kernel implements, with the rule it breaks and the one message for it.

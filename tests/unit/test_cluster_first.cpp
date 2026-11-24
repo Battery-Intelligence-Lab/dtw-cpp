@@ -248,7 +248,7 @@ TEST_CASE("set_n_clusters then cluster still clusters, for every method that run
   double expected = 0.0;
   for (std::size_t i = 0; i < kSeries.size(); ++i) {
     const auto medoid = static_cast<std::size_t>(prob.medoids()[static_cast<std::size_t>(prob.labels()[i])]);
-    expected += dtwc::dtwFull_L<double>(kSeries[i], kSeries[medoid]);
+    expected += dtwc::dtwBanded(kSeries[i], kSeries[medoid]);
   }
   CHECK(prob.find_total_cost() == expected);
   CHECK(prob.centroid_of(4) == prob.medoids()[static_cast<std::size_t>(prob.labels()[4])]);
@@ -291,10 +291,10 @@ TEST_CASE("set_band refuses a band below -1 and keeps the band it had", "[proble
     REQUIRE_THROWS_MATCHES(prob.set_band(bad), dtwc::InvalidInput,
                            MessageMatches(ContainsSubstring("Problem::set_band")
                                           && ContainsSubstring("got " + std::to_string(bad))));
-    CHECK(prob.band == 2);
+    CHECK(prob.distance().band == 2);
   }
   prob.set_band(-1); // full DTW
-  CHECK(prob.band == -1);
+  CHECK(prob.distance().band == -1);
   prob.set_band(0);
-  CHECK(prob.band == 0);
+  CHECK(prob.distance().band == 0);
 }

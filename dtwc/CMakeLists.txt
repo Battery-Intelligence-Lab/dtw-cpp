@@ -93,12 +93,9 @@ target_sources(dtwc_core
   distance.hpp
   fileOperations.hpp
   initialisation.hpp
-  parallelisation.hpp
   Problem.hpp
   scores.hpp
-  settings.hpp
   test_api.hpp
-  timing.hpp
   utility.hpp
   # DTW implementations
   warping.hpp

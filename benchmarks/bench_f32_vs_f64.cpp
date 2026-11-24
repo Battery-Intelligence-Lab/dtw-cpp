@@ -38,7 +38,7 @@ static void BM_dtw_full(benchmark::State &state)
   for (auto _ : state) {
     int i = (pair * 2) % 200;
     int j = (pair * 2 + 1) % 200;
-    auto d = dtwc::dtwFull<T>(series[i], series[j]);
+    auto d = dtwc::dtwBanded(series[i], series[j]);
     benchmark::DoNotOptimize(d);
     ++pair;
   }
@@ -56,7 +56,7 @@ static void BM_dtw_banded(benchmark::State &state)
   for (auto _ : state) {
     int i = (pair * 2) % 200;
     int j = (pair * 2 + 1) % 200;
-    auto d = dtwc::dtwBanded<T>(series[i], series[j], band);
+    auto d = dtwc::dtwBanded(series[i], series[j], band);
     benchmark::DoNotOptimize(d);
     ++pair;
   }

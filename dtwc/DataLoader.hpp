@@ -51,16 +51,12 @@ public:
     start_col_ = N;
     return *this;
   }
-  [[deprecated("use start_column")]]
-  DataLoader &startColumn(int N) { return start_column(N); }
 
   DataLoader &start_row(index_t N)
   {
     start_row_ = N;
     return *this;
   }
-  [[deprecated("use start_row")]]
-  DataLoader &startRow(int N) { return start_row(N); }
 
   /// Set number of series to read (-1 = all). Rejects N < -1.
   DataLoader &n_data(index_t N)

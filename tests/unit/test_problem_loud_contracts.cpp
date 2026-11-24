@@ -44,20 +44,6 @@
 #include <sys/resource.h>
 #endif
 
-#if defined(__clang__)
-#  define DTWC_PUSH_NO_DEPRECATED _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
-#  define DTWC_POP_NO_DEPRECATED  _Pragma("clang diagnostic pop")
-#elif defined(__GNUC__)
-#  define DTWC_PUSH_NO_DEPRECATED _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
-#  define DTWC_POP_NO_DEPRECATED  _Pragma("GCC diagnostic pop")
-#elif defined(_MSC_VER)
-#  define DTWC_PUSH_NO_DEPRECATED __pragma(warning(push)) __pragma(warning(disable : 4996))
-#  define DTWC_POP_NO_DEPRECATED  __pragma(warning(pop))
-#else
-#  define DTWC_PUSH_NO_DEPRECATED
-#  define DTWC_POP_NO_DEPRECATED
-#endif
-
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
 namespace fs = std::filesystem;
@@ -119,27 +105,6 @@ TEST_CASE("O-06: the iteration setters refuse n < 1 and keep the value they had"
   prob.set_n_repetitions(1);
   CHECK(prob.max_iter() == 1);
   CHECK(prob.n_repetitions() == 1);
-}
-
-TEST_CASE("O-06: Lloyd refuses zero iterations held by the deprecated field",
-          "[problem][o06][lloyd]")
-{
-  auto prob = six_series("o06_lloyd");
-  prob.set_n_clusters(2);
-  DTWC_PUSH_NO_DEPRECATED
-  prob.maxIter = 0; // the one route left around set_max_iter
-  DTWC_POP_NO_DEPRECATED
-  REQUIRE_THROWS_MATCHES(prob.cluster_by_kmedoids_lloyd(), dtwc::InvalidInput,
-                         MessageMatches(ContainsSubstring(
-                           "Lloyd k-medoids requires max_iter >= 1.")));
-  CHECK(prob.labels().empty()); // the refused run published nothing
-
-  // Control: the same Problem clusters once the field holds a valid count.
-  DTWC_PUSH_NO_DEPRECATED
-  prob.maxIter = 5;
-  DTWC_POP_NO_DEPRECATED
-  REQUIRE_NOTHROW(prob.cluster_by_kmedoids_lloyd());
-  CHECK(prob.last_iterations() >= 1);
 }
 
 TEST_CASE("A float32 matrix refuses a distance beyond float32's range, naming the pair and the fix",

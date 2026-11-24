@@ -718,7 +718,7 @@ NB_MODULE(_dtwcpp_core, m)
     const auto c = distance_config(variant, band, metric, missing_strategy, wdtw_g, adtw_penalty, sdtw_gamma,
                                    msm_c, twe_nu, twe_lambda);
     nb::gil_scoped_release release;
-    return dtwc::distance::dtw<double>(std::span<const double>(x.data(), x.size()),
+    return dtwc::distance::dtw(std::span<const double>(x.data(), x.size()),
                                        std::span<const double>(y.data(), y.size()), c.variant, c.band,
                                        c.metric, c.missing); }, "x"_a, "y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g, "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda,
         "DTW-family distance of two float64 series (dtwc::distance::dtw).\n\n"
@@ -985,7 +985,7 @@ NB_MODULE(_dtwcpp_core, m)
     .def_prop_rw("max_iter", &dtwc::Problem::max_iter, &dtwc::Problem::set_max_iter)
     .def_prop_rw("n_repetitions", &dtwc::Problem::n_repetitions, &dtwc::Problem::set_n_repetitions, "Repetitions for iterative methods.")
     .def_prop_rw("random_seed", &dtwc::Problem::random_seed, &dtwc::Problem::set_random_seed, "Invocation-local seed for Lloyd and MIP warm starts.")
-    .def_prop_rw("band", [](const dtwc::Problem &p) { return p.band; }, [](dtwc::Problem &p, int value) { p.set_band(value); })
+    .def_prop_rw("band", [](const dtwc::Problem &p) { return p.distance().band; }, [](dtwc::Problem &p, int value) { p.set_band(value); })
     .def_prop_rw("variant_params", [](const dtwc::Problem &p) { return FrozenParams{ p.variant_params() }; }, [](dtwc::Problem &p, dtwc::core::DTWVariantParams value) { p.set_variant(value); },
                  "The DTW variant and its parameters, read-only: assign a DTWVariantParams\n"
                  "(or call set_variant_params) to change them, which drops the matrix.")

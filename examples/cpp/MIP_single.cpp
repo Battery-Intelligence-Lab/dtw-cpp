@@ -36,7 +36,7 @@ int main(int argc, char **argv)
   prob.fill_distance_matrix();
 
   std::cout << "Finished calculating distances " << clk << std::endl;
-  std::cout << "Band used " << prob.band << "\n\n\n";
+  std::cout << "Band used " << prob.distance().band << "\n\n\n";
 
   prob.set_method(dtwc::Method::MIP);
 
