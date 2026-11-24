@@ -14,6 +14,7 @@ function(dtwc_setup_dependencies)
       NAME Catch2
       URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
       URL_HASH SHA256=650795f6501af514f806e78c554729847b98db6935e69076f36bb03ed2e985ef
+      SYSTEM YES
       OPTIONS
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
