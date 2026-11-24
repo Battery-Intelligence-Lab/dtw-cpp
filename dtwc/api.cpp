@@ -8,7 +8,6 @@
 
 #include "Problem.hpp"
 #include "cdist.hpp"
-#include "cli/config.hpp"
 #include "cli/run.hpp"
 #include "core/matrix_io.hpp"
 #include "base/env.hpp"
@@ -33,14 +32,14 @@ namespace {
     if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
   }
 
-  /// Refuse a reader option of `cfg` (skip_cols, skip_rows, delimiter, dtype) that is not at its value in `defaults`
-  /// and differs from the one `dataset` was made with: the Dataset is read with its own, so the Config's would be
-  /// dropped without a word. A Config cannot say which options were given, so its defaults stand for "not given".
+  /// Refuse a reader option of `cfg` (skip_cols, skip_rows, delimiter, dtype) that is not at its default and differs
+  /// from the one `dataset` was made with: the Dataset is read with its own, so the Config's would be dropped without
+  /// a word. A Config cannot say which options were given, so its defaults stand for "not given".
   /// A Dataset holds no column: a path's read takes the Config's, as run() does, and series in memory cannot honour
   /// one.
-  void require_options_made_with(const Dataset &dataset, const Config &cfg, const char *where,
-                                 const Config &defaults = Config{})
+  void require_options_made_with(const Dataset &dataset, const Config &cfg, const char *where)
   {
+    const Config defaults{};
     const auto quoted = [](char c) { return c == '\0' ? std::string("''") : std::string{ '\'', c, '\'' }; };
     const auto dtype = [](core::Precision p) { return std::string(name_of(core::precision_names, p)); };
     for (const auto &[key, given, standard, made] :
@@ -51,10 +50,9 @@ namespace {
            std::tuple{ "delimiter", quoted(cfg.delimiter), quoted(defaults.delimiter), quoted(dataset.delimiter()) },
            std::tuple{ "dtype", dtype(cfg.dtype), dtype(defaults.dtype), dtype(dataset.dtype()) } }) {
       if (given != standard && given != made)
-        throw InvalidInput(std::string(where) + ": the Dataset was made with " + key + " " + made
-                           + " and the settings give " + key + " " + given
-                           + "; a Dataset keeps the options it was made with, so pass " + key
-                           + " to load_data, or leave it out of the settings.");
+        throw InvalidInput(std::string(where) + ": the Dataset was made with " + key + " " + made + " and " + key
+                           + " " + given + " was given; a Dataset keeps the options it was made with, so pass " + key
+                           + " to load, or leave it out.");
     }
     if (!dataset.is_path()) require_reader_options(std::nullopt, 0, 0, '\0', cfg.column);
   }
@@ -188,82 +186,17 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
   config.output.clear(); // Result::save writes; cluster() does not
   std::tie(config.device, config.device_index) =
     device.empty() ? detail::parse_device(dtwc::device()) : detail::parse_device(device);
-  return do_clustering(std::move(dataset), config);
+  return cluster(std::move(dataset), config);
 }
 
-namespace {
-
-  std::vector<std::pair<std::string, std::string>>
-    to_string_pairs(std::initializer_list<SettingPair> options)
-  {
-    std::vector<std::pair<std::string, std::string>> pairs;
-    pairs.reserve(options.size());
-    for (const auto &[k, v] : options) {
-      pairs.emplace_back(std::string(k), std::string(v));
-    }
-    return pairs;
-  }
-
-} // namespace
-
-Config make_settings(std::initializer_list<SettingPair> options)
+Result cluster(const Dataset &dataset, const Config &cfg)
 {
-  Config base;
-  std::tie(base.device, base.device_index) = detail::parse_device(dtwc::device());
-  return make_settings(std::move(base), options);
+  return cluster(Dataset(dataset), cfg);
 }
 
-Config make_settings(Config base, std::initializer_list<SettingPair> overrides)
+Result cluster(Dataset &&dataset, const Config &cfg)
 {
-  return parse_config(std::move(base), to_string_pairs(overrides));
-}
-
-namespace settings {
-  Config make(std::initializer_list<SettingPair> options) { return make_settings(options); }
-  Config make(Config base, std::initializer_list<SettingPair> overrides)
-  {
-    return make_settings(std::move(base), overrides);
-  }
-} // namespace settings
-
-Dataset load_data(const std::filesystem::path &source, const Config &cfg)
-{
-  return load(source, cfg.skip_cols, cfg.skip_rows, cfg.delimiter, cfg.name, cfg.dtype);
-}
-
-Dataset load_data(Dataset::series_type source, const Config &cfg)
-{
-  return load(std::move(source), cfg.skip_cols, cfg.skip_rows, cfg.delimiter, cfg.name, cfg.dtype);
-}
-
-Dataset load_data(const Config &cfg)
-{
-  if (cfg.input.empty()) {
-    throw InvalidInput("load_data: settings.input is empty; pass a source path or set 'input' in settings.");
-  }
-  return load_data(utf8_to_path(cfg.input), cfg);
-}
-
-Dataset load_data(const std::filesystem::path &source, index_t skip_cols, index_t skip_rows,
-                  char delimiter, std::string_view name, core::Precision dtype)
-{
-  return load(source, skip_cols, skip_rows, delimiter, name, dtype);
-}
-
-Dataset load_data(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
-                  char delimiter, std::string_view name, core::Precision dtype)
-{
-  return load(std::move(source), skip_cols, skip_rows, delimiter, name, dtype);
-}
-
-Result do_clustering(const Dataset &dataset, const Config &cfg)
-{
-  return do_clustering(Dataset(dataset), cfg);
-}
-
-Result do_clustering(Dataset &&dataset, const Config &cfg)
-{
-  require_options_made_with(dataset, cfg, "do_clustering");
+  require_options_made_with(dataset, cfg, "cluster");
   Config config = cfg;
   if (config.name.empty()) config.name = dataset.name();
   config.dtype = dataset.dtype();
@@ -279,31 +212,6 @@ Result do_clustering(Dataset &&dataset, const Config &cfg)
   config.skip_rows = dataset.skip_rows();
   config.delimiter = dataset.delimiter();
   return run(config);
-}
-
-Result do_clustering(const Dataset &data, const Config &cfg,
-                     std::initializer_list<SettingPair> overrides)
-{
-  return do_clustering(Dataset(data), cfg, overrides);
-}
-
-Result do_clustering(Dataset &&data, const Config &cfg,
-                     std::initializer_list<SettingPair> overrides)
-{
-  // An override names its option, so even one at its default conflicts with another value the Dataset was made
-  // with: given over the Dataset's own options, it must leave them as they are.
-  Config own = cfg;
-  own.skip_cols = data.skip_cols();
-  own.skip_rows = data.skip_rows();
-  own.delimiter = data.delimiter();
-  own.dtype = data.dtype();
-  require_options_made_with(data, make_settings(own, overrides), "do_clustering", own);
-  return do_clustering(std::move(data), make_settings(cfg, overrides));
-}
-
-void write_data(const Result &result, const std::filesystem::path &directory)
-{
-  result.save(directory);
 }
 
 std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg)
@@ -330,7 +238,9 @@ std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg)
 
 std::vector<double> cdist(const Dataset &X, const Dataset &Y)
 {
-  return cdist(X, Y, make_settings());
+  Config cfg; // dtwc_cl's defaults, on the process device
+  std::tie(cfg.device, cfg.device_index) = detail::parse_device(dtwc::device());
+  return cdist(X, Y, cfg);
 }
 
 } // namespace dtwc

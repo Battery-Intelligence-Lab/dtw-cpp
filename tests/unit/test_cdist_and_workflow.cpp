@@ -1,6 +1,6 @@
 /** @file test_cdist_and_workflow.cpp
- *  @brief Unit tests for cross-collection dtwc::cdist and the CasADi-style
- *         settings -> load_data -> do_clustering -> write_data workflow.
+ *  @brief Unit tests for cross-collection dtwc::cdist and for the files and the checkpoint
+ *         cluster(Dataset, Config) writes.
  *  @author Volkan Kumtepeli
  */
 
@@ -16,7 +16,9 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -235,10 +237,10 @@ TEST_CASE("cdist matches per-pair dtw oracle across rectangular, ragged, banded,
 #endif
 }
 
-TEST_CASE("CasADi-style settings -> load_data -> do_clustering -> write_data workflow",
-          "[api][workflow]")
+TEST_CASE("cluster(Dataset, Config) writes the files and checkpoint its Config names, and nothing else",
+          "[api][cluster]")
 {
-  ScratchDirectory scratch("dtwc_workflow");
+  ScratchDirectory scratch("dtwc_cluster_config");
   const fs::path csv_path = scratch.path / "series.csv";
   {
     std::ofstream out(csv_path);
@@ -254,69 +256,72 @@ TEST_CASE("CasADi-style settings -> load_data -> do_clustering -> write_data wor
   const fs::path auto_out = scratch.path / "auto_results";
   const fs::path ckpt_dir = scratch.path / "ckpt";
   const fs::path manual_out = scratch.path / "manual_results";
+  const auto entries = [&] {
+    return std::distance(fs::recursive_directory_iterator(scratch.path), fs::recursive_directory_iterator{});
+  };
 
-  // 1. Crash-safe persistent workflow: auto-writes output + checkpoint
-  const dtwc::Config cfg = dtwc::make_settings({
-    { "n-clusters", "2" },
-    { "method", "pam" },
-    { "band", "2" },
-    { "skip-rows", "1" },
-    { "skip-cols", "1" },
-    { "output", auto_out.string() },
-    { "checkpoint", ckpt_dir.string() },
-    { "name", "wf" },
-  });
-  const dtwc::Config cfg_ns = dtwc::settings::make({ { "n-clusters", "2" } });
-  REQUIRE(cfg_ns.k == 2);
+  // The Dataset holds the reader options (a header line, an id column); the Config holds every other setting.
+  auto ds = dtwc::load(csv_path, 1, 1);
+  dtwc::Config cfg;
+  cfg.k = 2;
+  cfg.method = dtwc::Method::PAM;
+  cfg.band = 2;
+  cfg.skip_cols = 1; // the Dataset's own: equal, so not refused
+  cfg.skip_rows = 1;
+  cfg.name = "sensor";
+  cfg.output = auto_out.string();
+  cfg.checkpoint = ckpt_dir.string();
 
-  auto ds = dtwc::load_data(csv_path, cfg);
-  const auto res = dtwc::do_clustering(ds, cfg);
+  // 1. The result files and the report go to cfg.output, the distance matrix to cfg.checkpoint.
+  const auto res = dtwc::cluster(ds, cfg);
   REQUIRE(res.labels().size() == 6);
   REQUIRE(res.medoids().size() == 2);
   REQUIRE(res.labels()[0] == res.labels()[1]);
   REQUIRE(res.labels()[0] == res.labels()[2]);
   REQUIRE(res.labels()[3] == res.labels()[4]);
   REQUIRE(res.labels()[0] != res.labels()[3]);
-  REQUIRE(fs::is_regular_file(auto_out / "wf_labels.csv"));
-  REQUIRE(fs::is_regular_file(auto_out / "wf_medoids.csv"));
-  REQUIRE(fs::is_regular_file(auto_out / "wf_report.txt"));
+  REQUIRE(fs::is_regular_file(auto_out / "sensor_labels.csv"));
+  REQUIRE(fs::is_regular_file(auto_out / "sensor_medoids.csv"));
+  REQUIRE(fs::is_regular_file(auto_out / "sensor_report.txt"));
 #ifdef DTWC_HAS_MMAP
-  REQUIRE(fs::is_regular_file(ckpt_dir / "wf.dtwm"));
+  REQUIRE(fs::is_regular_file(ckpt_dir / "sensor.dtwm"));
+  // A second run with the same checkpoint resumes from it.
+  const auto resumed = dtwc::cluster(ds, cfg);
+  REQUIRE(resumed.labels() == res.labels());
+  REQUIRE(std::regex_search(resumed.report(), std::regex(R"(the checkpoint\s+resumed)"))); // the report wraps its notes
 #endif
 
-  // 2. Pure in-memory override (`output = ""`) + explicit write_data
-  const fs::path unused_out = scratch.path / "should_not_exist";
-  const auto mem_res = dtwc::do_clustering(ds, cfg, { { "output", "" }, { "checkpoint", "" } });
-  REQUIRE(!fs::exists(unused_out));
+  // 2. A Config with no output and no checkpoint writes nothing, and clusters alike; Result::save writes on request.
+  dtwc::Config in_memory = cfg;
+  in_memory.output.clear();
+  in_memory.checkpoint.clear();
+  const auto written = entries();
+  const auto mem_res = dtwc::cluster(ds, in_memory);
+  REQUIRE(entries() == written);
   REQUIRE(mem_res.labels() == res.labels());
   REQUIRE_THAT(mem_res.cost(), Catch::Matchers::WithinRel(res.cost(), 1e-12));
 
-  dtwc::write_data(mem_res, manual_out);
-  REQUIRE(fs::is_regular_file(manual_out / "wf_labels.csv"));
-  REQUIRE(fs::is_regular_file(manual_out / "wf_medoids.csv"));
+  mem_res.save(manual_out);
+  REQUIRE(fs::is_regular_file(manual_out / "sensor_labels.csv"));
+  REQUIRE(fs::is_regular_file(manual_out / "sensor_medoids.csv"));
 
-  // 3. Dataset-level cdist using settings Config
+  // 3. Dataset-level cdist with the same Config.
   const auto D_ds = dtwc::cdist(ds, ds, cfg);
   REQUIRE(D_ds.size() == 36);
   for (std::size_t i = 0; i < 6; ++i) {
     REQUIRE_THAT(D_ds[i * 6 + i], Catch::Matchers::WithinAbs(0.0, 1e-12));
   }
 
-  // 4. A Dataset is read with the options it was made with: settings that give one another value are refused,
-  //    naming it, and so is an override that gives the default; the same value runs.
+  // 4. A Dataset is read with the options it was made with: a Config that gives another value is refused, naming
+  //    it; the same value runs.
   using Catch::Matchers::ContainsSubstring;
   using Catch::Matchers::MessageMatches;
-  REQUIRE_THROWS_MATCHES(dtwc::do_clustering(ds, cfg, { { "output", "" }, { "skip-rows", "2" } }), dtwc::InvalidInput,
-                         MessageMatches(ContainsSubstring("skip_rows 1 and the settings give skip_rows 2")));
+  dtwc::Config other = in_memory;
+  other.skip_rows = 2;
+  REQUIRE_THROWS_MATCHES(dtwc::cluster(ds, other), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("skip_rows 1 and skip_rows 2 was given")));
   REQUIRE_THROWS_MATCHES(dtwc::cdist(dtwc::load(make_equal_series(3, 4, 0.0)), ds, cfg), dtwc::InvalidInput,
-                         MessageMatches(ContainsSubstring("skip_cols 0 and the settings give skip_cols 1")));
-  REQUIRE_THROWS_MATCHES(dtwc::do_clustering(ds, cfg, { { "output", "" }, { "skip-rows", "0" } }), dtwc::InvalidInput,
-                         MessageMatches(ContainsSubstring("skip_rows 1 and the settings give skip_rows 0")));
-  REQUIRE(dtwc::do_clustering(ds, cfg, { { "output", "" }, { "checkpoint", "" }, { "skip-rows", "1" } }).labels()
-          == res.labels());
-
-  // Unknown key in make_settings / settings::make fails loudly with InvalidInput
-  REQUIRE_THROWS_AS(dtwc::make_settings({ { "not-a-setting", "1" } }), dtwc::InvalidInput);
-  REQUIRE_THROWS_AS(dtwc::settings::make({ { "not-a-setting", "1" } }), dtwc::InvalidInput);
+                         MessageMatches(ContainsSubstring("skip_cols 0 and skip_cols 1 was given")));
+  REQUIRE(dtwc::cluster(ds, in_memory).labels() == res.labels());
 }
 
