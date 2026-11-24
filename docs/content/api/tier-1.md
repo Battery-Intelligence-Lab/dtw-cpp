@@ -220,7 +220,8 @@ where `save` fills it first. Leaving it out, `None` or `""` in Python and `''` i
 nothing. `checkpoint` saves the distance matrix there as `<name>.dtwm` and resumes from it where it
 holds one for these data ([Checkpointing](../../getting-started/checkpointing/)); a method that computes
 no distance matrix writes none. `checkpoint_interval` saves it every that many rows (0, the default:
-once, at the end) and needs `checkpoint`: without one, or below 0, it is `InvalidInput`. In C++ they are
+once, at the end) and needs `checkpoint`: without one it is `InvalidInput`, and in Python and MATLAB so is
+one below 0. In C++ they are
 fields of the `Config` that `cluster(data, config)` takes, whose `output` starts at `dtwc_cl`'s
 `./results`: clear it to cluster in memory, as the six-value `cluster()` does.
 
