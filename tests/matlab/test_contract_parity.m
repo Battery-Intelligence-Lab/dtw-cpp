@@ -539,6 +539,10 @@ function test_problem_set_mip_settings_roundtrip(testCase)
     verifyEqual(testCase, got.mip_gap, 1e-4, 'AbsTol', 1e-12);
     verifyEqual(testCase, got.time_limit_sec, 30);
     verifyEqual(testCase, got.warm_start, false);
+    err = capture_error(@() prob.set_mip_settings(struct('lr_root', 'subgradient')));   % a leftover or a typo is refused
+    verifyEqual(testCase, {err.identifier, err.message}, {'dtwc:invalidArgument', ...
+        ['unknown mip setting ''lr_root''. Valid: mip_gap, time_limit_sec, warm_start, numeric_focus, ' ...
+         'mip_focus, verbose_solver, lr_max_nodes.']});
 end
 
 function test_problem_set_mip_settings_lr_max_nodes(testCase)
