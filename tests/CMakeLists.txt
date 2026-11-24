@@ -78,9 +78,8 @@ dtwc_add_test(NAME unit_test_distance_matrix_csv SOURCE ${_dtwc_test_source_unit
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f14-distance-matrix-csv-unit" FIXTURE_DEFINE DTWC_F14_TEST_ROOT
     MARKER "${_f14_marker}")
 
-# Executed public-API gate; Lloyd's artifacts stay inside the build tree.
-dtwc_add_test(NAME unit_test_problem_encapsulation SOURCE ${_dtwc_test_source_unit_test_problem_encapsulation}
-    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api" FIXTURE_DEFINE DTWC_F19_TEST_ROOT)
+# Executed public-API gate.
+dtwc_add_test(NAME unit_test_problem_encapsulation SOURCE ${_dtwc_test_source_unit_test_problem_encapsulation})
 
 # The three portable deterministic generator schedules.
 dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_unit_test_deterministic_series})

@@ -17,9 +17,11 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   it, and such a build says so when it runs.
 - Counts, labels, medoids and indices are `dtwc::index_t` (`std::int64_t`): code that keeps `clusters_ind` or
   `centroids_ind` in a `std::vector<int>` stops compiling; declare it `std::vector<dtwc::index_t>`.
-- A `Problem` moves but no longer copies. Its fields `method`, `output_folder`, `name`, `data`, `maxIter`, `N_repetition`
-  and `band` are accessors and setters now (`method()`, `max_iter()` / `set_max_iter`, `n_repetitions()` /
-  `set_n_repetitions`, `distance().band` / `set_band`, ...); `init_fun`, `clusters_ind` and `centroids_ind` stay public.
+- A `Problem` moves but no longer copies. Its fields `method`, `name`, `data`, `maxIter`, `N_repetition` and `band` are
+  accessors and setters now (`method()`, `max_iter()` / `set_max_iter`, `n_repetitions()` / `set_n_repetitions`,
+  `distance().band` / `set_band`, ...); `init_fun`, `clusters_ind` and `centroids_ind` stay public. `output_folder` is
+  gone: a `Problem` writes no file, and the directory of a result's files is an argument of `write_result_files` and
+  `Result::save`.
 - The `[[deprecated]]` v1.0.0 spellings are removed, so code that still calls them stops compiling (the migration
   guide gives each new name): on `Problem` `set_numberOfClusters`, `cluster_size`, `refreshDistanceMatrix`,
   `readDistanceMatrix`, `maxDistance`, `distByInd`, `isDistanceMatrixFilled`, `fillDistanceMatrix`,
@@ -442,7 +444,7 @@ Soft-DTW, Python or CUDA), on the machine named.
 - `Problem::resize()`: `set_n_clusters` no longer sizes `clusters_ind` and `centroids_ind`, which stay empty until a
   clustering writes them.
 - `settings::root_folder`, `dtwc_folder`, `resultsPath`, `dataPath`, `dtwc_dataPath` and the `DTWC_ROOT_FOLDER` and
-  `CURRENT_ROOT_FOLDER` macros: pass paths explicitly; a `Problem` writes to `./results/` in the working directory.
+  `CURRENT_ROOT_FOLDER` macros: pass paths explicitly.
 - `settings::DEFAULT_BAND_LENGTH`: it is `settings::DEFAULT_BAND`.
 - The `dtwc::solver` MIP helpers that `dtwc.hpp` reached (`Element`, `Triplet`, `RowMajor`, `ColumnMajor`, `isAround`,
   `isFractional`, ...), with `dtwc/types/element_types.hpp` and `types_util.hpp`.
