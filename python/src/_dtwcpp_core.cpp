@@ -612,6 +612,7 @@ NB_MODULE(_dtwcpp_core, m)
   def_named(config, "solver", [](Config &c) -> dtwc::Solver & { return c.solver; }, dtwc::solver_names);
   def_named(config, "gpu_precision", [](Config &c) -> dtwc::GpuPrecision & { return c.gpu_precision; }, dtwc::gpu_precision_names);
   def_field<double>(config, "gpu_share", [](Config &c) -> double & { return c.gpu_share; });
+  def_field<bool>(config, "fallback", [](Config &c) -> bool & { return c.fallback; });
   def_named(config, "matrix_dtype", [](Config &c) -> dtwc::core::Precision & { return c.matrix_dtype; }, dtwc::core::precision_names);
   def_field<double>(config, "wdtw_g", [](Config &c) -> double & { return c.variant.wdtw_g; });
   def_field<double>(config, "adtw_penalty", [](Config &c) -> double & { return c.variant.adtw_penalty; });
@@ -739,7 +740,7 @@ NB_MODULE(_dtwcpp_core, m)
         "Compute Soft-DTW gradient w.r.t. first series x (zero-copy from numpy).\n\n"
         "NaN or +-inf in x or y raises InvalidInput.");
 
-  m.def("_cdist", [](const dtwc::Data &X, const dtwc::Data &Y, const std::string &variant, int band, const std::string &metric, const std::string &missing_strategy, double wdtw_g, double adtw_penalty, double sdtw_gamma, double msm_c, double twe_nu, double twe_lambda, const std::string &mv_mode, const std::string &device, const std::string &gpu_precision, double gpu_share, const std::string &matrix_dtype) -> nb::object {
+  m.def("_cdist", [](const dtwc::Data &X, const dtwc::Data &Y, const std::string &variant, int band, const std::string &metric, const std::string &missing_strategy, double wdtw_g, double adtw_penalty, double sdtw_gamma, double msm_c, double twe_nu, double twe_lambda, const std::string &mv_mode, const std::string &device, const std::string &gpu_precision, double gpu_share, const std::string &matrix_dtype, bool fallback) -> nb::object {
     auto c = distance_config(variant, band, metric, missing_strategy, wdtw_g,
                              adtw_penalty, sdtw_gamma, msm_c, twe_nu, twe_lambda);
     c.variant.mv_mode = dtwc::parse_name(dtwc::core::mv_mode_names, mv_mode, "mv_mode");
@@ -752,7 +753,7 @@ NB_MODULE(_dtwcpp_core, m)
     std::vector<float> f32;
     {
       nb::gil_scoped_release release;
-      f64 = dtwc::cdist(X, Y, c, dev, dev_idx, gprec, gpu_share);
+      f64 = dtwc::cdist(X, Y, c, dev, dev_idx, gprec, gpu_share, fallback);
       if (out_prec == dtwc::core::Precision::Float32) {
         f32.resize(f64.size());
         for (std::size_t idx = 0; idx < f64.size(); ++idx) {
@@ -767,7 +768,7 @@ NB_MODULE(_dtwcpp_core, m)
     }
     if (out_prec == dtwc::core::Precision::Float32)
       return nb::cast(adopt_as_ndarray(std::move(f32), { n_x, n_y }));
-    return nb::cast(adopt_as_ndarray(std::move(f64), { n_x, n_y })); }, "X"_a, "Y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g, "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda, "mv_mode"_a = "dependent", "device"_a = "cpu", "gpu_precision"_a = "auto", "gpu_share"_a = -1.0, "matrix_dtype"_a = "float64", "Compute cross-collection (n_X x n_Y) DTW distance matrix in C++/CUDA.");
+    return nb::cast(adopt_as_ndarray(std::move(f64), { n_x, n_y })); }, "X"_a, "Y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g, "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda, "mv_mode"_a = "dependent", "device"_a = "cpu", "gpu_precision"_a = "auto", "gpu_share"_a = -1.0, "matrix_dtype"_a = "float64", "fallback"_a = false, "Compute cross-collection (n_X x n_Y) DTW distance matrix in C++/CUDA. fallback: a GPU request that cannot be honoured computes on the CPU, saying so on stderr, instead of raising DeviceError.");
 
   // =========================================================================
   // Utility functions
@@ -945,26 +946,33 @@ NB_MODULE(_dtwcpp_core, m)
                             "can run, but two threads calling methods on the same Problem race on its\n"
                             "lazily-filled distance cache. Use one Problem per thread, or call\n"
                             "fill_distance_matrix() first and only read afterwards.")
-    .def("__init__", [](dtwc::Problem *p, const std::string &name, const std::string &device) {
+    .def("__init__", [](dtwc::Problem *p, const std::string &name, const std::string &device, bool fallback) {
       // Select the device before constructing in place, so a rejected name
       // never leaves nanobind holding a half-built Problem.
       const auto [selected, index] = dtwc::detail::parse_device(device);
       dtwc::Problem prob(name);
-      prob.set_device(selected, index);
-      new (p) dtwc::Problem(std::move(prob)); }, "name"_a = std::string(), nb::kw_only(), "device"_a = "cpu",
+      prob.set_device(selected, index, fallback);
+      new (p) dtwc::Problem(std::move(prob)); }, "name"_a = std::string(), nb::kw_only(), "device"_a = "cpu", "fallback"_a = false,
          "Create a Problem that computes on `device`: 'cpu' (default), 'gpu',\n"
          "'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu' or 'cpu+gpu:N', as for dtwcpp.device().\n"
          "A Problem does not follow the process-wide dtwcpp.device(). 'gpu' without a\n"
          "GPU backend, 'cpu+gpu' without CUDA and 'hpc' raise DeviceError ('hpc' is a\n"
-         "cluster() option).")
-    .def("set_device", [](dtwc::Problem &p, const std::string &device) {
+         "cluster() option). fallback=True: see set_device.")
+    .def("set_device", [](dtwc::Problem &p, const std::string &device, bool fallback) {
       const auto [selected, index] = dtwc::detail::parse_device(device);
-      p.set_device(selected, index); }, "device"_a,
+      p.set_device(selected, index, fallback); }, "device"_a, "fallback"_a = false,
          "Compute on `device` (the names dtwcpp.device() accepts): 'gpu:N' is GPU N\n"
          "of this build's GPU backend (CUDA, else Metal, which has GPU 0 only). A\n"
          "request the device cannot honour (a variant, missing-data strategy,\n"
          "multivariate data or precision its kernels lack) raises DeviceError when\n"
-         "distances are computed.")
+         "distances are computed. fallback=True makes the request a wish: where a fill\n"
+         "or a method starts and the GPU cannot honour it (no GPU backend or usable\n"
+         "GPU, a variant, missing-data strategy, precision or number of features its\n"
+         "kernels lack, a method with no GPU path), that call computes on the CPU,\n"
+         "saying so once on stderr, and the Problem keeps its request; set_device then\n"
+         "raises nothing a build without a GPU backend would. A failure once the GPU\n"
+         "has begun is a DeviceError either way.")
+    .def_prop_ro("fallback", &dtwc::Problem::fallback, "Whether set_device was given fallback=True.")
     .def("set_gpu_precision", &dtwc::Problem::set_gpu_precision, "precision"_a,
          "What a GPU computes in: GpuPrecision.Auto (the default; FP32 on consumer\n"
          "CUDA GPUs and on Metal), FP32 or FP64. A change drops the distance matrix.")
@@ -1148,6 +1156,7 @@ NB_MODULE(_dtwcpp_core, m)
     .def_prop_ro("labels", [](const dtwc::Result &r) { return index_array(r.labels()); }, nb::rv_policy::move, "Cluster label of each series, an int64 array (a copy).")
     .def_prop_ro("medoids", [](const dtwc::Result &r) { return index_array(r.medoids()); }, nb::rv_policy::move, "Medoid series index of each cluster, an int64 array (a copy).")
     .def_prop_ro("cost", [](const dtwc::Result &r) { return r.cost(); }, "Total distance of the series to their medoids.")
+    .def_prop_ro("device", [](const dtwc::Result &r) { return r.device(); }, "Where the run computed, as dtwc_cl writes it: 'cpu', 'gpu', 'gpu:N', 'cpu+gpu' or 'cpu+gpu:N'; 'cpu' where a GPU request fell back (Config.fallback).")
     .def_prop_ro("method", [](const dtwc::Result &r) { return std::string(dtwc::name_of(dtwc::method_names, r.method())); }, "The method that ran, auto resolved: 'pam', 'clara', ...")
     .def_prop_ro("iterations", [](const dtwc::Result &r) { return r.iterations(); })
     .def_prop_ro("converged", [](const dtwc::Result &r) { return r.converged(); })

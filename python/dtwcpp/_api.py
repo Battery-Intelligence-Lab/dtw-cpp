@@ -514,8 +514,9 @@ def _config(k, keys):
     return config
 
 
-def _run_local(dataset, config, device, backend, *, output="", checkpoint="", checkpoint_interval=0):
-    """The local run of :func:`cluster`: C++ ``dtwc::run`` on ``device``."""
+def _run_local(dataset, config, device, *, output="", checkpoint="", checkpoint_interval=0):
+    """The local run of :func:`cluster`: C++ ``dtwc::run`` on ``device``, or on the CPU where
+    ``config.fallback`` and the GPU cannot honour it."""
     import dtwcpp
     from dtwcpp import _dtwcpp_core
     t0 = time.perf_counter()
@@ -542,7 +543,8 @@ def _run_local(dataset, config, device, backend, *, output="", checkpoint="", ch
                                external=not dtwcpp.HIGHS_AVAILABLE, output=output,
                                checkpoint=checkpoint, checkpoint_interval=checkpoint_interval,
                                **reader)
-    return Result(result.labels, device=backend,
+    # The device that ran, as the C++ result says it (a fallback is "cpu"), without the GPU's ordinal.
+    return Result(result.labels, device=result.device.partition(":")[0],
                   elapsed_s=time.perf_counter() - t0, k=config.n_clusters,
                   n_series=len(result.labels), medoid_indices=result.medoids,
                   cost=result.cost, name=config.name, result=result)
@@ -601,7 +603,13 @@ def cluster(data, k, **keys):
     ``method`` is ``"auto"`` unless given: PAM on a GPU and for up to 5,000
     series on the CPU, CLARA above, and CLARA too where PAM's distance matrix
     does not fit the memory plan. ``device=None`` uses the global default (see
-    :func:`dtwcpp.device`). ``"hpc"`` and ``"hpc:gpu"`` run the clustering on a
+    :func:`dtwcpp.device`). A GPU request that cannot be honoured (no GPU backend
+    or device, a variant, missing-data strategy, precision or number of features
+    the kernels lack, a method with no GPU path) raises :class:`dtwcpp.DeviceError`,
+    unless ``fallback=True``, which runs it on the CPU instead, with one line on
+    stderr and in ``Result.report`` saying why, and ``Result.device`` ``"cpu"``;
+    it applies to this call only, and a failure once the GPU has begun is an error
+    either way. ``"hpc"`` and ``"hpc:gpu"`` run the clustering on a
     SLURM cluster as one job.toml: the keys given and the data (a path is read
     on the cluster, never here); the result holds the labels. ``gpu_device``
     names the GPU of an ``"hpc:gpu"`` run (``"a100"``, ``"a6000"``, ``"l40s"``,
@@ -630,13 +638,16 @@ def cluster(data, k, **keys):
     output, checkpoint, checkpoint_interval, upload_input = _run_files(keys)
     config = _config(k, keys)
     eff = device if device is not None else dtwcpp.device()
-    backend, _ = _resolve_device(eff)
+    backend, _ = _resolve_device(eff, config.fallback)
     if gpu_device is not None and eff.strip().lower() != "hpc:gpu":
         raise InvalidInput(f"cluster: gpu_device names the GPU of a device='hpc:gpu' "
                            f"run, and the device is '{eff}'.")
     data = _keep_options(data, given, "cluster") if isinstance(data, Dataset) else Dataset(data, **given)
 
     if backend == "hpc":
+        if config.fallback:  # before keys reach job.toml: the run is remote, with no local CPU to fall back to
+            raise InvalidInput("cluster: fallback runs a GPU request this machine cannot honour on its CPU, and "
+                               f"device='{eff}' runs on the cluster; leave fallback at False.")
         if checkpoint or checkpoint_interval:  # the run is the cluster's: a local path names nothing there
             raise InvalidInput("cluster: device='hpc' runs on the cluster, which would ignore a local "
                                "checkpoint; leave checkpoint empty and checkpoint_interval at 0.")
@@ -657,7 +668,7 @@ def cluster(data, k, **keys):
         if output:
             result.save(output)
         return result
-    return _run_local(data, config, eff, backend, output=output, checkpoint=checkpoint,
+    return _run_local(data, config, eff, output=output, checkpoint=checkpoint,
                       checkpoint_interval=checkpoint_interval)
 
 
