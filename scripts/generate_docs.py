@@ -128,10 +128,10 @@ def generated_outputs() -> dict[Path, str]:
         ),
     }
 
-    # Copies, not Hugo mounts: the sources' front matter is Jekyll's (nav_order,
-    # which Hugo ignores, so mounted pages re-sort by title), CONTRIBUTING.md's
-    # develop/ links need the rewrite below, and the theme builds a page's "Edit
-    # on GitHub" link from its path under docs/content (Hugo 0.147.8, 2026-10-07).
+    # Copies, not Hugo mounts: a copy gets its title and weight here (a mounted
+    # page has neither, so it would sort by title), CONTRIBUTING.md's develop/
+    # links need the rewrite below, and the theme builds a page's "Edit on GitHub"
+    # link from its path under docs/content (Hugo 0.147.8, 2026-10-07).
     contributing_sources = (
         (ROOT / "CONTRIBUTING.md", "Guideline", 2, "guideline.md"),
         (ROOT / "develop/conventions.md", "Coding conventions", 3, "conventions.md"),
@@ -139,7 +139,6 @@ def generated_outputs() -> dict[Path, str]:
     )
     for source_path, title, weight, filename in contributing_sources:
         body = source_path.read_text(encoding="utf-8")
-        body = re.sub(r"\A---\s*\n.*?\n---\s*\n", "", body, flags=re.DOTALL)
         body = body.replace("](develop/", "](")
         outputs[CONTENT / "contributing" / filename] = page(title, weight, body)
 

@@ -72,7 +72,7 @@ macro(dtwc_local_options)
   # this target is reached only by things that link it, so the flags cannot leak
   # into fetched dependencies — HiGHS, Catch2 and llfio were all picking them up.
   # C++ only: every source of ours is C++, and the vendored C that dtwc_third_party
-  # compiles (nanoarrow's IPC reader, flatcc, lz4, zstd) keeps the compiler's own
+  # compiles (nanoarrow, its IPC reader, flatcc, lz4, zstd) keeps the compiler's own
   # floating-point model; under MSVC's /fp:strict, flatcc's float constant
   # initialisers are no longer constants (C2099).
   # Optimised configurations only, matching the previous CONFIG generator
