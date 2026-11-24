@@ -48,7 +48,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 
 - The Python package `dtwcpp` and the MATLAB package `+dtwc` (v1.0.0 published neither); `dtwc_cl` archives and wheels
   for Linux and Windows on x86-64-v3 (AVX2, FMA) and macOS 13.3+ on arm64, and wheels for Linux arm64. A wheel for
-  Python 3.12 or newer is stable-ABI (`cp312-abi3`): one per platform serves every later Python.
+  Python 3.12 or newer is stable-ABI (`cp312-abi3`): one per platform serves every later CPython (not the
+  free-threaded builds, for which no wheel is made).
 - One four-step API in C++, Python and MATLAB, `device()`, `load()`, `cluster()` and a `Result` (labels, medoids, cost,
   `score`, `save`, `distance_matrix`; `plot` in Python and MATLAB), on the code `dtwc_cl` runs, plus a unified
   CasADi-style workflow (`dtwc::make_settings` / `dtwc::settings::make` in C++, `dtwcpp.settings` in Python,
@@ -249,7 +250,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - The MIP starts from FastPAM's clustering, both solvers stop at a relative gap of 1e-5, and Gurobi runs NumericFocus 1
   and MIPFocus 2 (v1.0.0: a cold start, HiGHS's own gap, NumericFocus 3); `mip_settings` sets each. Its costs are
   scaled so that the largest is 2 at any distance scale (v1.0.0 left them unscaled where the largest distance was
-  below 2).
+  below 2). Gurobi and HiGHS solve one model, built once: among equal-cost optima Gurobi may return another medoid
+  than v1.0.0 did, a model above INT_MAX nonzeros (about N = 26,750) is refused for both, and memory the system
+  refuses during a Gurobi solve is reported as out of memory.
 - v1.0.0's flag spellings (`--Nc`, `--skipRows`, `--bandwidth`, ...) still work, hidden from `--help`, each printing a
   warning that names its 2.0 flag (`--n-clusters`, `--skip-rows`, `--band`, ...).
 - `dtwc_cl -o` defaults to `./results` and `--name` to the input's file or folder name (v1.0.0: `.` and `dtwc`); a run

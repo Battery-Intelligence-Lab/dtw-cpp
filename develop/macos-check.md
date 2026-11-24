@@ -133,16 +133,17 @@ Covered by steps 2 and 4 if they pass; look here first if they fail:
   libomp, which is keg-only):
 
   ```bash
-  rm -rf .venv-mac && uv venv .venv-mac --python 3.13
-  OpenMP_ROOT="$(brew --prefix libomp)" uv pip install --python .venv-mac/bin/python . numpy scipy h5py pyarrow \
-    scikit-learn matplotlib pandas pytest
-  .venv-mac/bin/python -c "import dtwcpp, pathlib; print(pathlib.Path(dtwcpp._dtwcpp_core.__file__).name)"
+  rm -rf .venv-mac build/mac-wheel && uv venv .venv-mac --python 3.13
+  OpenMP_ROOT="$(brew --prefix libomp)" uv build --wheel --python 3.12 -o build/mac-wheel
+  uv pip install --python .venv-mac/bin/python build/mac-wheel/*.whl numpy scipy h5py pyarrow scikit-learn \
+    matplotlib pandas pytest
+  .venv-mac/bin/python -c "import dtwcpp, pathlib; n = pathlib.Path(dtwcpp._dtwcpp_core.__file__).name; print(n); assert n == '_dtwcpp_core.abi3.so'"
   DTWC_CL_PATH="$PWD/build/bin/dtwc_cl" .venv-mac/bin/python -m pytest tests/python tests/conformance -q -rs
   ```
 
-  The module's file name is `_dtwcpp_core.abi3.so`: on Python 3.12 or newer the wheel is stable-ABI, which has been
-  built and tested on Windows and Linux so far, not on macOS. pytest: 777 passed and 19 skipped on Windows; another split is fine where
-  `-rs` shows, for each skip, a reason that holds here.
+  The wheel is built on Python 3.12 and run on 3.13: a stable-ABI wheel (`cp312-abi3`, module `_dtwcpp_core.abi3.so`)
+  must serve both. It has been checked on Windows and Linux, not yet on macOS. pytest: 777 passed and 19 skipped on
+  Windows; another split is fine where `-rs` shows, for each skip, a reason that holds here.
 
 ## 7. Record the outcome
 
