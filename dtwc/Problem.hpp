@@ -760,7 +760,7 @@ namespace detail {
  * index and forced share are the CPU's and no share, and are the request's again afterwards, with the distance matrix
  * the call filled. A nested scope (cluster, then its fill) finds the CPU and does nothing, so one call says it once.
  * Without `fallback` the scope does nothing but refuse `method` where it has no GPU path (onebatch and tadpole compute
- * on the CPU as they go): every other refusal is where it always was. A Problem on the CPU is never touched.
+ * on the CPU as they go): every other refusal is the fill's or the method's own. A Problem on the CPU is never touched.
  * @throws GpuRefusal (a DeviceError) for the refusal of a Problem without `fallback`.
  */
 class DeviceScope

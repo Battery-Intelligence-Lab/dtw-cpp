@@ -481,8 +481,8 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
   apply(config, prob);
   // The GPU request, judged before a file is touched: the kernels' rules for the series known now (the precision they
   // are stored in, and for series in memory their features a time step; an Arrow IPC file's are known at its walk), then
-  // the device itself, which the fill used to be the first to ask for, so that a device that cannot run is what is
-  // refused beside --checkpoint, not the precision rule below.
+  // the device itself, so that beside --checkpoint a device that cannot run is what is refused, not the precision rule
+  // below.
   const bool stored_f32 = config.dtype == core::Precision::Float32 || (data && data->is_f32());
   validate_gpu_request("run", prob, stored_f32 ? core::Precision::Float32 : core::Precision::Float64,
                        data ? data->ndim : 1);

@@ -304,7 +304,7 @@ DeviceScope::DeviceScope(Problem &prob, std::string_view where, std::optional<Me
   : prob_(prob), device_(prob.device_), index_(prob.device_index_), share_(prob.gpu_share_)
 {
   if (!uses_gpu(prob.device_)) return;
-  if (!prob.fallback_) { // every refusal but this one is where it has always been
+  if (!prob.fallback_) { // the one refusal made here is a method with no GPU path; the rest are the fill's and the method's own
     if (method && !has_gpu_path(*method)) throw as_it_goes_refusal(where, name_of(method_names, *method), prob.device_);
     return;
   }
