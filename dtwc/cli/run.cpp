@@ -17,6 +17,8 @@
 #include "../algorithms/detail/fast_clara_plan.hpp"
 #include "../algorithms/detail/fast_clara_stream.hpp"
 #include "../algorithms/fast_clara.hpp"
+#include "../algorithms/one_batch_pam.hpp"
+#include "../algorithms/tadpole.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp" // get_max_threads, TeamCap
 #include "../base/timing.hpp"
@@ -623,18 +625,15 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     // missing-data strategy, no complete --dist-matrix, which is not read yet: the plan prices the envelopes beside
     // any), each series' envelope (`envs`: an upper and a lower vector of its values); the hierarchical
     // clustering's packed copy of N (N+1)/2 doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table, N x m doubles,
-    // m as one_batch_pam.cpp's automatic_batch_size or --batch-size takes it, and its per-point vectors, at most 8
+    // m as one_batch_pam.cpp's resolve_batch_size takes it, and its per-point vectors, at most 8
     // doubles a point. MIP's and LR-core's solver memory is not planned: MIP's outweighs the matrix (150 series of 10
     // steps: the plan held 102,600 bytes, the run needed about 118 MB), LR-core's does not (2,000 series: float32 or the
     // matrix mapped got runs through where the plain run was refused, 2026-11-03).
     facts.unpriced = resolved == Method::MIP;
     if (resolved == Method::TADPole) {
       const auto distance = prob.distance();
-      const bool prunes = distance.variant.variant == core::DTWVariant::Standard
-                          && distance.metric == core::MetricType::L1 && ndim == 1
-                          && precision != core::Precision::Float32
-                          && config.matrix_dtype != core::Precision::Float32
-                          && distance.missing == core::MissingStrategy::Error;
+      const bool prunes = algorithms::detail::bounds_valid(distance.variant.variant, distance.metric, ndim, precision,
+                                                           config.matrix_dtype, distance.missing);
       facts.fixed = pairs + (prunes ? 2 * (values * sizeof(double) + n_series * sizeof(std::vector<double>)) : 0);
       facts.fixed_what = prunes ? "TADPole's flag a pair and the series' envelopes" : "TADPole's flag a pair";
       facts.cache = true;
@@ -642,10 +641,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       facts.fixed = pairs * sizeof(double);
       facts.fixed_what = "the hierarchical clustering's packed working copy of the matrix";
     } else if (resolved == Method::OneBatch) {
-      const auto log2_steps = static_cast<std::size_t>(std::ceil(std::log2(static_cast<double>(n_series) + 1.0)));
-      std::size_t m = config.batch_size > 0 ? static_cast<std::size_t>(config.batch_size)
-                                            : std::max<std::size_t>(64, 20 * log2_steps);
-      m = std::max(std::min(m, n_series), static_cast<std::size_t>(config.k));
+      const std::size_t m = algorithms::detail::resolve_batch_size(n_series, config.k, config.batch_size);
       facts.fixed = n_series * (m + 8) * sizeof(double);
       facts.fixed_what = "OneBatchPAM's batch table and per-point vectors";
     }
