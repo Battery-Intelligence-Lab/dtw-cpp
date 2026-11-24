@@ -40,11 +40,11 @@ mip::PMedianModel mip::build_p_median_model(Problem &prob)
   const auto n = static_cast<std::size_t>(prob.size());
   const auto k = prob.n_clusters();
 
-  // HiGHS indexes with `int`; the ~3N² nonzeros are the largest count (N ≈ 26,750),
-  // and a cast past INT_MAX builds a wrong model.
+  // The model indexes with `int`, as HiGHS and Gurobi read it; the ~3N² nonzeros are
+  // the largest count (N ≈ 26,750), and a cast past INT_MAX builds a wrong model.
   const std::size_t nnz = n + n * n + 2 * n * (n - 1);
   if (nnz > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw SolverError("HiGHS: the compact p-median model for N = " + std::to_string(n) + " has more than INT_MAX nonzeros; use Method::LRCore.");
+    throw SolverError("MIP: the compact p-median model for N = " + std::to_string(n) + " has more than INT_MAX nonzeros; use Method::LRCore.");
 
   prob.fill_distance_matrix();                                           // We need full distance matrix before MIP clustering.
   const double max_distance = prob.max_distance();
