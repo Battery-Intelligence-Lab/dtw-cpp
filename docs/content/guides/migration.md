@@ -63,6 +63,7 @@ with a warning. What needs attention is the behaviour listed further down.
 | `settings::DEFAULT_BAND_LENGTH` | `settings::DEFAULT_BAND` |
 | the `dtwc::solver` MIP helpers that `dtwc.hpp` reached (`Element`, `Triplet`, `RowMajor`, `ColumnMajor`, `isAround`, `isFractional`, ...), `dtwc/types/element_types.hpp`, `types_util.hpp` | none |
 | `settings::root_folder`, `dtwc_folder`, `resultsPath`, `dataPath`, `dtwc_dataPath`, `DTWC_ROOT_FOLDER`, `CURRENT_ROOT_FOLDER` | none: pass paths explicitly; a `Problem`'s output folder is `./results/`, relative to the working directory |
+| `dtwc::Range`, `dtwc::Index`, `settings::isDebug` | none: write the loop (`for (std::size_t i = 0; i < n; ++i)`) |
 | `dtwc::randGenerator`, in `settings.hpp` | the same engine, in `base/random_engine.hpp`, which `dtwc.hpp` includes: one engine per program (v1.0.0 had a `static` copy in each translation unit) |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |
 | `dtwBanded`, `dtwFull`, `dtwFull_L` | the same names; the scalar type defaults to `double` (v1.0.0's `dtwBanded` defaulted to `float`), with new trailing defaulted parameters and span overloads |
@@ -73,9 +74,8 @@ Counts of series and clusters, labels, medoids and indices are `index_t`
 `clusters_ind`, `centroids_ind`, `centroid_of`, `Data::size()`,
 `DataLoader::n_data`. `Method::Kmedoids`, `Method::MIP`, `Solver::Gurobi`,
 `Solver::HiGHS`, `init::random`, `init::Kmeanspp`, `scores::silhouette`,
-`MIP_clustering_byGurobi`, `MIP_clustering_byHiGHS`, `Range` and `Clock` keep
-their names and signatures; `Index` keeps its name, and its `difference_type`
-(what `operator-` returns) is `std::ptrdiff_t`, not `size_t`. The rest of 2.0's C++ surface is new;
+`MIP_clustering_byGurobi`, `MIP_clustering_byHiGHS` and `Clock` keep their names
+and signatures. The rest of 2.0's C++ surface is new;
 the [Tier 1](../../api/tier-1/) and [Tier 2](../../api/tier-2/) pages describe it.
 
 ## dtwc_cl
