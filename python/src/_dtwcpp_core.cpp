@@ -1202,12 +1202,6 @@ NB_MODULE(_dtwcpp_core, m)
     .def("__repr__", [](const dtwc::Problem &p) { return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
                                                          + ", k=" + std::to_string(p.n_clusters()) + ")"; });
 
-  m.def("_write_result_files", [](dtwc::Problem &prob, const std::filesystem::path &directory) {
-    nb::gil_scoped_release release;
-    dtwc::detail::write_result_files(prob, directory, true); }, "prob"_a, "directory"_a,
-        "Write a clustered Problem's four result files into directory, as\n"
-        "dtwc_cl and C++ Result::save write them (detail::write_result_files).");
-
   // =========================================================================
   // dtwc::run, the run dtwc_cl makes: _run and its _Result (C++ dtwc::Result)
   // =========================================================================
