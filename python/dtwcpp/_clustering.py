@@ -201,6 +201,8 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         import dtwcpp
         from dtwcpp import _dtwcpp_core, _resolve_device
         from dtwcpp._api import _series
+        if not isinstance(self.fallback, (bool, np.bool_)):  # not a truth value for _resolve_device or the hpc branch
+            raise TypeError(f"fallback must be a bool, got {type(self.fallback).__name__}")
         device = self.device if self.device is not None else dtwcpp.device()
         backend, _ = _resolve_device(device, bool(self.fallback))
         if backend == "hpc" and self.fallback:  # the fit is remote: no local CPU to fall back to
