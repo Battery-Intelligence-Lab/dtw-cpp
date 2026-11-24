@@ -1217,7 +1217,9 @@ Outcome run_with(const Config &asked, std::optional<Data> data, const ExternalSo
         fallback = refusal->reason();
         config.device = Device::CPU;
         config.device_index = 0;
-        config.gpu_share = -1.0; // the CPU has no share to force
+        // cpu+gpu's split has no CPU counterpart; a share forced on any other device stays, and the run refuses it as
+        // it does on every build, rather than the fallback hiding it.
+        if (asked.device == Device::CPU_GPU) config.gpu_share = -1.0;
         detail::say_fallback(fallback);
         continue;
       }

@@ -124,6 +124,16 @@ TEST_CASE("fallback: a GPU request that cannot be honoured is an error, or runs 
     CHECK_THAT(expected.report(), !ContainsSubstring("gpu requested"));
   }
 
+  SECTION("a forced share: refused on a device that would ignore it, dropped where cpu+gpu's split has no CPU twin")
+  {
+    auto forced = gpu_request(Method::PAM, true);
+    forced.gpu_share = 0.5;
+    const CerrCapture cerr;
+    CHECK_THROWS_AS(dtwc::run(forced, levels()), dtwc::InvalidInput); // on every build, fallback or not
+    forced.device = Device::CPU_GPU;
+    CHECK(dtwc::run(forced, levels()).device() == "cpu");
+  }
+
   SECTION("a method with no GPU path runs on the CPU too, and the same run without fallback is refused")
   {
     for (const auto method : { Method::OneBatch, Method::TADPole }) {
