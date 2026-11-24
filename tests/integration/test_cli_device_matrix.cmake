@@ -24,6 +24,9 @@ cmake_minimum_required(VERSION 3.26)
 #          range and a forced one on a device other than cpu+gpu
 #   hpc    refused for every method, since it submits a whole run to a SLURM
 #          cluster, which dtwc_cl does not do; an unknown device is refused
+#   fallback  a GPU request no build can honour (gpu:99: the build has no GPU backend, or no such GPU) is refused, the
+#          device before the --gpu-precision rule beside --checkpoint, and with --fallback runs on the CPU: one line
+#          on stderr, and the report's configuration row says the CPU ran it and why
 #   --print-config  the golden file reads back to itself (every key, each at a
 #          value that is not its default) and a bare --print-config prints
 #          config_defaults.toml: every default and spelling, pinned on the binary
@@ -285,9 +288,39 @@ foreach(method IN ITEMS auto pam)
 endforeach()
 expect_refused(device_tpu "unknown device 'tpu'" -i "${INPUT}" --device tpu)
 
+# ---- fallback: gpu:99 is no GPU on any build ----
+# Beside --checkpoint the device is what is refused, not the --gpu-precision rule that CUDA gives a checkpoint.
+if(GPU STREQUAL "none")
+    set(no_such_gpu "${not_built}")
+elseif(GPU STREQUAL "metal")
+    set(no_such_gpu "GPU index = 99")
+elseif(device STREQUAL "present")
+    set(no_such_gpu "invalid device ordinal")
+else()
+    set(no_such_gpu "GPU was detected")
+endif()
+expect_refused(gpu_ordinal_checkpoint "${no_such_gpu}" -i "${INPUT}" --device gpu:99
+               --checkpoint "${WORK_ROOT}/gpu_ordinal_checkpoint_dir")
+if("${err}" MATCHES "--gpu-precision")
+    message(FATAL_ERROR "gpu_ordinal_checkpoint: the --gpu-precision rule came before the device\nstderr:\n${err}")
+endif()
+# With --fallback it runs on the CPU: one line on stderr, and the report says the CPU ran it and why.
+expect_ran(gpu_fallback pam --device gpu:99 --fallback)
+string(REGEX MATCHALL "\n" fallback_lines "${err}")
+list(LENGTH fallback_lines fallback_line_count)
+if(NOT "${err}" MATCHES "^\\[dtwc\\] gpu requested: [^\n]+; running on cpu \\(fallback\\)\n$" OR NOT fallback_line_count EQUAL 1)
+    message(FATAL_ERROR "gpu_fallback: stderr is not the one fallback line\nstderr:\n${err}")
+endif()
+file(READ "${WORK_ROOT}/gpu_fallback/gpu_fallback_report.txt" fallback_report)
+string(REGEX REPLACE "[ \r\n]+" " " fallback_report "${fallback_report}")
+string(FIND "${fallback_report}" ", device cpu (gpu requested; fallback: " fallback_row_at)
+if(fallback_row_at EQUAL -1)
+    message(FATAL_ERROR "gpu_fallback: its report's configuration row does not say the CPU ran it and why:\n${fallback_report}")
+endif()
+
 # ---- every cell ran ----
 list(LENGTH methods cpu_cells)
-math(EXPR expected "${cpu_cells} + 1 + 1 + 3 + 2")
+math(EXPR expected "${cpu_cells} + 1 + 1 + 3 + 2 + 2")
 list(LENGTH gpu_methods gpu_cells)
 if(GPU STREQUAL "none")
     math(EXPR expected "${expected} + ${gpu_cells} + 5 + 3")

@@ -154,11 +154,63 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
   return gpu_backend == "Metal" && precision == GpuPrecision::Auto ? GpuPrecision::FP32 : precision;
 }
 
-/// A GPU request its backend cannot honour: a DeviceError, never a CPU fallback.
+/// A GPU request its backend cannot honour: a GpuRefusal (a DeviceError), which only the caller's `fallback` turns into
+/// a CPU run.
 [[noreturn]] void reject_gpu_request(std::string_view where, const std::string &request, const std::string &fix)
 {
-  throw DeviceError(std::string(where) + ": " + std::string(gpu_backend) + " " + request
-                    + "; no backend call or CPU fallback was attempted. " + fix);
+  throw GpuRefusal(std::string(where) + ": " + std::string(gpu_backend) + " " + request
+                     + "; no backend call or CPU fallback was attempted. " + fix,
+                   std::string(gpu_backend) + " " + request);
+}
+
+/// What this build alone refuses of a GPU request: no GPU backend, cpu+gpu without CUDA, and a GPU index other than 0
+/// on Metal, which runs on the system default GPU.
+void require_gpu_build(std::string_view where, Device device, [[maybe_unused]] int index)
+{
+  if (device == Device::CPU_GPU && !detail::hybrid_not_built_reason().empty())
+    throw detail::hybrid_refusal(where, detail::hybrid_not_built_reason());
+  if (device == Device::GPU) {
+#if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
+    throw detail::gpu_not_built_refusal();
+#elif !defined(DTWC_HAS_CUDA)
+    if (index != 0)
+      reject_gpu_request(where,
+                         "runs on the system default GPU, but GPU index = " + std::to_string(index)
+                           + " was requested",
+                         "Use gpu (index 0).");
+#endif
+  }
+}
+
+/// Whether `method` has a GPU path: onebatch and tadpole compute the pairs they need on the CPU as they go, so there is
+/// no fill and no pass for a GPU to take.
+constexpr bool has_gpu_path(Method method) { return method != Method::OneBatch && method != Method::TADPole; }
+
+/// Why this build's GPU backend cannot compute on GPU `index` here, "" where it can (require_gpu_device).
+std::string gpu_device_refusal([[maybe_unused]] int index)
+{
+#if defined(DTWC_HAS_CUDA)
+  return cuda::cuda_device_refusal(index);
+#elif defined(DTWC_HAS_METAL)
+  return metal::metal_available() ? std::string()
+                                  : "DTWC++ was built with Metal support, but no usable Metal GPU was detected ("
+                                      + metal::metal_device_info() + ")";
+#else
+  return {}; // a build with no GPU backend is refused first, by require_gpu_build
+#endif
+}
+
+/// Every refusal of `prob`'s GPU request that needs no pair computed, in the order a run meets them: this build, the
+/// method (none: a fill), the kernels' rules for the series it holds, the device. A GpuRefusal; a Problem on the CPU
+/// passes.
+void require_gpu_request(std::string_view where, const Problem &prob, std::optional<Method> method)
+{
+  const auto [device, index] = prob.device();
+  if (!uses_gpu(device)) return;
+  require_gpu_build(where, device, index);
+  if (method && !has_gpu_path(*method)) throw detail::as_it_goes_refusal(where, name_of(method_names, *method), device);
+  validate_gpu_request(where, prob, prob.data().precision, prob.data().ndim);
+  require_gpu_device(where, index);
 }
 
 /// The pair function a Problem binds: core::resolve_dtw_fn's, and under Soft-DTW the divergence of it, which the
@@ -180,9 +232,10 @@ bind_pair_function(const core::DistanceConfig &config, const Data &data,
 
 } // namespace
 
-void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
+void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision,
+                          std::size_t ndim)
 {
-  // The GPU routes upload Float64 series (CUDA's fill and FastCLARA assignment
+  // The GPU routes upload univariate Float64 series (CUDA's fill and FastCLARA assignment
   // from the series' spans, Metal's fill p_vec or an owned copy of a view's) and run Standard
   // DTW with no missing-data strategy, in L1 or squared L2; so does cpu+gpu, whose GPU share is the GPU's.
   if (!uses_gpu(prob.device().first)) return;
@@ -203,6 +256,15 @@ void validate_gpu_request(std::string_view where, const Problem &prob, core::Pre
 #if !defined(DTWC_HAS_CUDA) && defined(DTWC_HAS_METAL)
   metal::validate_metal_precision(prob.gpu_precision());
 #endif
+  if (ndim > 1)
+    reject_gpu_request(where, "is univariate only, but ndim = " + std::to_string(ndim) + " was requested",
+                       "Use device cpu for multivariate series.");
+}
+
+void require_gpu_device(std::string_view where, int index)
+{
+  if (const std::string why = gpu_device_refusal(index); !why.empty())
+    throw GpuRefusal(std::string(where) + ": " + why + ". No CPU fallback was attempted.", why);
 }
 
 bool gpu_available()
@@ -235,6 +297,38 @@ Method resolve_method(Method method, Device device, std::size_t n_series)
   if (method != Method::Auto) return method;
   return uses_gpu(device) || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
 }
+
+namespace detail {
+
+DeviceScope::DeviceScope(Problem &prob, std::string_view where, std::optional<Method> method)
+  : prob_(prob), device_(prob.device_), index_(prob.device_index_), share_(prob.gpu_share_)
+{
+  if (!uses_gpu(prob.device_)) return;
+  if (!prob.fallback_) { // every refusal but this one is where it has always been
+    if (method && !has_gpu_path(*method)) throw as_it_goes_refusal(where, name_of(method_names, *method), prob.device_);
+    return;
+  }
+  try {
+    require_gpu_request(where, prob, method);
+  } catch (const GpuRefusal &refusal) {
+    say_fallback(refusal.reason());
+    // Not set_device: it would drop the matrix, and the request is the Problem's to keep.
+    prob.device_ = Device::CPU;
+    prob.device_index_ = 0;
+    prob.gpu_share_ = -1.0; // the CPU has no share to force
+    fell_back_ = true;
+  }
+}
+
+DeviceScope::~DeviceScope()
+{
+  if (!fell_back_) return;
+  prob_.device_ = device_;
+  prob_.device_index_ = index_;
+  prob_.gpu_share_ = share_;
+}
+
+} // namespace detail
 
 std::string describe(const core::FillSplit &fill)
 {
@@ -318,20 +412,16 @@ void apply(const Config &config, Problem &prob)
   prob.set_gpu_precision(config.gpu_precision);
   prob.set_gpu_share(config.gpu_share);
   prob.set_matrix_dtype(config.matrix_dtype);
-  prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
+  // gpu without a GPU backend: the GpuRefusal, unless fallback, which leaves what the GPU cannot honour to the fill or
+  // the method that starts (Problem::cluster, a fill) or, in dtwc::run, to the run, which settles it before any file is read.
+  prob.set_device(config.device, config.device_index, config.fallback);
   // Whatever the method, the run reaches a fill or a pass the share would not govern on another device (onebatch and
   // tadpole, and a stream, reach neither): refuse it here, as the fill and the pass refuse it where they run.
   if (config.gpu_share != -1.0 && config.device != Device::CPU_GPU)
     throw InvalidInput(
       detail::share_ignored_message("run", "the distance matrix's fill and FastCLARA's pass", config.device));
-  if (config.device == Device::CPU_GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    throw DeviceError(detail::hybrid_as_it_goes_message("run", name_of(method_names, config.method)));
-  if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    throw DeviceError(
-      "run: method '" + std::string(name_of(method_names, config.method))
-      + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
-        "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use, and clara's sample matrices. "
-        "Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
+  if (uses_gpu(config.device) && !config.fallback && !has_gpu_path(config.method))
+    throw detail::as_it_goes_refusal("run", name_of(method_names, config.method), config.device);
 }
 
 /**
@@ -562,24 +652,13 @@ void Problem::set_variant(core::DTWVariantParams params)
   set_distance(config);
 }
 
-void Problem::set_device(Device device, int index)
+void Problem::set_device(Device device, int index, bool fallback)
 {
   if (index < 0)
     throw InvalidInput("Problem::set_device: the GPU index must be >= 0; got "
                        + std::to_string(index) + ".");
-  if (device == Device::CPU_GPU && !detail::hybrid_not_built_reason().empty())
-    throw DeviceError(detail::hybrid_refused_message("Problem::set_device", detail::hybrid_not_built_reason()));
-  if (device == Device::GPU) {
-#if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
-    throw DeviceError(detail::gpu_not_built_message());
-#elif !defined(DTWC_HAS_CUDA)
-    if (index != 0)
-      reject_gpu_request("Problem::set_device",
-                         "runs on the system default GPU, but GPU index = " + std::to_string(index)
-                           + " was requested",
-                         "Use gpu (index 0).");
-#endif
-  }
+  if (!fallback) require_gpu_build("Problem::set_device", device, index);
+  fallback_ = fallback; // no distance depends on it: the matrix stays
   const int gpu_index = uses_gpu(device) ? index : 0; // the CPU has no index
   if (device_ == device && device_index_ == gpu_index) return;
   device_ = device;
@@ -598,7 +677,7 @@ void Problem::set_gpu_share(double share)
 void Problem::copy_distance_settings_from(const Problem &other)
 {
   set_distance(other.distance());
-  set_device(other.device_, other.device_index_);
+  set_device(other.device_, other.device_index_, other.fallback_);
   set_gpu_precision(other.gpu_precision_);
   set_matrix_dtype(other.matrix_dtype_);
   verbose_ = other.verbose_;
@@ -981,10 +1060,14 @@ void Problem::SeriesCheck::finish() const
   // The GPU routes also need univariate Float64 series (CUDA reads them where they lie; Metal's fill uploads a view's
   // as an owned copy).
   if (!uses_gpu(problem.device_)) return;
-  validate_gpu_request(where_, problem, problem.data_.precision);
-  if (problem.data_.ndim > 1)
-    reject_gpu_request(where_, "is univariate only, but ndim = " + std::to_string(problem.data_.ndim) + " was requested",
-                       "Use device cpu for multivariate series.");
+  try {
+    validate_gpu_request(where_, problem, problem.data_.precision, problem.data_.ndim);
+  } catch (const GpuRefusal &refusal) {
+    // The pairs this check guards compute on the CPU whatever the device (dtw_function): with fallback the request the
+    // kernels cannot run is said and set aside; a fill is in a DeviceScope, which made the device the CPU's first.
+    if (!problem.fallback_) throw;
+    detail::say_fallback(refusal.reason());
+  }
 }
 
 /**
@@ -1418,6 +1501,10 @@ void Problem::fill_distance_matrix()
 {
   if (gpu_share_ != -1.0 && device_ != Device::CPU_GPU)
     throw InvalidInput(detail::share_ignored_message("Problem::fill_distance_matrix", "the fill", device_));
+  // A fill that will compute resolves its GPU request first, before the checkpoint's precision rule on CUDA and every
+  // series check (a filled matrix needs no device, and says nothing).
+  std::optional<detail::DeviceScope> device_scope;
+  if (!filled_) device_scope.emplace(*this, "Problem::fill_distance_matrix");
   validate_checkpoint_settings();
   sync_band();
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
@@ -1454,7 +1541,7 @@ void Problem::fill_distance_matrix()
 #elif defined(DTWC_HAS_METAL)
     metal::MetalDistMatOptions opts; // the system default GPU: set_device refused any other
 #else
-    throw DeviceError(detail::gpu_not_built_message()); // set_device refused it first
+    throw detail::gpu_not_built_refusal(); // set_device refused it first, or fallback made the CPU's device
 #endif
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
     opts.band = distance_.band;
@@ -1501,9 +1588,12 @@ core::ClusteringResult Problem::cluster()
   require_clusterable(Nc, size());
   if (gpu_share_ != -1.0 && device_ != Device::CPU_GPU)
     throw InvalidInput(detail::share_ignored_message("Problem::cluster", "the fill and FastCLARA's pass", device_));
-  const Method method = resolve_method(method_, device_, size());
-  if (device_ == Device::CPU_GPU && (method == Method::OneBatch || method == Method::TADPole))
-    throw DeviceError(detail::hybrid_as_it_goes_message("Problem::cluster", name_of(method_names, method)));
+  // The GPU request is settled here, before the method's own work: a method that computes on the CPU as it goes
+  // (onebatch, tadpole) has no part for a GPU, and TADPole's automatic cutoff would compute its sample before the method
+  // refused. `auto` is pam on a GPU and by N on the CPU, so it is resolved again where the request fell back.
+  Method method = resolve_method(method_, device_, size());
+  const detail::DeviceScope device_scope(*this, "Problem::cluster", method);
+  if (device_scope.fell_back()) method = resolve_method(method_, device_, size());
   switch (method) {
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie

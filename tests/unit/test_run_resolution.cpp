@@ -293,7 +293,7 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   const auto wdtw = [](dtwc::Config &c) { c.variant.variant = dtwc::core::DTWVariant::WDTW; };
   const auto zero_cost = [](dtwc::Config &c) { c.missing = dtwc::core::MissingStrategy::ZeroCost; };
   const auto float32 = [](dtwc::Config &c) { c.dtype = dtwc::core::Precision::Float32; };
-  const auto index_1 = [](dtwc::Config &c) { c.device_index = 1; };
+  [[maybe_unused]] const auto index_1 = [](dtwc::Config &c) { c.device_index = 1; };
   const auto fp64 = [](dtwc::Config &c) { c.gpu_precision = dtwc::GpuPrecision::FP64; };
 
   // The CPU takes each of these, so it goes on to read the file, which fails.
@@ -321,8 +321,20 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, fp64)); }),
              ContainsSubstring("precision FP64 is not implemented"));
 #  else
-  for (const auto &set : { +index_1, +fp64 }) // blind: V-row
-    CHECK_THROWS_AS(dtwc::run(from_file(Device::GPU, set)), dtwc::IOError);
+  // CUDA takes an index and FP64, but the run asks for its device before it reads a series: a GPU past the last, or no
+  // GPU at all, is the DeviceError (the runtime's own words for the ordinal); a request the device can run goes on to the
+  // file, which is missing.
+  const auto index_past_last = [](dtwc::Config &c) { c.device_index = 99; };
+  CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, index_past_last)); }),
+             StartsWith("run: ") && ContainsSubstring("No CPU fallback was attempted"));
+  if (dtwc::gpu_available()) {
+    CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, index_past_last)); }),
+               ContainsSubstring("invalid device ordinal"));
+    CHECK_THROWS_AS(dtwc::run(from_file(Device::GPU, fp64)), dtwc::IOError);
+  } else {
+    CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, fp64)); }),
+               ContainsSubstring("GPU was detected") && ContainsSubstring("No CPU fallback was attempted"));
+  }
 #  endif
 #else
   for (const auto &set : { +wdtw, +zero_cost, +float32, +index_1, +fp64 })

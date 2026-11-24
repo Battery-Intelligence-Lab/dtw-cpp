@@ -68,8 +68,9 @@ constexpr std::string_view kGpuBackend = "Metal";
 
 [[noreturn]] void reject_cdist_gpu(const std::string &reason, const std::string &fix)
 {
-  throw DeviceError("cdist: " + std::string(kGpuBackend) + " " + reason
-                    + "; no backend call or CPU fallback was attempted. " + fix);
+  throw GpuRefusal("cdist: " + std::string(kGpuBackend) + " " + reason
+                     + "; no backend call or CPU fallback was attempted. " + fix,
+                   std::string(kGpuBackend) + " " + reason);
 }
 
 void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
@@ -83,16 +84,17 @@ void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
   (void)device_index;
   (void)gpu_precision;
   if (device == Device::CPU_GPU)
-    throw DeviceError(detail::hybrid_refused_message("cdist", detail::hybrid_not_built_reason(), false));
-  throw DeviceError(detail::gpu_not_built_message());
+    throw detail::hybrid_refusal("cdist", detail::hybrid_not_built_reason(), false);
+  throw detail::gpu_not_built_refusal();
 #else
   if (device == Device::CPU_GPU) {
     const std::string reason = detail::hybrid_not_built_reason();
     if (!reason.empty())
-      throw DeviceError(detail::hybrid_refused_message("cdist", reason));
+      throw detail::hybrid_refusal("cdist", reason);
   }
   if (device_index < 0)
-    throw DeviceError("cdist: GPU device index must be non-negative, got " + std::to_string(device_index) + ".");
+    throw GpuRefusal("cdist: GPU device index must be non-negative, got " + std::to_string(device_index) + ".",
+                     "GPU device index " + std::to_string(device_index) + " is negative");
   if (f32)
     reject_cdist_gpu("computes from Float64 series, but precision = Float32 was requested",
                      "Load the series as Float64, or use device cpu.");
@@ -113,6 +115,7 @@ void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
                    "Use device cpu.");
 #else
   (void)gpu_precision;
+  require_gpu_device("cdist", device_index); // the rules above need no device: it is asked last, before any series is read
 #endif
 #endif
 }
@@ -425,7 +428,8 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
                           Device device,
                           int device_index,
                           GpuPrecision gpu_precision,
-                          double gpu_share)
+                          double gpu_share,
+                          bool fallback)
 {
   if (gpu_share != -1.0 && (std::isnan(gpu_share) || gpu_share < 0.0 || gpu_share > 1.0)) {
     throw InvalidInput("cdist: gpu_share must be -1 (automatic) or in [0, 1]; got "
@@ -446,7 +450,16 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
   core::DistanceConfig cfg = distance;
   cfg.ndim = X_in.ndim;
   core::validate(cfg, both_f32);
-  validate_cdist_device(cfg, both_f32, device, device_index, gpu_precision);
+  // The GPU request is judged before any series is read; with `fallback` what it cannot honour computes on the CPU.
+  try {
+    validate_cdist_device(cfg, both_f32, device, device_index, gpu_precision);
+  } catch (const GpuRefusal &refusal) {
+    if (!fallback) throw;
+    detail::say_fallback(refusal.reason());
+    device = Device::CPU;
+    device_index = 0;
+    gpu_share = -1.0;
+  }
 
   check_collection_series(X_in, "X", cfg.missing);
   check_collection_series(Y_in, "Y", cfg.missing);
@@ -561,7 +574,7 @@ std::vector<double> cdist(const Data &X, const Data &Y, const Config &config)
 {
   return cdist(X, Y,
                { .variant = config.variant, .metric = config.metric, .missing = config.missing, .band = config.band },
-               config.device, config.device_index, config.gpu_precision, config.gpu_share);
+               config.device, config.device_index, config.gpu_precision, config.gpu_share, config.fallback);
 }
 
 } // namespace dtwc

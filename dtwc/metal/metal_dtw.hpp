@@ -38,10 +38,11 @@ namespace dtwc::metal {
 inline void validate_metal_precision(GpuPrecision value)
 {
   if (value == GpuPrecision::FP64)
-    throw DeviceError(
+    throw GpuRefusal(
       "Metal: precision FP64 is not implemented (the Metal kernels compute in "
       "FP32); no backend call or CPU fallback was attempted. Use precision Auto "
-      "or FP32, or device cpu for Float64 distances.");
+      "or FP32, or device cpu for Float64 distances.",
+      "Metal computes in FP32, so precision FP64 cannot run");
 }
 
 struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
