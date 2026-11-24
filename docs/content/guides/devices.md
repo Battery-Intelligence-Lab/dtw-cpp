@@ -53,9 +53,9 @@ decision is made before a series is read where C++ reads the input: `dtwc_cl`, `
 with a path, and a path Python or MATLAB hand to it. Python and MATLAB read a Parquet
 file themselves, and Python's `cdist` a path or a `Dataset`, before they call C++, so
 there a request refused without `fallback` is refused after that read, with the same
-error (a build with no GPU backend, and in Python a machine with no GPU, are refused
-before it); with `fallback` the CPU run takes the series already read, and nothing is
-read twice. A failure once the GPU has begun (out of
+error (a build with no GPU backend, and in Python plain `gpu` on a machine with no GPU,
+are refused before it); with `fallback` the CPU run takes the series already read, and
+nothing is read twice. A failure once the GPU has begun (out of
 memory, a CUDA call that fails) is a device error whether or not `fallback` is set,
 and nothing runs again. `hpc` with `fallback` is `InvalidInput` in Python (the run is remote, with no
 local CPU to fall back to); C++ and MATLAB refuse `hpc` anyway.
