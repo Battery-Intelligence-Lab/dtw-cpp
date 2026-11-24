@@ -346,7 +346,7 @@ two collections `X` (`M` series) and `Y` (`N` series) without clustering:
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, dtype=None, matrix_dtype="float64", ...)` | `dtwc.distance.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'Dtype', '', 'MatrixDtype', 'float64', ...)` |
+| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, dtype=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'Dtype', '', 'MatrixDtype', 'float64', ...)` |
 | returns | `std::vector<double>` of `M × N` values, row-major: element `i * N + j` is the distance from `X[i]` to `Y[j]` | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
 
 Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes on

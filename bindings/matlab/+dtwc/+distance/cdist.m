@@ -15,7 +15,7 @@ function D = cdist(X, varargin)
 %   X and Y may be an N x L numeric matrix, a cell of numeric vectors, a
 %   dtwc.Dataset, or a file/folder path.
 %
-%   See also dtwc.distance.dtw, dtwc.cluster
+%   See also dtwc.distance.dtw, dtwc.cdist, dtwc.cluster
 
 %> @file cdist.m
 %> @brief Cross-collection DTW distance matrix.

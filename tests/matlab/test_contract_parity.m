@@ -497,8 +497,10 @@ end
 
 function test_tier1_cdist_surface(testCase)
 %   Cross-collection cdist exists and runs on CPU.
-    D = dtwc.distance.cdist(testCase.TestData.X(1:2, :), testCase.TestData.X(3:5, :));
+    D = dtwc.cdist(testCase.TestData.X(1:2, :), testCase.TestData.X(3:5, :));
     verifySize(testCase, D, [2 3]);
+    D2 = dtwc.distance.cdist(testCase.TestData.X(1:2, :), testCase.TestData.X(3:5, :));
+    verifyEqual(testCase, D, D2, 'AbsTol', 1e-12);
 end
 
 % =========================================================================
