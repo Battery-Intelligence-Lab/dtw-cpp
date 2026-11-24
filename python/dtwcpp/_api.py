@@ -320,10 +320,11 @@ def load(source, *, skip_cols=None, skip_rows=None, delimiter=None, name=None, d
     ``(n_series, n_steps, ndim)`` takes it too; an Arrow IPC file gives its own in
     its schema metadata, and one given above 1 that differs is refused when the
     file is read, as is one that differs from a :class:`Data`'s own.
-    :func:`cluster` takes a series' ``ndim`` from its Dataset. A Dataset passes
-    through with the options it was made with: one given that differs raises
-    :class:`dtwcpp.InvalidInput` naming both values, its default value included,
-    one equal to it runs, and ``name`` is refused."""
+    A Dataset passes through with the options it was made with: one given that
+    differs raises :class:`dtwcpp.InvalidInput` naming both values, its default
+    value included, one equal to it runs, and ``name`` is refused.
+    :func:`cluster` takes a series' ``ndim`` from its Dataset, and of the other
+    reader options only ``dtype``, which it checks by the same rule."""
     if isinstance(source, Dataset):
         if name is not None:
             from dtwcpp import InvalidInput
