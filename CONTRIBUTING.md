@@ -1,9 +1,3 @@
----
-layout: default
-title: Guideline
-nav_order: 2
----
-
 # Contributing
 
 DTW-C++ is an open-source project open to both academic and commercial applications. We welcome and appreciate any contributions from the community. For our code of conduct, please refer to the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).

@@ -1,9 +1,3 @@
----
-layout: default
-title: Coding conventions
-nav_order: 3
----
-
 # Coding conventions
 
 - Avoid using "using" in the global namespace.
