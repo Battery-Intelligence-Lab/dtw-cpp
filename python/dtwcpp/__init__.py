@@ -285,9 +285,6 @@ soft_dtw_gradient.__doc__ = _soft_dtw_gradient.__doc__
 
 from . import distance
 from .distance import cdist
-from . import preprocess
-from . import diagnose
-from . import features
 from . import test
 
 
@@ -337,5 +334,5 @@ __all__ = [
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",
     "save_dataset_parquet", "load_dataset_parquet",
-    "preprocess", "diagnose", "features", "test",
+    "test",
 ]

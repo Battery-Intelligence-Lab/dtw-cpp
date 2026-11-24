@@ -21,7 +21,7 @@ Use the individual functions if you want a different combination.
 **When to use this vs the raw signal:** the chain is intended for *shape*
 clustering. If your goal is to cluster by *magnitude / energy intensity*, do
 NOT apply this chain — raw DTW (or a feature-based method on summary
-statistics) is the correct tool. See ``test_preprocess.py`` for examples.
+statistics) is the correct tool.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from typing import Sequence
 
 import numpy as np
 
-from dtwcpp._dtwcpp_core import _z_normalize_1d
+import dtwcpp
 
 
 def strip_idle(s: Sequence[float], threshold: float = 10.0) -> np.ndarray:
@@ -92,7 +92,7 @@ def derivative(s: Sequence[float]) -> np.ndarray:
 
 def z_normalize(s: Sequence[float]) -> np.ndarray:
     """Per-series z-normalisation (zero mean, unit std). Wraps C++ ``z_normalize``."""
-    return _z_normalize_1d(np.ascontiguousarray(s, dtype=np.float64))
+    return np.asarray(dtwcpp.z_normalize(np.ascontiguousarray(s, dtype=np.float64)))
 
 
 def power_signal(
