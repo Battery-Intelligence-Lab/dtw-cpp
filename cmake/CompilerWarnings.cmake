@@ -6,6 +6,8 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
   # Sign changes go unwarned on every compiler: int64 indices meet size_t containers throughout, by design.
   set(MSVC_WARNINGS
       /W4 # Baseline reasonable warnings
+      /wd4018 # '<': signed/unsigned mismatch (sign changes, see above)
+      /wd4389 # '==': signed/unsigned mismatch (likewise)
       /w14242 # 'identifier': conversion from 'type1' to 'type2', possible loss of data
       /w14254 # 'operator': conversion from 'type1:field_bits' to 'type2:field_bits', possible loss of data
       /w14263 # 'function': member function does not override any base class virtual member function
@@ -58,7 +60,7 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
   )
 
   if(MSVC)
-    set(CUDA_WARNINGS -Xcompiler=/W3)
+    set(CUDA_WARNINGS -Xcompiler=/W3 -Xcompiler=/wd4018)
   else()
     set(CUDA_WARNINGS
       -Xcompiler=-Wall
@@ -66,6 +68,7 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       -Xcompiler=-Wunused
       -Xcompiler=-Wconversion
       -Xcompiler=-Wshadow
+      -Xcompiler=-Wno-sign-compare
       -Xcompiler=-Wno-unused-parameter
       --display-error-number
     )
