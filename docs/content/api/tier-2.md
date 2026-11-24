@@ -79,7 +79,7 @@ disp(result.medoid_indices); disp(result.total_cost); disp(dtwc.davies_bouldin(p
 | iterations, restarts, seed | `set_max_iter`, `set_n_repetitions`, `set_random_seed` | the same, or `max_iter`, `n_repetitions`, `random_seed` | `set_max_iter`, `set_n_repetitions` |
 | MIP solver | `set_solver(Solver)` (returns `bool`), `solver()`, `mip_settings` | `set_solver(Solver)`, `solver`, `mip_settings` | `set_solver(name)`, `set_mip_settings(s)` |
 | CLARA, OneBatchPAM, hierarchical, TADPole | `set_sample_size`, `set_n_samples`, `set_batch_size`, `set_linkage`, `set_tadpole_dc` | | |
-| output | `set_output_folder`, `set_verbose`, `set_name` | `output_folder`, `verbose`, `name` | `set_output_folder`, `set_verbose` |
+| verbosity, name | `set_verbose`, `set_name` | `verbose`, `name` | `set_verbose` |
 | memory | `set_ram_limit(bytes)`, `ram_limit()` | `ram_limit` (bytes or `"8G"`) | `set_ram_limit(limit)`, `RamLimit` |
 | matrix value type | `set_matrix_dtype(core::Precision)`, `matrix_dtype()` | `matrix_dtype` (`"float64"`, `"float32"`) | `set_matrix_dtype(name)` |
 

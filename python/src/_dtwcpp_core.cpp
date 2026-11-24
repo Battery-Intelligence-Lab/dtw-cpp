@@ -1009,8 +1009,6 @@ NB_MODULE(_dtwcpp_core, m)
                  "available memory, or a cgroup's limit. It sizes the slabs in which a\n"
                  "mapped matrix (use_mmap_distance_matrix) is filled.")
     .def_prop_rw("name", &dtwc::Problem::name, &dtwc::Problem::set_name)
-    .def_prop_rw("output_folder", &dtwc::Problem::output_folder, &dtwc::Problem::set_output_folder, "The Problem's output folder, ./results/ by default. The Problem writes no file itself: pass this or any\n"
-                  "directory to write_result_files.")
     .def_prop_ro("clusters_ind", labels_of, nb::rv_policy::move, "Cluster label of each series, an int64 array. Read-only: set_result is the write route.")
     .def_prop_ro("centroids_ind", medoids_of, nb::rv_policy::move, "Medoid series indices, an int64 array. Read-only: set_result is the write route.")
     .def("set_result", &dtwc::Problem::set_result, "result"_a,

@@ -256,12 +256,3 @@ TEST_CASE("TADPole under a squared-L2 metric takes the exact path",
                                   &l1_stats);
   CHECK(l1_stats.pruning_enabled);
 }
-
-TEST_CASE("Problem's default output folder is ./results/", "[problem][output][if2]")
-{
-  // It was settings::paths::results, a process-wide global (removed pre-tag);
-  // on the synced base a Problem built after `settings::paths::results =
-  // "elsewhere"` wrote to "elsewhere".
-  CHECK(dtwc::Problem{}.output_folder() == fs::path{ "./results/" });
-  CHECK(dtwc::Problem{ "named" }.output_folder() == fs::path{ "./results/" });
-}

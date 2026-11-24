@@ -7,15 +7,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <filesystem>
 #include <string>
-#include <system_error>
 #include <utility>
 #include <vector>
-
-#ifndef DTWC_F19_TEST_ROOT
-#error "DTWC_F19_TEST_ROOT must bind F19 output to the build tree"
-#endif
 
 using Catch::Matchers::WithinAbs;
 
@@ -28,7 +22,7 @@ dtwc::Data two_series_data()
     std::vector<std::string>{ "left", "right" });
 }
 
-dtwc::Problem capped_lloyd_problem(const std::filesystem::path &output)
+dtwc::Problem capped_lloyd_problem()
 {
   dtwc::Problem problem{ "f19_capped_lloyd" };
   problem.set_data(dtwc::Data(
@@ -39,30 +33,12 @@ dtwc::Problem capped_lloyd_problem(const std::filesystem::path &output)
   problem.set_n_clusters(2);
   problem.set_max_iter(100);
   problem.set_n_repetitions(1);
-  problem.set_output_folder(output);
   problem.init_fun = [](dtwc::Problem &candidate, std::uint64_t) {
     std::vector<dtwc::index_t> initial_medoids{ 0, 8 };
     candidate.set_clusters(initial_medoids);
   };
   return problem;
 }
-
-struct OutputDirectory
-{
-  std::filesystem::path path;
-
-  explicit OutputDirectory(std::string_view leaf)
-    : path(std::filesystem::path{ DTWC_F19_TEST_ROOT } / leaf)
-  {
-    std::filesystem::create_directories(path);
-  }
-
-  ~OutputDirectory()
-  {
-    std::error_code error;
-    std::filesystem::remove_all(path, error);
-  }
-};
 
 } // namespace
 
@@ -75,17 +51,14 @@ TEST_CASE("F19 Problem canonical accessors round-trip setter state",
   CHECK(defaults.last_iterations() == 0);
   CHECK(defaults.tadpole_dc() == -1.0);
   CHECK_FALSE(defaults.verbose());
-  CHECK_FALSE(defaults.output_folder().empty());
   CHECK(defaults.name().empty());
   CHECK(defaults.data().size() == 0);
 
   dtwc::Problem problem{ "constructor_name" };
-  const auto output = std::filesystem::path{ DTWC_F19_TEST_ROOT } / "accessors";
   problem.set_method(dtwc::Method::TADPole);
   problem.set_random_seed(123456789ULL);
   problem.set_tadpole_dc(0.125);
   problem.set_verbose(true);
-  problem.set_output_folder(output);
   problem.set_name("renamed");
   problem.set_data(two_series_data());
 
@@ -94,7 +67,6 @@ TEST_CASE("F19 Problem canonical accessors round-trip setter state",
   CHECK(problem.last_iterations() == 0);
   CHECK(problem.tadpole_dc() == 0.125);
   CHECK(problem.verbose());
-  CHECK(problem.output_folder() == output);
   CHECK(problem.name() == "renamed");
   CHECK(problem.data().size() == 2);
   CHECK(problem.data().precision == dtwc::core::Precision::Float64);
@@ -106,8 +78,7 @@ TEST_CASE("F19 Problem canonical accessors round-trip setter state",
 TEST_CASE("F19 capped Lloyd behavior survives Problem encapsulation",
           "[f19][problem][api][lloyd]")
 {
-  OutputDirectory output{ "lloyd" };
-  auto problem = capped_lloyd_problem(output.path);
+  auto problem = capped_lloyd_problem();
 
   REQUIRE_NOTHROW(problem.cluster_by_kmedoids_lloyd());
   CHECK(problem.method() == dtwc::Method::Kmedoids);
@@ -117,5 +88,4 @@ TEST_CASE("F19 capped Lloyd behavior survives Problem encapsulation",
         == std::vector<dtwc::index_t>{ 0, 0, 0, 1, 1, 1, 1, 1, 1 });
   CHECK_THAT(problem.find_total_cost(), WithinAbs(96.0, 1e-12));
   CHECK(problem.name() == "f19_capped_lloyd");
-  CHECK(problem.output_folder() == output.path);
 }

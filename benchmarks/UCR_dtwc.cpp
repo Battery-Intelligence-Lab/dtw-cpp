@@ -105,7 +105,6 @@ inline void UCR_2018(const fs::path &data_dir, const fs::path &results_dir)
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ "sqr_" + stem_str, dl }; // Create a problem.
-    prob.set_output_folder(out_folder);
 
     int Nc = Nc_list[stem_str.substr(0, stem_str.length() - 5)];
 
@@ -136,7 +135,7 @@ inline void UCR_2018(const fs::path &data_dir, const fs::path &results_dir)
     std::cout << "Band used " << prob.distance().band << "\n\n\n";
 
     prob.print_clusters(); // Prints to screen.
-    dtwc::detail::write_result_files(prob, prob.output_folder(), true); // The files dtwc_cl writes.
+    dtwc::detail::write_result_files(prob, out_folder, true); // The files dtwc_cl writes.
 
     const auto time_3 = clk.duration();
     timing_file << stem_str << ',' << time_1 << ',' << time_2 << ',' << time_3 << '\n';

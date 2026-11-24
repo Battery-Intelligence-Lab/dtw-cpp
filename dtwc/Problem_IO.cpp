@@ -37,7 +37,7 @@ void Problem::print_clusters() const
 
   std::cout << '\n';
 
-  for (std::size_t i_c = 0, n_c = static_cast<std::size_t>(Nc); i_c < n_c; ++i_c) {
+  for (index_t i_c = 0; i_c < Nc; ++i_c) {
     std::cout << "The cluster with centroid " << series_name(centroids_ind[i_c]) << " has following members: ";
 
     for (std::size_t i_p = 0, n_p = static_cast<std::size_t>(size()); i_p < n_p; ++i_p)

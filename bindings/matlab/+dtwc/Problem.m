@@ -257,15 +257,11 @@ classdef Problem < handle
             ok = dtwc_mex('Problem_set_solver', obj.Handle, char(s));
         end
 
-        function set_output_folder(obj, dir)
-        %SET_OUTPUT_FOLDER Set the folder where result CSVs are written.
-            dtwc_mex('Problem_set_output_folder', obj.Handle, char(dir));
-        end
-
         function set_mip_settings(obj, s)
         %SET_MIP_SETTINGS Configure MIP solver tuning from a struct.
         %   Recognised fields: mip_gap, time_limit_sec, warm_start, numeric_focus,
-        %   mip_focus, verbose_solver, lr_max_nodes.
+        %   mip_focus, verbose_solver, lr_max_nodes. A field of another name raises
+        %   dtwc:invalidArgument, naming it and the valid ones.
             dtwc_mex('Problem_set_mip_settings', obj.Handle, s);
         end
 

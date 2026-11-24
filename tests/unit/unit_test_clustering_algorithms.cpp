@@ -16,7 +16,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include "../support/scratch_directory.hpp"
 #include "../test_util.hpp"
 
 #include <algorithm>
@@ -35,7 +34,6 @@
 #endif
 
 using Catch::Matchers::WithinAbs;
-using dtwc::test_support::ScratchDirectory;
 using namespace dtwc;
 
 namespace {
@@ -60,15 +58,10 @@ Problem make_dummy_problem(int N_data, int Nc)
   prob.set_n_clusters(Nc);
   prob.set_max_iter(100);
   prob.set_n_repetitions(1);
-  // Result files go to a directory of this process, not the project root/CWD
-  // and not a name shared with other test processes.
-  static const ScratchDirectory output{ "test_clustering" };
-  prob.set_output_folder(output.path);
   return prob;
 }
 
-Problem make_capped_lloyd_problem(
-  const std::filesystem::path &output, std::string name, int max_iter)
+Problem make_capped_lloyd_problem(std::string name, int max_iter)
 {
   Problem problem(name);
   problem.set_data(Data(
@@ -82,7 +75,6 @@ Problem make_capped_lloyd_problem(
   problem.set_n_clusters(2);
   problem.set_max_iter(max_iter);
   problem.set_n_repetitions(1);
-  problem.set_output_folder(output);
   problem.init_fun = [](Problem &candidate, std::uint64_t) {
     std::vector<index_t> initial_medoids{0, 8};
     candidate.set_clusters(initial_medoids);
@@ -302,9 +294,8 @@ TEST_CASE("After assign_clusters, each medoid belongs to its own cluster", "[Pha
 TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
           "[Phase1][clustering][lloyd][capped][m29]")
 {
-  const ScratchDirectory output{ "capped_lloyd" };
-  auto capped = make_capped_lloyd_problem(output.path, "capped", 1);
-  auto converged = make_capped_lloyd_problem(output.path, "converged", 100);
+  auto capped = make_capped_lloyd_problem("capped", 1);
+  auto converged = make_capped_lloyd_problem("converged", 100);
 
   capped.cluster_by_kmedoids_lloyd();
   converged.cluster_by_kmedoids_lloyd();
@@ -343,7 +334,7 @@ TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
   CHECK_THAT(capped.find_total_cost(), WithinAbs(nearest_cost, 1e-12));
   CHECK(capped.labels() == converged.labels());
 
-  auto last = make_capped_lloyd_problem(output.path, "last", 2); // converges on the last iteration it may run
+  auto last = make_capped_lloyd_problem("last", 2); // converges on the last iteration it may run
   CHECK(last.cluster().converged);
 }
 

@@ -1237,14 +1237,12 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   plhs[0] = mxCreateLogicalScalar(ok); // false => requested solver not compiled in
 }
 
-static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
-{
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_output_folder requires handle and folder string.");
-  auto &prob = stored_problem(prhs[1]);
-  prob.set_output_folder(get_path(prhs[2], "output_folder"));
-}
+/// The MIPSettings fields a struct carries, as set_mip_settings reads and get_mip_settings returns them.
+static const char *mip_setting_names[] = { "mip_gap",       "time_limit_sec", "warm_start",    "numeric_focus",
+                                          "mip_focus",     "verbose_solver", "lr_max_nodes" };
 
-/// set_mip_settings(struct): reads any subset of the MIPSettings fields present.
+/// set_mip_settings(struct): reads any subset of the MIPSettings fields present; a field of any other name is
+/// refused, naming it and the valid ones, as dtwc.distance.dtw refuses an unknown setting.
 static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_mip_settings requires handle and a struct.");
@@ -1254,6 +1252,14 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
     throw std::invalid_argument(
       "mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
       "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes).");
+  for (int i = 0; i < mxGetNumberOfFields(s); ++i) {
+    const std::string field = mxGetFieldNameByNumber(s, i);
+    if (std::find(std::begin(mip_setting_names), std::end(mip_setting_names), field) != std::end(mip_setting_names))
+      continue;
+    std::string valid;
+    for (const char *name : mip_setting_names) valid += (valid.empty() ? "" : ", ") + std::string(name);
+    throw std::invalid_argument("unknown mip setting '" + field + "'. Valid: " + valid + ".");
+  }
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap")) m.mip_gap = get_scalar(f, "mip_gap");
@@ -1273,8 +1279,7 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (nrhs < 2) throw std::invalid_argument("Problem_get_mip_settings requires a handle.");
   auto &prob = stored_problem(prhs[1]);
   const auto &m = prob.mip_settings;
-  const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus", "verbose_solver", "lr_max_nodes" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 7, fields);
+  mxArray *s = mxCreateStructMatrix(1, 1, static_cast<int>(std::size(mip_setting_names)), mip_setting_names);
   mxSetField(s, 0, "mip_gap", mxCreateDoubleScalar(m.mip_gap));
   mxSetField(s, 0, "time_limit_sec", mxCreateDoubleScalar(m.time_limit_sec));
   mxSetField(s, 0, "warm_start", mxCreateLogicalScalar(m.warm_start));
@@ -1915,13 +1920,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
       cmd_Problem_get_clusters(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_is_distance_matrix_filled")
       cmd_Problem_is_distance_matrix_filled(nlhs, plhs, nrhs, prhs);
-    // Problem: method, solver, output folder, MIP settings, GPU precision, matrix dtype, checkpoint, n_clusters
+    // Problem: method, solver, MIP settings, GPU precision, matrix dtype, checkpoint, n_clusters
     else if (cmd == "Problem_set_method")
       cmd_Problem_set_method(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_solver")
       cmd_Problem_set_solver(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_set_output_folder")
-      cmd_Problem_set_output_folder(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_mip_settings")
       cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings")

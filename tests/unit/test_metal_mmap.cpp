@@ -107,7 +107,6 @@ TEST_CASE("Metal device via Problem::fill_distance_matrix (mmap)", "[metal][mmap
   prob_cpu.fill_distance_matrix();
 
   auto prob_gpu = make_problem(N, L, 777);
-  prob_gpu.set_output_folder(tmpdir);
   prob_gpu.set_device(dtwc::Device::GPU);
   // A cache left by an earlier run would reopen filled and skip the GPU.
   std::filesystem::remove(tmpdir / "metal_mmap_distmat.bin");

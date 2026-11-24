@@ -38,8 +38,8 @@ int main(int argc, char **argv)
   prob.cluster_by_kmedoids_lloyd();
 
   prob.print_clusters(); // Prints to screen.
-  // Writes the files dtwc_cl writes (labels, medoids, distance matrix, silhouettes) into the output folder.
-  dtwc::detail::write_result_files(prob, prob.output_folder(), true, &std::cout);
+  // Writes the files dtwc_cl writes (labels, medoids, distance matrix, silhouettes) into ./results.
+  dtwc::detail::write_result_files(prob, "./results", true, &std::cout);
 
   std::cout << "Finished all tasks " << clk << "\n";
 

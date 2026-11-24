@@ -215,7 +215,6 @@ TEST_CASE("io::write_csv + Problem::read_distance_matrix end-to-end roundtrip",
 
   dtwc::Problem prob1("rt");
   prob1.set_data(std::move(data1));
-  prob1.set_output_folder(tmp);
   prob1.set_verbose(false);
   prob1.fill_distance_matrix();
 
@@ -232,7 +231,6 @@ TEST_CASE("io::write_csv + Problem::read_distance_matrix end-to-end roundtrip",
   // Fresh Problem with identical data; its matrix is empty until loaded.
   dtwc::Problem prob2("rt2");
   prob2.set_data(std::move(data2));
-  prob2.set_output_folder(tmp);
   prob2.set_verbose(false);
   prob2.read_distance_matrix(csv_path);
 

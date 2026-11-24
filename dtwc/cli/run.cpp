@@ -523,7 +523,6 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     std::error_code ec;
     fs::create_directories(output, ec);
     if (ec) throw IOError("--output '" + config.output + "' cannot be created: " + ec.message());
-    prob.set_output_folder(output);
   }
 
   // ---- 2. The method, and N and the memory plan where Parquet metadata or an Arrow IPC file's walk give them ----
@@ -989,20 +988,17 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     } else {
 #ifdef DTWC_HAS_PARQUET
       if (stream_payload) {
-        // As for Arrow IPC, the Problem holds no series: FastCLARA reads the file's row groups.
+        // As for Arrow IPC, the Problem holds no series: FastCLARA reads the file's row groups, then its names.
         const bool f32 = config.dtype == core::Precision::Float32;
-        {
-          const io::ParquetChunkReader reader(input, config.column, config.skip_cols, config.skip_rows);
-          const auto plan = resolve_clara_plan(reader.logical_series_count(), clara, "fast_clara");
-          if (config.verbose)
-            std::cout << "FastCLARA: streaming from Parquet (" << reader.logical_series_count() << " rows, "
-                      << reader.num_row_groups() << " row groups, ~" << reader.estimated_resident_bytes(f32) / (1ULL << 20)
-                      << " MB resident estimate)\n";
-          result = f32 ? algorithms::detail::fast_clara_chunked<true>(prob, clara, reader, plan)
-                       : algorithms::detail::fast_clara_chunked<false>(prob, clara, reader, plan);
-        }
-        streamed_names =
-          io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
+        const io::ParquetChunkReader reader(input, config.column, config.skip_cols, config.skip_rows);
+        const auto plan = resolve_clara_plan(reader.logical_series_count(), clara, "fast_clara");
+        if (config.verbose)
+          std::cout << "FastCLARA: streaming from Parquet (" << reader.logical_series_count() << " rows, "
+                    << reader.num_row_groups() << " row groups, ~" << reader.estimated_resident_bytes(f32) / (1ULL << 20)
+                    << " MB resident estimate)\n";
+        result = f32 ? algorithms::detail::fast_clara_chunked<true>(prob, clara, reader, plan)
+                     : algorithms::detail::fast_clara_chunked<false>(prob, clara, reader, plan);
+        streamed_names = reader.series_names();
       } else {
         result = cluster_in_ram();
       }
