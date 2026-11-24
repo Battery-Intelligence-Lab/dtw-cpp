@@ -3,7 +3,7 @@
 # https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md
 
 function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
-  # Sign changes go unwarned on every compiler: int64 indices meet size_t containers throughout, by design.
+  # No warnings on sign changes (-Wsign-*, C4018, C4389): int64 indices meet size_t containers throughout, by design.
   set(MSVC_WARNINGS
       /W4 # Baseline reasonable warnings
       /wd4018 # '<': signed/unsigned mismatch (sign changes, see above)
@@ -13,6 +13,7 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       /w14263 # 'function': member function does not override any base class virtual member function
       /w14265 # 'classname': class has virtual functions, but destructor is not virtual instances of this class may not
               # be destructed correctly
+      /w14287 # 'operator': unsigned/negative constant mismatch
       /we4289 # nonstandard extension used: 'variable': loop control variable declared in the for-loop is used outside
               # the for-loop scope
       /w14296 # 'operator': expression is always 'boolean_value'
@@ -24,6 +25,7 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       /w14555 # expression has no effect; expected expression with side- effect
       /w14619 # pragma warning: there is no warning number 'number'
       /w14640 # Enable warning on thread un-safe static member initialization
+      /w14826 # Conversion from 'type1' to 'type2' is sign-extended. This may cause unexpected runtime behavior.
       /w14905 # wide string literal cast to 'LPSTR'
       /w14906 # string literal cast to 'LPWSTR'
       /w14928 # illegal copy-initialization; more than one user-defined conversion has been implicitly applied
