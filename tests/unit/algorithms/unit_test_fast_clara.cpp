@@ -316,7 +316,7 @@ TEST_CASE("FastCLARA plans counts above INT_MAX before allocation",
   opts.n_samples = 1;
   opts.max_iter = 1;
 
-  // Counts are index_t: the auto size max(40+2k, min(N, 10k+100)) is N here,
+  // Counts are index_t: the auto size min(N, 10k+100) is N here,
   // an N above INT_MAX.
   constexpr dtwc::index_t n = 3'000'000'000;
   const auto plan = algorithms::detail::resolve_clara_plan(n, opts, "fast_clara");
@@ -403,10 +403,10 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
 
 // ===========================================================================
 // Test 10: Auto sample_size default (Schubert & Rousseeuw 2021 formula),
-// max(40 + 2k, min(N, 10k + 100)) limited to [k, N], against values computed by hand:
-//   N=100,  k=5:  max(50, min(100, 150))   = 100 = N  (the FastPAM fallback)
-//   N=200,  k=5:  max(50, min(200, 150))   = 150      (the old 40 + 2k gave 50)
-//   N=1000, k=70: max(180, min(1000, 800)) = 800      (the old 40 + 2k gave 180)
+// min(N, 10k + 100), against values computed by hand:
+//   N=100,  k=5:  min(100, 150)  = 100 = N  (the FastPAM fallback)
+//   N=200,  k=5:  min(200, 150)  = 150
+//   N=1000, k=70: min(1000, 800) = 800
 // ===========================================================================
 TEST_CASE("FastCLARA auto sample_size follows the documented formula", "[fast_clara][auto_sample_size]")
 {

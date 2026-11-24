@@ -283,6 +283,16 @@ namespace {
 
 } // namespace
 
+namespace detail {
+
+  std::size_t resolve_batch_size(std::size_t n, index_t k, index_t requested)
+  {
+    const std::size_t m = requested > 0 ? std::min(n, static_cast<std::size_t>(requested)) : automatic_batch_size(n);
+    return std::max(m, static_cast<std::size_t>(k));
+  }
+
+} // namespace detail
+
 core::ClusteringResult one_batch_pam(Problem &prob,
                                      const OneBatchPAMOptions &options,
                                      OneBatchPAMStats *stats)
@@ -310,12 +320,9 @@ core::ClusteringResult one_batch_pam(Problem &prob,
     return result;
   }
 
-  std::size_t m = options.batch_size < 0
-                    ? automatic_batch_size(n)
-                    : std::min(n, static_cast<std::size_t>(options.batch_size));
   // The automatic size is an internal policy: it rises to k silently (an
   // explicit batch below k was refused above).
-  m = std::max(m, static_cast<std::size_t>(k));
+  const std::size_t m = detail::resolve_batch_size(n, k, options.batch_size);
 
   std::mt19937_64 rng(options.random_seed);
   std::vector<index_t> permutation(n);

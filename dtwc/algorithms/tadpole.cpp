@@ -38,24 +38,28 @@
 namespace dtwc {
 namespace algorithms {
 
-  namespace {
+  namespace detail {
 
     /// True when the L1 bounds (LB_Keogh and the diagonal UB; under another metric the
     /// LB can exceed the exact distance) are admissible against `exact_distance`:
-    /// Standard L1 univariate float64 DTW with `MissingStrategy::Error` and an unfilled
-    /// float64 matrix. Float32 series/matrices are excluded so float64 bounds never
-    /// prune float32-rounded distances, and a pre-filled matrix is already O(1) lookup
-    /// (and may hold user-supplied non-DTW distances).
-    bool bounds_valid(const Problem &prob)
+    /// Standard L1 univariate float64 DTW with `MissingStrategy::Error` into a float64
+    /// matrix. Float32 series/matrices are excluded so float64 bounds never prune
+    /// float32-rounded distances. A pre-filled matrix is already O(1) lookup (and may
+    /// hold user-supplied non-DTW distances), so `tadpole` prunes only into an unfilled one.
+    bool bounds_valid(core::DTWVariant variant, core::MetricType metric, std::size_t ndim, core::Precision series,
+                      core::Precision matrix, core::MissingStrategy missing)
     {
-      return prob.variant_params().variant == core::DTWVariant::Standard
-             && prob.metric() == core::MetricType::L1
-             && prob.data().ndim == 1
-             && !prob.data().is_f32()
-             && prob.matrix_dtype() != core::Precision::Float32
-             && !prob.is_distance_matrix_filled()
-             && prob.missing_strategy() == core::MissingStrategy::Error;
+      return variant == core::DTWVariant::Standard
+             && metric == core::MetricType::L1
+             && ndim == 1
+             && series != core::Precision::Float32
+             && matrix != core::Precision::Float32
+             && missing == core::MissingStrategy::Error;
     }
+
+  } // namespace detail
+
+  namespace {
 
     /// No-warp diagonal cost Σ_t |x_t − y_t| — a valid DTW upper bound for
     /// equal-length series (the diagonal always satisfies the Sakoe-Chiba band). L1,
@@ -179,7 +183,9 @@ namespace algorithms {
 
     const auto distance = exact_distance(prob); // before the band is read: it takes a direct write
     const int band = prob.band;
-    const bool can_prune = prune && bounds_valid(prob);
+    const bool can_prune = prune && !prob.is_distance_matrix_filled()
+                           && detail::bounds_valid(prob.variant_params().variant, prob.metric(), prob.data().ndim,
+                                                   prob.data().precision, prob.matrix_dtype(), prob.missing_strategy());
 
     const std::size_t M = core::packed_size(static_cast<std::size_t>(N)); // incl. diagonal slots
     std::vector<char> computed(M, 0);                                     // first-touch flag per pair (dedup + exact-call count)

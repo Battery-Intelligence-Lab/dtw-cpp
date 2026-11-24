@@ -31,6 +31,8 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../core/dtw_options.hpp"
+#include "../core/storage.hpp"
 
 #include <cstddef>
 
@@ -104,5 +106,14 @@ core::ClusteringResult tadpole(Problem& prob, index_t n_clusters, double dc,
  */
 double tadpole_auto_dc(Problem& prob, double percentile = 2.0);
 
+namespace detail {
+
+/// Whether the L1 bounds are admissible for a distance (Standard DTW under L1, MissingStrategy::Error) on univariate
+/// float64 series (`series`) into a float64 matrix (`matrix`). `tadpole` also prunes only into a matrix not yet filled.
+/// Plain values: the CLI's memory plan asks before any series is read.
+[[nodiscard]] bool bounds_valid(core::DTWVariant variant, core::MetricType metric, std::size_t ndim,
+                                core::Precision series, core::Precision matrix, core::MissingStrategy missing);
+
+} // namespace detail
 } // namespace algorithms
 } // namespace dtwc

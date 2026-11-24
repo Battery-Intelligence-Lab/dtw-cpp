@@ -50,5 +50,13 @@ core::ClusteringResult one_batch_pam(Problem& prob,
                                      const OneBatchPAMOptions& options,
                                      OneBatchPAMStats* stats = nullptr);
 
+namespace detail {
+
+/// The batch size for `n` points and `k` clusters, `requested` being OneBatchPAMOptions::batch_size: a positive one
+/// (at most n), else min(n, max(64, 20 ceil(log2(n + 1)))); never below k. Plain values: the CLI's memory plan
+/// asks before any series is read.
+[[nodiscard]] std::size_t resolve_batch_size(std::size_t n, index_t k, index_t requested);
+
+} // namespace detail
 } // namespace algorithms
 } // namespace dtwc

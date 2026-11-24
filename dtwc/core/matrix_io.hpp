@@ -72,6 +72,7 @@ inline std::string_view distance_matrix_csv_token(
   constexpr std::uint64_t magnitude_mask = UINT64_C(0x7fffffffffffffff);
   constexpr std::uint64_t exponent_mask = UINT64_C(0x7ff0000000000000);
   constexpr std::uint64_t fraction_mask = UINT64_C(0x000fffffffffffff);
+  // Read the bits, not std::signbit: GCC folds signbit of a zero under -fno-signed-zeros, so -0.0 would print "0".
   const auto bits = std::bit_cast<std::uint64_t>(value);
   if ((bits & exponent_mask) == exponent_mask
       && (bits & fraction_mask) != 0)

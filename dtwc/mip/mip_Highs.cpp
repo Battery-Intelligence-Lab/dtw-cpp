@@ -7,7 +7,6 @@
  */
 
 #include "mip.hpp"
-#include "highs_support.hpp"
 #include "decode_assignment.hpp"
 #include "../algorithms/fast_pam.hpp"
 #include "../base/error.hpp"
@@ -23,6 +22,7 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <string_view>
 
 namespace dtwc {
 
@@ -101,6 +101,26 @@ mip::PMedianModel mip::build_p_median_model(Problem &prob)
   }
   return model;
 }
+
+#ifdef DTWC_ENABLE_HIGHS
+namespace mip {
+namespace {
+
+/// Set a HiGHS option, or throw — never let a rejected option select a default.
+template <typename Value>
+void set_highs_option(Highs &highs, const char *name, const Value &value, std::string_view backend)
+{
+  if (highs.setOptionValue(name, value) == HighsStatus::kError)
+    throw SolverError(std::string(backend) + ": HiGHS rejected option '"
+      + std::string(name)
+      + "'. The option is unknown to this HiGHS build or the value is outside "
+        "its domain; continuing would silently run a different solver "
+        "configuration.");
+}
+
+} // namespace
+} // namespace mip
+#endif
 
 void MIP_clustering_byHiGHS(Problem &prob)
 {
