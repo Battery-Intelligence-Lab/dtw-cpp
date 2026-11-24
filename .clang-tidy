@@ -56,7 +56,6 @@ Checks: >
   cert-err60-cpp,
   cert-flp30-c,
   cert-msc50-cpp,
-  cert-msc51-cpp,
   cert-str34-c,
   misc-definitions-in-headers,
   misc-misplaced-const,
@@ -77,7 +76,6 @@ Checks: >
   performance-for-range-copy,
   performance-implicit-conversion-in-loop,
   performance-inefficient-algorithm,
-  performance-inefficient-string-concatenation,
   performance-inefficient-vector-operation,
   performance-move-const-arg,
   performance-noexcept-move-constructor,
@@ -109,6 +107,8 @@ Checks: >
 #   cppcoreguidelines-*: many conflict with legitimate DTW/kernel patterns (init, bounds).
 #   misc-include-cleaner: too aggressive on template-exported symbols.
 #   fuchsia-*, google-*, llvm-*: project-specific conventions not ours.
+#   cert-msc51-cpp: tests seed their random engines with constants, so that a run repeats.
+#   performance-inefficient-string-concatenation: error messages are built with + chains, also in loops that end in a throw.
 
 WarningsAsErrors: ''
 
