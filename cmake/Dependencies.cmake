@@ -363,9 +363,9 @@ function(dtwc_setup_dependencies)
 
       CPMAddPackage(
         NAME Arrow
-        VERSION 19.0.1
-        URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-19.0.1.tar.gz"
-        URL_HASH SHA256=4c898504958841cc86b6f8710ecb2919f96b5e10fa8989ac10ac4fca8362d86a
+        VERSION 26.0.1
+        URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-26.0.1.tar.gz"
+        URL_HASH SHA256=1fee09a4b032cd814ad8ce27365499a42d4fd78ab64870045453b3dd0343e64a
         SOURCE_SUBDIR cpp
         SYSTEM YES
         OPTIONS
