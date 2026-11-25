@@ -36,7 +36,7 @@ endmacro()
 
 macro(dtwc_enable_clang_tidy target WARNINGS_AS_ERRORS)
   find_program(CLANGTIDY clang-tidy)
-  if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
     # CMake hands clang-tidy the compiler's command, which it reads GNU-style: an MSVC-style compiler's /options read
     # as files (/EHsc lost: every throw an error) and -openmp:... as -o. A clang build checks the same sources.
     message(STATUS "clang-tidy: not run with an MSVC-style compiler (cl, clang-cl); a clang build runs it")
