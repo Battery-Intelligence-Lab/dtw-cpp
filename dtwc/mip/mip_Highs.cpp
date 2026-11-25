@@ -132,9 +132,10 @@ void MIP_clustering_byHiGHS(Problem &prob)
   Highs highs;
 
   mip::set_highs_option(highs, "mip_rel_gap", prob.mip_settings.mip_gap, "HiGHS");
-  // A serial tree search: HiGHS 1.16 searches in parallel by default, one thread per core, so among equal-cost
-  // optima the medoids could depend on the machine.
+  // HiGHS runs serially: its parallel tree search (1.16's default, a thread per core) could pick other equal-cost
+  // medoids on another machine, and its threads, beside dtwc's own, made one root solve several times slower.
   mip::set_highs_option(highs, "parallel", std::string("off"), "HiGHS");
+  mip::set_highs_option(highs, "threads", HighsInt{ 1 }, "HiGHS");
   if (prob.mip_settings.time_limit_sec > 0)
     mip::set_highs_option(highs, "time_limit",
                           static_cast<double>(prob.mip_settings.time_limit_sec), "HiGHS");
