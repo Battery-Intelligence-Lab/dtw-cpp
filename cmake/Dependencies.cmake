@@ -133,8 +133,9 @@ function(dtwc_setup_dependencies)
 
   # PMU counters. Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
-  # be relied on: the BM_CHECK at v1.9.5 benchmark_runner.cc:323 is inverted (it
+  # be relied on: the BM_CHECK at v1.10.0 benchmark_runner.cc:328 is inverted (it
   # aborts when the counters *were* set up and stays silent when they were not),
+  # compiled out where NDEBUG is defined,
   # and it sits inside an `aggregation_report_mode() != ARM_Unspecified` branch
   # that an ordinary benchmark never enters. A build without libpfm therefore
   # accepts --benchmark_perf_counters, writes a normal-looking JSON with no counter
@@ -178,8 +179,8 @@ function(dtwc_setup_dependencies)
       CPMAddPackage(
         NAME benchmark
         GITHUB_REPOSITORY google/benchmark
-        VERSION 1.9.5
-        GIT_TAG 192ef10025eb2c4cdd392bc502f0c852196baa48 # v1.9.5
+        VERSION 1.10.0
+        GIT_TAG a6b4a9f00b36c19af9997d68a1cf6e0b5b3d032c # v1.10.0
         OPTIONS
           "BENCHMARK_ENABLE_TESTING OFF"
           "BENCHMARK_ENABLE_GTEST_TESTS OFF"
