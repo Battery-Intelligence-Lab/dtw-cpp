@@ -227,11 +227,11 @@ References used during development. Verify each citation independently before pu
 
 - Applegate, D., Díaz, M., Hinder, O., Lu, H., Lubin, M., O'Donoghue, B., & Schudy, W. (2021). *Practical Large-Scale Linear Programming using Primal-Dual Hybrid Gradient*. NeurIPS 2021. arXiv:2106.04756 — the PDLP method (PDHG on the LP saddle point; core op is matrix-vector, hence GPU-friendly).
 - Lu, H., et al. (2023). *cuPDLP-C: A Strengthened Implementation of cuPDLP for Linear Programming by C language*. arXiv:2312.14832 — the C/CUDA implementation HiGHS vendors as `solver="pdlp"`.
-- HiGHS. ERGO-Code/HiGHS v1.15.1 release and versioned/tagged source:
-  https://github.com/ERGO-Code/HiGHS/releases/tag/v1.15.1,
-  https://github.com/ERGO-Code/HiGHS/tree/v1.15.1/highs/pdlp, and tagged
+- HiGHS. ERGO-Code/HiGHS v1.16.0 release and versioned/tagged source:
+  https://github.com/ERGO-Code/HiGHS/releases/tag/v1.16.0,
+  https://github.com/ERGO-Code/HiGHS/tree/v1.16.0/highs/pdlp, and tagged
   CMake configuration
-  https://github.com/ERGO-Code/HiGHS/blob/v1.15.1/CMakeLists.txt — The HiGHS
+  https://github.com/ERGO-Code/HiGHS/blob/v1.16.0/CMakeLists.txt — The HiGHS
   release DTWC++ fetches as its MIP solver; DTWC++ does not use its PDLP solver,
   and the build keeps the upstream `CUPDLP_GPU` option (its GPU path) off.
 

@@ -44,8 +44,8 @@ function(dtwc_setup_dependencies)
   message(STATUS "  HiGHS:    fetching (DTWC_ENABLE_HIGHS=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_HIGHS=OFF)")
   CPMAddPackage(
     NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
-    URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.16.0.tar.gz"
+    URL_HASH SHA256=0fa9da512955fb08c6cca7bfb274ca12e8a0e8a12e44189bd6e0c355ce7701bc
     SYSTEM YES
     OPTIONS
       "CI OFF"
@@ -59,7 +59,7 @@ function(dtwc_setup_dependencies)
     # fired on valid warm-start MIP solves (primal-dual integral bookkeeping
     # tolerance 1e-12 too tight after a presolve reset). Retained defensively:
     # forcing NDEBUG on the HiGHS target keeps its internal asserts off in Debug
-    # builds of DTWC++ regardless of whether 1.15.1 tightened the tolerance.
+    # builds of DTWC++, whatever a later HiGHS did to that tolerance.
     if(TARGET highs)
       target_compile_definitions(highs PRIVATE NDEBUG)
     endif()

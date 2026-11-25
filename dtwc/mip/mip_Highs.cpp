@@ -132,6 +132,9 @@ void MIP_clustering_byHiGHS(Problem &prob)
   Highs highs;
 
   mip::set_highs_option(highs, "mip_rel_gap", prob.mip_settings.mip_gap, "HiGHS");
+  // A serial tree search: HiGHS 1.16 searches in parallel by default, one thread per core, so among equal-cost
+  // optima the medoids could depend on the machine.
+  mip::set_highs_option(highs, "parallel", std::string("off"), "HiGHS");
   if (prob.mip_settings.time_limit_sec > 0)
     mip::set_highs_option(highs, "time_limit",
                           static_cast<double>(prob.mip_settings.time_limit_sec), "HiGHS");
@@ -152,7 +155,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
     HighsSolution sol;
     sol.col_value = model.start;
     sol.value_valid = true;
-    highs.setSolution(sol);
+    if (highs.setSolution(sol) == HighsStatus::kError)
+      throw SolverError("HiGHS rejected the warm-start solution (setSolution returned an error).");
   }
   model = {}; // HiGHS holds its own copy now: the model's N²-sized arrays go before the solve
 
