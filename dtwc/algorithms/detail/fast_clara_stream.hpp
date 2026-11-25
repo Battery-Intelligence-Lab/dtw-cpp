@@ -267,6 +267,7 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   RowCheck check(prob.distance());
   const auto decode = [&reader, &check, &prob](int rg, int count, index_t first_row) {
     if constexpr (Reader::decodes_with_team) {
+      (void)first_row;
       std::vector<RowCheck> pieces(static_cast<std::size_t>(count), RowCheck(prob.distance()));
       const auto piece_check = [&pieces](std::size_t j, const Data &piece, index_t first) {
         pieces[j].rows(piece, [first](std::size_t i) { return first + static_cast<index_t>(i); });

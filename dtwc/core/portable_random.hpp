@@ -57,12 +57,12 @@ namespace detail {
   // Lemire's multiply-high map is unbiased after rejecting the short low
   // interval.  For ordinary collection sizes, `low < upper_exclusive` is
   // vanishingly rare, so the integer division needed for the threshold stays
-  // off the Fisher-Yates hot path.  Unsigned negation is defined modulo 2^64.
+  // off the Fisher-Yates hot path.  0 - n is n's negation modulo 2^64.
   for (;;) {
     const std::uint64_t value = engine();
     const std::uint64_t low = value * upper_exclusive;
     if (low < upper_exclusive) {
-      const std::uint64_t threshold = -upper_exclusive % upper_exclusive;
+      const std::uint64_t threshold = (std::uint64_t{ 0 } - upper_exclusive) % upper_exclusive;
       if (low < threshold) continue;
     }
     return detail::multiply_high(value, upper_exclusive);

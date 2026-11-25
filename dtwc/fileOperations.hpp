@@ -253,41 +253,42 @@ namespace text_io_detail {
   {
     // A float is the double parse rounded to float, as every float32 route rounds a
     // double (pyarrow's cast, MATLAB's single): one text is one float series everywhere.
-    if constexpr (std::is_same_v<T, float>)
+    if constexpr (std::is_same_v<T, float>) {
       return static_cast<float>(parse_numeric_field<double>(raw_token, path, row, column));
+    } else {
+      const std::string_view token = trim_ascii(raw_token);
+      if (token.empty())
+        throw_numeric_field_error(path, row, column, "empty numeric field", token);
 
-    const std::string_view token = trim_ascii(raw_token);
-    if (token.empty())
-      throw_numeric_field_error(path, row, column, "empty numeric field", token);
+      if (equals_ascii_ci(token, "nan")) {
+        if constexpr (std::is_floating_point_v<T>)
+          return std::numeric_limits<T>::quiet_NaN();
+        else
+          throw_numeric_field_error(path, row, column, "NaN is invalid for an integer field", token);
+      }
 
-    if (equals_ascii_ci(token, "nan")) {
+      std::string_view parsed = token;
+      // One leading '+' is accepted; "+-1" is not a number.
+      if (parsed.size() > 1 && parsed.front() == '+' && parsed[1] != '-')
+        parsed.remove_prefix(1);
+      T value{};
+      const char *const last = parsed.data() + parsed.size();
+      std::from_chars_result result;
       if constexpr (std::is_floating_point_v<T>)
-        return std::numeric_limits<T>::quiet_NaN();
+        result = io::parse_number(parsed.data(), last, value); // not std::from_chars: macOS 26+ only
       else
-        throw_numeric_field_error(path, row, column, "NaN is invalid for an integer field", token);
-    }
+        result = std::from_chars(parsed.data(), last, value);
 
-    std::string_view parsed = token;
-    // One leading '+' is accepted; "+-1" is not a number.
-    if (parsed.size() > 1 && parsed.front() == '+' && parsed[1] != '-')
-      parsed.remove_prefix(1);
-    T value{};
-    const char *const last = parsed.data() + parsed.size();
-    std::from_chars_result result;
-    if constexpr (std::is_floating_point_v<T>)
-      result = io::parse_number(parsed.data(), last, value); // not std::from_chars: macOS 26+ only
-    else
-      result = std::from_chars(parsed.data(), last, value);
-
-    if (result.ec == std::errc::result_out_of_range)
-      throw_numeric_field_error(path, row, column, "numeric field is out of range", token);
-    if (result.ec != std::errc{} || result.ptr != last)
-      throw_numeric_field_error(path, row, column, "invalid numeric field", token);
-    if constexpr (std::is_floating_point_v<T>) {
-      if (!std::isfinite(value))
-        throw_numeric_field_error(path, row, column, "unapproved non-finite numeric field", token);
+      if (result.ec == std::errc::result_out_of_range)
+        throw_numeric_field_error(path, row, column, "numeric field is out of range", token);
+      if (result.ec != std::errc{} || result.ptr != last)
+        throw_numeric_field_error(path, row, column, "invalid numeric field", token);
+      if constexpr (std::is_floating_point_v<T>) {
+        if (!std::isfinite(value))
+          throw_numeric_field_error(path, row, column, "unapproved non-finite numeric field", token);
+      }
+      return value;
     }
-    return value;
   }
 
   template <typename T, typename Consumer>
