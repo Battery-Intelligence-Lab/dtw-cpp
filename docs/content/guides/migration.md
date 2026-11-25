@@ -50,7 +50,7 @@ behaviour listed further down.
 |---|---|
 | `Problem::set_numberOfClusters(n)`, `cluster_size()` | `set_n_clusters(k)`, `n_clusters()` |
 | `refreshDistanceMatrix`, `readDistanceMatrix`, `maxDistance`, `isDistanceMatrixFilled`, `fillDistanceMatrix`, `printDistanceMatrix` | `refresh_distance_matrix`, `read_distance_matrix`, `max_distance`, `is_distance_matrix_filled`, `fill_distance_matrix`, `print_distance_matrix` |
-| `distByInd(i, j)` | `dist_by_ind(i, j)`, which reads the filled matrix and computes nothing; the old name filled the whole matrix on its first call |
+| `distByInd(i, j)` | `dist_by_ind(i, j)`, which reads the filled matrix and computes nothing (v1.0.0's computed a pair not yet computed): fill the matrix first |
 | `printClusters` | `print_clusters` |
 | `writeClusters`, `writeMedoidMembers`, `writeSilhouettes`, `writeDistanceMatrix`, `cluster_and_process()` (and the per-repetition `…medoids_rep_<r>.csv` and `…_bestRepetition_Nc_<k>.csv` it wrote) | removed: `dtwc::detail::write_result_files(prob, directory, true)` writes the files `dtwc_cl` writes (the output table under [dtwc_cl](#dtwc_cl)), and `cluster()` then `print_clusters()` is the rest of what `cluster_and_process()` did; `dtwc::io::write_csv(prob.distance_matrix(), path)` writes the matrix alone |
 | `findTotalCost`, `assignClusters`, `calculateMedoids` | `find_total_cost`, `assign_clusters`, `calculate_medoids` |

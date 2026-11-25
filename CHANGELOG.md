@@ -313,9 +313,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `dtwc_cl -o` defaults to `./results` and `--name` to the input's file or folder name (v1.0.0: `.` and `dtwc`); a run
   prints a summary, not each iteration's cost and every cluster's members.
 - `Problem` and `DataLoader` methods take snake_case names (`fill_distance_matrix`, `set_n_clusters`, `start_row`, ...);
-  each renamed v1.0.0 name stays as a `[[deprecated]]` alias.
+  the v1.0.0 names are removed (Breaking lists them).
 - `dist_by_ind(i, j)` reads the filled matrix in O(1) and computes nothing, so fill it first, as the library's methods
-  do; the v1.0.0 name `distByInd` fills the whole matrix on its first call.
+  do (v1.0.0's `distByInd` computed a pair not yet computed).
 - `Problem::cluster()` writes no files and prints only after `set_verbose(true)`.
 - `set_solver` is `[[nodiscard]]`, and `set_solver(Solver::Gurobi)` on a build without Gurobi returns `false` silently;
   `cluster_by_mip()` raises `SolverError` for a solver not built or a run without a proven optimum.
