@@ -90,8 +90,8 @@ function(dtwc_setup_dependencies)
   if (NOT TARGET CLI11::CLI11)
     CPMAddPackage(
       NAME CLI11
-      URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz"
-      URL_HASH SHA256=c6ea6b2e5608b3ea8617999bd5f47420c71b2ebdb8dc4767c1034d1da5785711
+      URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.7.2.tar.gz"
+      URL_HASH SHA256=46eef3101da70852ec7af026e09d485ccee81813331c8c6052d39344443b83da
       DOWNLOAD_ONLY YES
     )
 

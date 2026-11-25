@@ -21,7 +21,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | Zstandard (its decoder) | 1.5.7 | BSD-3-Clause | yes — compiled in | yes |
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
 | HiGHS | 1.16.0 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with highspy, a dependency of dtwcpp that the wheel does not contain |
-| CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | yes — headers compiled in: the module links the CLI library (`dtwc::run`, whose run report prints the command line's key table) |
+| CLI11 | 2.7.2 | BSD-3-Clause | yes — headers compiled in | yes — headers compiled in: the module links the CLI library (`dtwc::run`, whose run report prints the command line's key table) |
 | fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no — the wheels are built with `DTWC_ENABLE_YAML=OFF` |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
 | LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS — `lib/`; Windows — `bin/libomp.dll`, beside `dtwc_cl.exe`; see note below | macOS wheels — bundled by `delocate`; Windows wheels — `libomp.dll` in `dtwcpp.libs/`, bundled by `delvewheel` |
