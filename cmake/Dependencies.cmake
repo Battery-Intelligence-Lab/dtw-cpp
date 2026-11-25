@@ -269,6 +269,10 @@ function(dtwc_setup_dependencies)
         INTERFACE_INCLUDE_DIRECTORIES "${ntkernel_error_category_SOURCE_DIR}/include")
       set_property(TARGET llfio_hl APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
         _WIN32_WINNT=0x601 NTKERNEL_ERROR_CATEGORY_INLINE NTKERNEL_ERROR_CATEGORY_STATIC)
+      # llfio's path_view instantiates std::codecvt<char16_t, char8_t>, which MSVC's library deprecates (STL4047,
+      # LWG-3767): the warning is llfio's, and MSVC reports it where llfio is included.
+      set_property(TARGET llfio_hl APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
+        _SILENCE_CXX20_CODECVT_CHAR8_T_FACETS_DEPRECATION_WARNING)
     endif()
   endif()
   if(TARGET llfio_hl)

@@ -239,6 +239,12 @@ endforeach()
 if(TARGET llfio_hl)
   target_link_libraries(dtwc_core PRIVATE llfio_hl)
   target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_MMAP)
+  # MSVC reports C4702 (unreachable code) in llfio's Windows implementation once link-time code generation inlines
+  # it: off in the two files that include llfio, on everywhere else.
+  if(MSVC)
+    set_property(SOURCE core/distance_matrix.cpp io/arrow_ipc.cpp TARGET_DIRECTORY dtwc_core APPEND
+      PROPERTY COMPILE_OPTIONS /wd4702)
+  endif()
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
