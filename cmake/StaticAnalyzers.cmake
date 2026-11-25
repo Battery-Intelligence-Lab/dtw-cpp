@@ -59,6 +59,10 @@ macro(dtwc_enable_clang_tidy target WARNINGS_AS_ERRORS)
     if(${WARNINGS_AS_ERRORS})
       list(APPEND CLANG_TIDY_OPTIONS -warnings-as-errors=*)
     endif()
+    # In cl mode clang-tidy reads no /EHsc from the command CMake hands it, so every throw would be an error.
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+      list(APPEND CLANG_TIDY_OPTIONS -extra-arg=/EHsc)
+    endif()
 
     set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_OPTIONS})
   else()
