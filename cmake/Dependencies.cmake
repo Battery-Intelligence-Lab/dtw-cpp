@@ -117,8 +117,8 @@ function(dtwc_setup_dependencies)
     message(STATUS "  YAML:     fetching fkYAML (DTWC_ENABLE_YAML=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_YAML=OFF)")
     CPMAddPackage(
       NAME fkYAML
-      URL "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.4.4.tar.gz"
-      URL_HASH SHA256=75fa1ce37480ac2ef47b820bfdba04894d4f19ac122ad59d892601553aa45c4e
+      URL "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.5.0.tar.gz"
+      URL_HASH SHA256=eaab648ff79d4688a8fb41f36a83211e56df3287e1d7ccfb2d09c5daed318143
       DOWNLOAD_ONLY YES
     )
     add_library(fkYAML::fkYAML INTERFACE IMPORTED)

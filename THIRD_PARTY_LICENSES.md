@@ -22,7 +22,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
 | HiGHS | 1.16.0 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with highspy, a dependency of dtwcpp that the wheel does not contain |
 | CLI11 | 2.7.2 | BSD-3-Clause | yes — headers compiled in | yes — headers compiled in: the module links the CLI library (`dtwc::run`, whose run report prints the command line's key table) |
-| fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no — the wheels are built with `DTWC_ENABLE_YAML=OFF` |
+| fkYAML | 0.5.0 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no — the wheels are built with `DTWC_ENABLE_YAML=OFF` |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
 | LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS — `lib/`; Windows — `bin/libomp.dll`, beside `dtwc_cl.exe`; see note below | macOS wheels — bundled by `delocate`; Windows wheels — `libomp.dll` in `dtwcpp.libs/`, bundled by `delvewheel` |
 | Microsoft Visual C++ runtime (`msvcp140*`, `vcruntime140*`, `concrt140`) and its OpenMP runtime (`vcomp140`) | that of the Visual Studio that built the artefact | Microsoft Distributable Code — see below | Windows only — `bin/`, beside `dtwc_cl.exe` and `dtwc_cl_msvc.exe`; `vcomp140` for `dtwc_cl_msvc.exe` only | Windows wheels — `msvcp140` in `dtwcpp.libs/`, bundled by `delvewheel` |
