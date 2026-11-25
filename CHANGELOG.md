@@ -333,7 +333,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - The maintainer build (`-DDTWC_DEV_MODE=ON`) passes its checks with GCC 13 and with clang 21 and clang-tidy 21 (which
   checks the tests too), every warning an error. It does not warn of sign conversions or comparisons (int64 indices
   meet `size_t` containers by design), and third-party headers are system headers, which its warnings skip.
-  cppcheck's findings are not cleared: where cppcheck is installed, pass `-DDTWC_ENABLE_CPPCHECK=OFF`.
+  cppcheck runs only with `-DDTWC_ENABLE_CPPCHECK=ON` (v1.0.0 ran it in every top-level build, where installed): its
+  findings are not cleared.
 - `settings.hpp`, `timing.hpp` and `parallelisation.hpp` moved to `dtwc/base/` (the old paths are gone); `dtwBanded`
   takes the element type of its series (v1.0.0's vector overload defaulted to `float`).
 - Numbers are read with fast_float and the matrix CSV written with `std::to_chars`, whatever the global C++ locale;

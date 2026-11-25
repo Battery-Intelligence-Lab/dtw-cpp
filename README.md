@@ -62,7 +62,7 @@ cmake --build build-dev --config Debug -j
 ctest --test-dir build-dev -C Debug
 ```
 
-`DTWC_DEV_MODE=ON` compiles the library, the CLI and the MIP solvers under the warning set of `cmake/CompilerWarnings.cmake` (`-Wall -Wextra -Wshadow -Wconversion -Wdouble-promotion` and more; `/W4` on MSVC), every warning an error. It also runs clang-tidy (the checks of `.clang-tidy`) over the project's C++ sources, the tests included, and cppcheck, and caches the compiles with ccache; each of the three is used only where it is installed, and the configure warns of one that is missing. Sign conversions and sign comparisons are not warned about: int64 indices meet `size_t` containers throughout, by design. Third-party and vendored headers are system headers, which the warnings and checks skip. The build is clean with GCC 13 and with clang 21 and clang-tidy 21, not yet with MSVC; cppcheck's findings are not cleared, so where cppcheck is installed, also pass `-DDTWC_ENABLE_CPPCHECK=OFF`.
+`DTWC_DEV_MODE=ON` compiles the library, the CLI and the MIP solvers under the warning set of `cmake/CompilerWarnings.cmake` (`-Wall -Wextra -Wshadow -Wconversion -Wdouble-promotion` and more; `/W4` on MSVC), every warning an error. It also runs clang-tidy (the checks of `.clang-tidy`) over the project's C++ sources, the tests included, and caches the compiles with ccache; each is used only where it is installed, and the configure warns of one that is missing. Sign conversions and sign comparisons are not warned about: int64 indices meet `size_t` containers throughout, by design. Third-party and vendored headers are system headers, which the warnings and checks skip. The build is clean with GCC 13 and with clang 21 and clang-tidy 21, not yet with MSVC. cppcheck runs only when asked (`-DDTWC_ENABLE_CPPCHECK=ON`): its findings are not cleared, so with warnings as errors that build fails.
 
 To add sanitizer instrumentation in a developer build, pass the specific maintainer option you want, for example `-DDTWC_ENABLE_SANITIZER_ADDRESS=ON`. These options were spelled `dtwc_*` before 2.0; the old names still work for one release and warn.
 
@@ -185,7 +185,7 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_BENCHMARK_PMU` | OFF | PMU counters in the benchmarks (Google Benchmark with libpfm4): bare-metal Linux with `DTWC_BUILD_BENCHMARK` only, an error elsewhere |
 | `DTWC_BUILD_PYTHON` | OFF | Build Python bindings (nanobind) |
 | `DTWC_BUILD_MATLAB` | OFF | Build MATLAB MEX bindings |
-| `DTWC_DEV_MODE` | OFF | The maintainer build: the warning set as errors, clang-tidy, cppcheck and ccache where installed, and the sanitizer options exposed (see Installation) |
+| `DTWC_DEV_MODE` | OFF | The maintainer build: the warning set as errors, clang-tidy and ccache where installed, and the sanitizer options exposed (see Installation) |
 | `DTWC_ALLOW_SEQUENTIAL` | OFF (ON under Emscripten) | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration (an error without `nvcc`, and on macOS) |
 | `DTWC_ENABLE_METAL` | ON on Apple platforms, OFF elsewhere | Enable the Metal backend (an error off Apple platforms) |

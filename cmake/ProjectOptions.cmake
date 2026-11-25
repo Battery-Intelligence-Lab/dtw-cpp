@@ -33,7 +33,7 @@ macro(dtwc_setup_options)
   _dtwc_maintainer_option(ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
   _dtwc_maintainer_option(ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
   _dtwc_maintainer_option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" ${DTWC_DEV_MODE})
-  _dtwc_maintainer_option(ENABLE_CPPCHECK "Enable cppcheck analysis" ${DTWC_DEV_MODE})
+  _dtwc_maintainer_option(ENABLE_CPPCHECK "Enable cppcheck analysis (opt-in, DEV_MODE too: its findings are not cleared)" OFF)
   _dtwc_maintainer_option(ENABLE_PCH "Enable precompiled headers" OFF)
   _dtwc_maintainer_option(ENABLE_CACHE "Enable ccache" ${DTWC_DEV_MODE})
 
