@@ -107,8 +107,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `dtwc_cl` does, and the report); a GPU request the device cannot compute is refused before a text or Arrow IPC file
   is read; and the `Result` carries the run report, `report` (`no_report=True` makes none), which `save` writes last.
 - Python: `device="hpc"` and `"hpc:gpu"` (beta) send a run to a SLURM cluster as one `job.toml`; the extras `parquet`,
-  `hdf5`, `io`, `sklearn` and `mip`. highspy is installed with dtwcpp (the wheel links no HiGHS, so `method="mip"` and
-  `lr_root="kelley"` run on it); the `mip` extra names the same highspy.
+  `hdf5`, `io`, `sklearn` and `mip`. highspy is installed with dtwcpp (the wheel links no HiGHS, so `method="mip"` runs
+  on it); the `mip` extra names the same highspy.
 - MATLAB: `dtwc.cluster(data, k, Name, Value)` with the same keys in CamelCase, `dtwc.load` (Parquet through
   `parquetread`, Arrow IPC through the C++ reader), `dtwc.DTWClustering`, `dtwc.Problem`, the algorithms and the
   scores, through one MEX file. `dtwc.cluster` runs `dtwc::run`, as `dtwc_cl` and Python do (C++ reads a text file, a
@@ -139,9 +139,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   stays in double, and its exports keep its type (NumPy `float32`, MATLAB `single`).
 - Methods FastPAM (FasterPAM), FastCLARA, OneBatchPAM, hierarchical, TADPole and LR-core (an exact Lagrangian branch and
   bound) beside Lloyd's k-medoids and the MIP; `--method auto`: FastPAM to 5,000 series, then FastCLARA (GPU: FastPAM).
-- LR-core's root bound is the subgradient root in every language and build; `--lr-root kelley` (Python `lr_root`,
-  MATLAB `LrRoot`) runs Kelley's cutting planes instead, whose master LP solves on linked HiGHS or, in Python, on
-  highspy. Both reach the same optimum; `-v` names the root and its branch-and-bound nodes.
+- LR-core's root bound is the subgradient root in every language and build; `-v` names the root and its
+  branch-and-bound nodes.
 - `--seed` (42) for the seeded methods, whose draws are the same on every platform and standard library; `--n-init`
   (v1.0.0's `--repeat`) restarts FastPAM too.
 - DTW barycenters (`dtw_barycenter`: SSG, DBA, Soft-DTW) and barycenter k-means (`barycenter_kmeans`).
