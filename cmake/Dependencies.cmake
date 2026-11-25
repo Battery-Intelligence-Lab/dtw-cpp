@@ -285,8 +285,8 @@ function(dtwc_setup_dependencies)
   if(DTWC_ENABLE_CPUINFO AND NOT TARGET cpuinfo)
     message(STATUS "  cpuinfo:  fetching (DTWC_ENABLE_CPUINFO=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_CPUINFO=OFF)")
     CPMAddPackage(NAME cpuinfo
-      URL "https://github.com/pytorch/cpuinfo/archive/e9320ce3398899fbecc986c82f49b5d59b80dff7.tar.gz"
-      URL_HASH SHA256=0f19bffed603d591240b6e25e8def96d203ccf59db09c28cd15c92bf856f5e90
+      URL "https://github.com/pytorch/cpuinfo/archive/fd8b912165dfffccb4f652610a0a19afc51d98ee.tar.gz"
+      URL_HASH SHA256=196577afcc8c156d64667aa008d6d8aa828b397333acc7b055850726e2f046bb
       SYSTEM YES
       EXCLUDE_FROM_ALL YES
       OPTIONS
