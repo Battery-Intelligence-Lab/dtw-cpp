@@ -107,7 +107,7 @@ Checks: >
 #   cppcoreguidelines-*: many conflict with legitimate DTW/kernel patterns (init, bounds).
 #   misc-include-cleaner: too aggressive on template-exported symbols.
 #   fuchsia-*, google-*, llvm-*: project-specific conventions not ours.
-#   cert-msc51-cpp: tests seed their random engines with constants, so that a run repeats.
+#   cert-msc51-cpp: tests and benchmarks seed their random engines with constants, so that a run repeats.
 #   performance-inefficient-string-concatenation: messages are built with + chains, and the check flags those inside loops.
 
 WarningsAsErrors: ''

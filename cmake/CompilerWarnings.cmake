@@ -71,6 +71,7 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       -Xcompiler=-Wconversion
       -Xcompiler=-Wshadow
       -Xcompiler=-Wno-sign-compare
+      -Xcompiler=-Wno-sign-conversion # a clang host's -Wconversion would turn it on
       -Xcompiler=-Wno-unused-parameter
       --display-error-number
     )
