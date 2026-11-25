@@ -501,10 +501,11 @@ std::int64_t heap_block_bytes(std::int64_t bytes)
 }
 
 /// What the codecs allocate to decode one buffer beside its decoded bytes, each call freeing it before the next (read
-/// in lz4 1.10.0's and zstd 1.5.7's sources, measured 2026-11-01), each a heap block: zstd's decompression context,
-/// which ZSTD_decompress makes and frees a call (ZSTD_HEAPMODE, 1 by default; ZSTD_estimateDCtxSize()), and LZ4F's
-/// context (lz4frame.c's LZ4F_dctx_s, 288 bytes on a 64-bit target).
-constexpr std::int64_t zstd_context_bytes = 95968, lz4_context_bytes = 288;
+/// in lz4 1.11.1's and zstd 1.6.0's sources, measured 2026-11-25), each a heap block: zstd's decompression context,
+/// which ZSTD_decompress makes and frees a call (ZSTD_HEAPMODE, 1 by default; ZSTD_estimateDCtxSize(): 95984 bytes
+/// on 64-bit Linux, 95968 on Windows, the larger taken), and LZ4F's context (lz4frame.c's LZ4F_dctx_s, 304 bytes on
+/// a 64-bit target).
+constexpr std::int64_t zstd_context_bytes = 95984, lz4_context_bytes = 304;
 
 /// The scratch nanoarrow's codec holds while it decodes a buffer whose frame begins with `frame` (its bytes after the
 /// 8-byte declared length), as heap blocks: zstd's context; LZ4F's context and, for a frame descriptor

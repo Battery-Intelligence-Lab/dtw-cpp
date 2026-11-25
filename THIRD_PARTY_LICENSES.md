@@ -17,8 +17,8 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | Component | Version | Licence | CLI archive | Python wheel |
 | --- | --- | --- | --- | --- |
 | Apache Arrow nanoarrow, its IPC extension and flatcc | 0.8.0 | Apache-2.0 (four flatcc headers MIT or BSD-3-Clause) | yes — vendored, compiled in | yes |
-| lz4 (its library, `lib/`) | 1.10.0 | BSD-2-Clause | yes — compiled in | yes |
-| Zstandard (its decoder) | 1.5.7 | BSD-3-Clause | yes — compiled in | yes |
+| lz4 (its library, `lib/`) | 1.11.1 | BSD-2-Clause | yes — compiled in | yes |
+| Zstandard (its decoder) | 1.6.0 | BSD-3-Clause | yes — compiled in | yes |
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
 | HiGHS | 1.16.0 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with highspy, a dependency of dtwcpp that the wheel does not contain |
 | CLI11 | 2.7.2 | BSD-3-Clause | yes — headers compiled in | yes — headers compiled in: the module links the CLI library (`dtwc::run`, whose run report prints the command line's key table) |

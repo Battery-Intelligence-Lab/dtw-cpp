@@ -100,14 +100,14 @@ function(dtwc_setup_dependencies)
       INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
-  # lz4 1.10.0 and zstd 1.5.7: decoders for compressed Arrow IPC record batches,
+  # lz4 1.11.1 and zstd 1.6.0: decoders for compressed Arrow IPC record batches,
   # compiled into dtwc_third_party by dtwc/CMakeLists.txt.
   CPMAddPackage(NAME lz4 DOWNLOAD_ONLY YES
-    URL "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
-    URL_HASH SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b)
+    URL "https://github.com/lz4/lz4/releases/download/v1.11.1/lz4-1.11.1.tar.gz"
+    URL_HASH SHA256=683fed08a844ad012196381e40badf80c0bbe4962959761416d41c9e67d77ec7)
   CPMAddPackage(NAME zstd DOWNLOAD_ONLY YES
-    URL "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz"
-    URL_HASH SHA256=eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3)
+    URL "https://github.com/facebook/zstd/releases/download/v1.6.0/zstd-1.6.0.tar.gz"
+    URL_HASH SHA256=2ba599ae2a257976278e7e71e998433a387bfd18aa7b78678229fd5d84f5e9b8)
   set(lz4_SOURCE_DIR "${lz4_SOURCE_DIR}" PARENT_SCOPE)
   set(zstd_SOURCE_DIR "${zstd_SOURCE_DIR}" PARENT_SCOPE)
 
