@@ -16,8 +16,6 @@
 #include <sstream>
 #include <thread>
 
-using Catch::Matchers::WithinAbs;
-
 using namespace dtwc;
 
 TEST_CASE("Clock class functionality", "[Clock]")

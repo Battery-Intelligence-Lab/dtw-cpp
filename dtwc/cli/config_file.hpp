@@ -147,9 +147,9 @@ private:
     if (!docs.front().is_mapping())
       throw CLI::ConfigError(source() + ": top level must be a mapping of option names to values");
 
-    std::vector<CLI::ConfigItem> items;
-    collect(docs.front(), {}, items);
-    return items;
+    std::vector<CLI::ConfigItem> found;
+    collect(docs.front(), {}, found);
+    return found;
 #else
     // A format this build cannot read is an IOError.
     throw IOError(source() + ": built without YAML support; use TOML, or rebuild with -DDTWC_ENABLE_YAML=ON");

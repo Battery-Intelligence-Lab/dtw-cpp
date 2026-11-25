@@ -54,8 +54,7 @@ std::vector<index_t> cluster_counts_checked(const Problem &prob, const char *who
 /// Number of non-empty clusters in `counts`.
 index_t n_realised_clusters(const std::vector<index_t> &counts)
 {
-  return static_cast<index_t>(std::count_if(counts.begin(), counts.end(),
-                                            [](index_t c) { return c > 0; }));
+  return std::count_if(counts.begin(), counts.end(), [](index_t c) { return c > 0; });
 }
 
 /// Shared guard: an internal index that compares clusters needs at least two
@@ -109,9 +108,9 @@ void silhouette_of(const T *matrix, const Problem &prob, const std::vector<index
         double a = 0.0;
         for (index_t i = 0; i < Nc; i++) // Finding means:
           if (i == i_c)
-            a = sums[i * G + g] / (counts[i] - 1);
+            a = sums[i * G + g] / static_cast<double>(counts[i] - 1);
           else if (counts[i] > 0)
-            min = std::min(min, sums[i * G + g] / counts[i]);
+            min = std::min(min, sums[i * G + g] / static_cast<double>(counts[i]));
 
         // a = b = 0 is 0/0; Rousseeuw's convention is s(i) = 0 (neither well nor
         // badly placed). A NaN here would poison any downstream mean.
@@ -135,11 +134,11 @@ double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector
   std::vector<double> scatter(Nc, 0.0);
   for (std::size_t i = 0, n = static_cast<std::size_t>(prob.size()); i < n; ++i) {
     const index_t ci = prob.clusters_ind[i];
-    scatter[ci] += matrix[core::tri_index(i, static_cast<std::size_t>(prob.centroids_ind[ci]))];
+    scatter[ci] += static_cast<double>(matrix[core::tri_index(i, static_cast<std::size_t>(prob.centroids_ind[ci]))]);
   }
   for (index_t c = 0; c < Nc; ++c) {
     if (cluster_counts[c] > 0)
-      scatter[c] /= cluster_counts[c];
+      scatter[c] /= static_cast<double>(cluster_counts[c]);
   }
 
   // Compute DBI = (1/k) * sum_i max_{j != i} R_ij
@@ -150,8 +149,8 @@ double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector
     double max_ratio = 0.0;
     for (index_t j = 0; j < Nc; ++j) {
       if (i == j || cluster_counts[j] == 0) continue;
-      const double d_ij = matrix[core::tri_index(static_cast<std::size_t>(prob.centroids_ind[i]),
-                                                 static_cast<std::size_t>(prob.centroids_ind[j]))];
+      const auto d_ij = static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(prob.centroids_ind[i]),
+                                                                   static_cast<std::size_t>(prob.centroids_ind[j]))]);
       const double combined_scatter = scatter[i] + scatter[j];
       // M_ij == 0 must NOT skip the pair. Davies & Bouldin (1979) require R_ij to
       // be strictly decreasing in M_ij with R_ij = 0 iff S_i = S_j = 0, so the
@@ -167,7 +166,7 @@ double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector
     }
     dbi += max_ratio;
   }
-  return dbi / k_realised;
+  return dbi / static_cast<double>(k_realised);
 }
 
 /// The Dunn index of a clustered `prob`.
@@ -190,9 +189,9 @@ double dunn_of(const T *matrix, const Problem &prob)
       const index_t lr = label[r];
       for (index_t c = 0; c < r; ++c) {
         if (label[c] == lr)
-          hi = std::max<double>(hi, row[c]); // Same cluster: contributes to intra-cluster diameter
+          hi = std::max(hi, static_cast<double>(row[c])); // Same cluster: contributes to intra-cluster diameter
         else
-          lo = std::min<double>(lo, row[c]); // Different clusters: contributes to inter-cluster distance
+          lo = std::min(lo, static_cast<double>(row[c])); // Different clusters: contributes to inter-cluster distance
       }
     }
     block_min[b] = lo;
@@ -220,7 +219,7 @@ double inertia_of(const T *matrix, const Problem &prob)
   double total = 0.0;
   for (std::size_t i = 0, n = static_cast<std::size_t>(prob.size()); i < n; ++i) {
     const index_t medoid = prob.centroids_ind[prob.clusters_ind[i]];
-    total += matrix[core::tri_index(i, static_cast<std::size_t>(medoid))];
+    total += static_cast<double>(matrix[core::tri_index(i, static_cast<std::size_t>(medoid))]);
   }
   return total;
 }
@@ -254,14 +253,13 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
         row_sums[static_cast<std::size_t>(first + g)] = sums[g];
     };
     dtwc::run(sum_group, static_cast<std::size_t>((N + G - 1) / G));
-    overall_medoid = static_cast<index_t>(
-      std::min_element(row_sums.begin(), row_sums.end()) - row_sums.begin());
+    overall_medoid = std::min_element(row_sums.begin(), row_sums.end()) - row_sums.begin();
   } else {
     double min_row_sum = std::numeric_limits<double>::max();
     for (index_t i = 0; i < N; ++i) {
       double row_sum = 0.0;
       for (index_t j = 0; j < N; ++j)
-        row_sum += matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))];
+        row_sum += static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))]);
       if (row_sum < min_row_sum) {
         min_row_sum = row_sum;
         overall_medoid = i;
@@ -273,7 +271,7 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
   double W = 0.0;
   for (index_t i = 0; i < N; ++i) {
     const index_t medoid_c = prob.centroids_ind[prob.clusters_ind[i]];
-    double d = matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(medoid_c))];
+    auto d = static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(medoid_c))]);
     W += d * d;
   }
 
@@ -282,14 +280,14 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
   double B = 0.0;
   for (index_t c = 0; c < Nc; ++c) {
     if (cluster_counts[c] == 0) continue; // an empty cluster has no medoid
-    double d = matrix[core::tri_index(static_cast<std::size_t>(centroid[c]),
-                                       static_cast<std::size_t>(overall_medoid))];
+    auto d = static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(centroid[c]),
+                                                        static_cast<std::size_t>(overall_medoid))]);
     B += static_cast<double>(cluster_counts[c]) * d * d;
   }
 
   if (W == 0.0)
     return std::numeric_limits<double>::infinity();
-  return (B / (k - 1)) / (W / (N - k));
+  return (B / static_cast<double>(k - 1)) / (W / static_cast<double>(N - k));
 }
 
 } // anonymous namespace

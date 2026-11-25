@@ -60,6 +60,7 @@ Problem make_synthetic_problem(int N, const std::string& name = "faster_pam")
     const double off = i * 0.1;
     std::vector<data_t> ts;
     const int len = 20 + (i % 5);
+    ts.reserve(static_cast<std::size_t>(len));
     for (int j = 0; j < len; ++j) ts.push_back(baseline + slope * j + off);
     vecs.push_back(std::move(ts));
     names.push_back("ts_" + std::to_string(i));
@@ -97,6 +98,7 @@ Problem make_kgroup_problem(int N, int n_groups, const std::string& name = "kgro
     const double off = i * 0.001;                   // unique monotone within-group spread
     std::vector<data_t> ts;
     const int len = 20;
+    ts.reserve(static_cast<std::size_t>(len));
     for (int j = 0; j < len; ++j) ts.push_back(baseline + off + 0.1 * j);
     vecs.push_back(std::move(ts));
     names.push_back("g" + std::to_string(i));

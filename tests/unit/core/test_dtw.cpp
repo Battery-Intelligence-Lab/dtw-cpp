@@ -235,7 +235,7 @@ TEMPLATE_TEST_CASE("every variant, metric, band and channel count agrees with th
       // The series the Problem would hold; WDTW sizes its weights from them. A function
       // resolved without them (a centroid of another length) weighs on demand: same values.
       std::vector<Data> known;
-      known.push_back(Data{});
+      known.emplace_back();
       if constexpr (std::is_same_v<T, double>)
         known.push_back(Data{ std::vector<std::vector<double>>{ xd, yd }, { "x", "y" }, config.ndim });
 

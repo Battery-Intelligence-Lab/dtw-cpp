@@ -3,8 +3,11 @@
 # https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md
 
 function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
+  # No warnings on sign changes (-Wsign-*, C4018, C4389): int64 indices meet size_t containers throughout, by design.
   set(MSVC_WARNINGS
       /W4 # Baseline reasonable warnings
+      /wd4018 # '<': signed/unsigned mismatch (sign changes, see above)
+      /wd4389 # '==': signed/unsigned mismatch (likewise)
       /w14242 # 'identifier': conversion from 'type1' to 'type2', possible loss of data
       /w14254 # 'operator': conversion from 'type1:field_bits' to 'type2:field_bits', possible loss of data
       /w14263 # 'function': member function does not override any base class virtual member function
@@ -41,7 +44,8 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       -Woverloaded-virtual # warn if you overload (not override) a virtual function
       -Wpedantic # warn if non-standard C++ is used
       -Wconversion # warn on type conversions that may lose data
-      -Wsign-conversion # warn on sign conversions
+      -Wno-sign-conversion # sign changes (see above); clang's -Wconversion would turn it on
+      -Wno-sign-compare # sign changes (see above); clang's -Wextra and GCC's -Wall would turn it on
       -Wnull-dereference # warn if a null dereference is detected
       -Wdouble-promotion # warn if float is implicit promoted to double
       -Wformat=2 # warn on security issues around functions that format output (ie printf)
@@ -58,7 +62,7 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
   )
 
   if(MSVC)
-    set(CUDA_WARNINGS -Xcompiler=/W3)
+    set(CUDA_WARNINGS -Xcompiler=/W3 -Xcompiler=/wd4018)
   else()
     set(CUDA_WARNINGS
       -Xcompiler=-Wall
@@ -66,6 +70,7 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
       -Xcompiler=-Wunused
       -Xcompiler=-Wconversion
       -Xcompiler=-Wshadow
+      -Xcompiler=-Wno-sign-compare
       -Xcompiler=-Wno-unused-parameter
       --display-error-number
     )

@@ -58,6 +58,7 @@ static Problem make_synthetic_problem(int N)
 
     std::vector<data_t> ts;
     int len = 20 + (i % 5);  // varying lengths
+    ts.reserve(static_cast<std::size_t>(len));
     for (int j = 0; j < len; ++j) {
       ts.push_back(baseline + slope * j + noise_offset);
     }

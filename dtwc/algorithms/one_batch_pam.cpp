@@ -410,7 +410,7 @@ core::ClusteringResult one_batch_pam(Problem &prob,
         }
 
         const auto best_it = std::max_element(removal_gain.begin(), removal_gain.end());
-        const auto slot = static_cast<index_t>(std::distance(removal_gain.begin(), best_it));
+        const index_t slot = std::distance(removal_gain.begin(), best_it);
         const double gain = add_gain + *best_it;
         if (gain > tolerance) {
           is_medoid[static_cast<std::size_t>(medoids[slot])] = false;

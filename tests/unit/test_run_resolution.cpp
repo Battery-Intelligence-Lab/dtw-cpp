@@ -135,6 +135,7 @@ TEST_CASE("run on cpu: every method runs; auto is pam up to 5000 series, clara a
   // The boundary itself is plan_parquet_load's (unit_test_cli_args), the same
   // resolution; here run() applies it to the series it loaded.
   std::vector<std::vector<double>> many;
+  many.reserve(5001);
   for (int i = 0; i < 5001; ++i) many.push_back({ double(i % 97), double(i % 89) });
   CHECK(dtwc::run(config_for(Method::Auto, Device::CPU), dtwc::Data(std::move(many), std::vector<std::string>(5001)))
           .method()

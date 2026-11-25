@@ -234,7 +234,7 @@ TEST_CASE("Automatic checkpointing saves after every row block", "[checkpoint][f
   disabled.fill_distance_matrix();
   REQUIRE_FALSE(fs::exists(scratch.path / "never"));
 
-  for (const CheckpointOptions bad : { CheckpointOptions{ scratch.path.string(), 0, true }, CheckpointOptions{ "", 1, true } }) {
+  for (const CheckpointOptions &bad : { CheckpointOptions{ scratch.path.string(), 0, true }, CheckpointOptions{ "", 1, true } }) {
     auto rejected = make_problem("bad", 6);
     rejected.checkpoint = bad;
     REQUIRE_THROWS_AS(rejected.fill_distance_matrix(), dtwc::InvalidInput);

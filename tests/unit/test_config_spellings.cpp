@@ -103,6 +103,7 @@ dtwc::Config parse_args(std::vector<std::string> args)
   dtwc::cli::bind(app, config);
   args.insert(args.begin(), "dtwc_cl");
   std::vector<const char *> argv;
+  argv.reserve(args.size());
   for (const std::string &arg : args) argv.push_back(arg.c_str());
   app.parse(static_cast<int>(argv.size()), argv.data());
   return config;

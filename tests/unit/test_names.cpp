@@ -66,6 +66,7 @@ void check_table(const dtwc::Name<E> (&table)[N], const std::vector<std::pair<st
   }
 
   std::vector<std::string> spellings;
+  spellings.reserve(canonical.size());
   for (const auto &entry : canonical) spellings.push_back(entry.first);
   for (const auto &[alias, target] : aliases) {
     INFO("alias '" << alias << "' -> '" << target << "'");

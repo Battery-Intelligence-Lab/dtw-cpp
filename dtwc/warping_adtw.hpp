@@ -46,10 +46,10 @@ template <typename X, typename Y>
 core::series_value_t<X> adtwBanded(const X &x, const Y &y, int band, core::series_value_t<X> penalty,
                                    core::series_value_t<X> early_abandon = -1)
 {
-  using data_t = core::series_value_t<X>;
-  const std::span<const data_t> xs{ x }, ys{ y };
+  using value_t = core::series_value_t<X>;
+  const std::span<const value_t> xs{ x }, ys{ y };
   return core::run_dtw<core::SpanL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
-                                         core::ADTWCell<data_t>{ penalty }, early_abandon);
+                                         core::ADTWCell<value_t>{ penalty }, early_abandon);
 }
 
 // ---------------------------------------------------------------------------

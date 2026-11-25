@@ -82,14 +82,14 @@ template <typename X, typename Y>
 core::series_value_t<X> dtwAROW_banded(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
                                        core::MetricType metric = core::MetricType::L1)
 {
-  using data_t = core::series_value_t<X>;
-  const std::span<const data_t> xs{ x }, ys{ y };
+  using value_t = core::series_value_t<X>;
+  const std::span<const value_t> xs{ x }, ys{ y };
   // A univariate L2 cost is L1: sqrt((a-b)^2) == |a-b|.
   if (metric == core::MetricType::SquaredL2)
     return core::run_dtw<core::SpanAROWSquaredL2Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
-                                                      core::AROWCell{}, data_t(-1));
+                                                      core::AROWCell{}, value_t(-1));
   return core::run_dtw<core::SpanAROWL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band, core::AROWCell{},
-                                             data_t(-1));
+                                             value_t(-1));
 }
 
 } // namespace dtwc

@@ -76,7 +76,7 @@ T twe_distance(const T *x, std::size_t nx, const T *y, std::size_t ny,
 
   const T del_add = nu + lambda;
   const T two_nu = T(2) * nu;
-  auto add = [maxValue](T u, T v) noexcept { return u == maxValue ? maxValue : u + v; };
+  auto add = [](T u, T v) noexcept { return u == maxValue ? maxValue : u + v; };
 
   // Rolling buffers over the padded shorter axis (size nb+1).
   // Grown without shrinking so warmed worker threads neither reallocate nor re-zero prev_buf.

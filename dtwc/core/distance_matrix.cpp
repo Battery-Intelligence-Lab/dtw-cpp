@@ -164,8 +164,8 @@ size_t check_header(const char *bytes, std::uint64_t length, size_t n, const Dis
 void flush_to_device(const fs::path &path)
 {
 #ifdef _WIN32
-  const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  const auto file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   const bool flushed = file != INVALID_HANDLE_VALUE && FlushFileBuffers(file);
   if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
 #else
@@ -232,7 +232,7 @@ bool all_computed_in(const T *values, size_t n, size_t rows, Precision width, st
   bool all = rows == n;
   for (size_t i = 0, k = 0; i < rows; ++i)
     for (size_t j = 0; j <= i; ++j, ++k) {
-      const double d = values[k];
+      const auto d = static_cast<double>(values[k]);
       if (std::isnan(d))
         all = false;
       else if (std::isinf(d))
@@ -393,7 +393,7 @@ double DistanceMatrix::max() const
   return visit([&](const auto *values) {
     double result = -std::numeric_limits<double>::infinity();
     for (size_t i = 0; i < packed_size(rows_); ++i)
-      if (!std::isnan(values[i]) && values[i] > result) result = values[i];
+      if (!std::isnan(values[i]) && static_cast<double>(values[i]) > result) result = static_cast<double>(values[i]);
     return std::isfinite(result) ? result : 0.0;
   });
 }
@@ -460,7 +460,7 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
     // A short file may not map at all: judge the length before reading a byte.
     char header[sizeof(Header)]{};
     if (length >= identity_bytes) {
-      base = reinterpret_cast<std::byte *>(mapping->file.address());
+      base = mapping->file.address();
       if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
       std::memcpy(header, base, static_cast<size_t>(std::min<std::uint64_t>(length, sizeof header)));
     }
@@ -479,7 +479,7 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
     try {
       checked(mapping->file.truncate(length), "size", path);
       checked(mapping->file.update_map(), "map", path);
-      base = reinterpret_cast<std::byte *>(mapping->file.address());
+      base = mapping->file.address();
       if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
       // A new file is zeros, and a zero reads as a computed distance: its header
       // says no row is written, so none is read, and a fill makes each row NaN

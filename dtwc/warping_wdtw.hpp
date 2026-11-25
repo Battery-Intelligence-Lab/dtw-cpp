@@ -56,7 +56,8 @@ std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.
   const data_t half_dev = static_cast<data_t>(max_dev) / data_t(2);
   // The sum and the quotient are double for float32 too, as the table has always been built.
   for (int d = 0; d <= max_dev; ++d) {
-    weights[d] = static_cast<data_t>(w_max / (1.0 + std::exp(-g * (d - half_dev))));
+    weights[d] = static_cast<data_t>(static_cast<double>(w_max)
+                                     / (1.0 + static_cast<double>(std::exp(-g * (static_cast<data_t>(d) - half_dev)))));
   }
   return weights;
 }
@@ -89,11 +90,11 @@ core::series_value_t<X> wdtwBanded(const X &x, const Y &y,
                                    std::type_identity_t<std::span<const core::series_value_t<X>>> weights,
                                    int band = settings::DEFAULT_BAND)
 {
-  using data_t = core::series_value_t<X>;
-  const std::span<const data_t> xs{ x }, ys{ y };
+  using value_t = core::series_value_t<X>;
+  const std::span<const value_t> xs{ x }, ys{ y };
   detail::require_wdtw_weight_span(weights.size(), xs.size(), ys.size());
   return core::run_dtw<core::SpanWeightedL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
-                                                 core::StandardCell{}, data_t(-1), weights.data());
+                                                 core::StandardCell{}, value_t(-1), weights.data());
 }
 
 // ---------------------------------------------------------------------------
@@ -138,13 +139,13 @@ template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> wdtwBanded(const X &x, const Y &y, int band, core::series_value_t<X> g)
 {
-  using data_t = core::series_value_t<X>;
-  const std::span<const data_t> xs{ x }, ys{ y };
+  using value_t = core::series_value_t<X>;
+  const std::span<const value_t> xs{ x }, ys{ y };
   const auto max_len = std::max(xs.size(), ys.size());
-  if (max_len == 0) return std::numeric_limits<data_t>::max();
+  if (max_len == 0) return std::numeric_limits<value_t>::max();
   const int max_dev = static_cast<int>(max_len) - 1;
-  const auto &w = detail::cached_wdtw_weights<data_t>(max_dev, g);
-  return wdtwBanded(xs, ys, std::span<const data_t>{ w }, band);
+  const auto &w = detail::cached_wdtw_weights<value_t>(max_dev, g);
+  return wdtwBanded(xs, ys, std::span<const value_t>{ w }, band);
 }
 
 // ---------------------------------------------------------------------------

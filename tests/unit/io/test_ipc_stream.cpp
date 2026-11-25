@@ -606,6 +606,7 @@ TEST_CASE("Arrow IPC: a file's names read alone are the in-RAM read's", "[io][ar
     INFO(file);
     const dtwc::Data data = dtwc::read_data(fixture(file));
     std::vector<std::string> names;
+    names.reserve(static_cast<std::size_t>(data.size()));
     for (std::size_t i = 0; i < static_cast<std::size_t>(data.size()); ++i) names.emplace_back(data.name(i));
     const dtwc::io::IpcFile walked(fixture(file));
     const std::size_t one = walked.series_names_bytes() + walked.names_read_bytes();

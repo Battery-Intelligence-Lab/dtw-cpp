@@ -61,7 +61,7 @@ Problem make_dummy_problem(int N_data, int Nc)
   return prob;
 }
 
-Problem make_capped_lloyd_problem(std::string name, int max_iter)
+Problem make_capped_lloyd_problem(const std::string &name, int max_iter)
 {
   Problem problem(name);
   problem.set_data(Data(
@@ -348,6 +348,7 @@ Problem cluster_series(const std::vector<std::vector<data_t>> &series, int k, in
 {
   auto vecs = series;
   std::vector<std::string> names;
+  names.reserve(series.size());
   for (std::size_t i = 0; i < series.size(); ++i)
     names.push_back("s" + std::to_string(i));
 
@@ -410,7 +411,7 @@ TEST_CASE("k-medoids recovers three well-separated groups", "[Phase1][clustering
   // Problem's random_seed) removes the dependence on one initialisation.
   constexpr int per_group = 5;
   const auto prob = cluster_series(three_separated_groups(per_group), 3, 5);
-  const auto labels = prob.labels();
+  const auto &labels = prob.labels();
 
   std::set<index_t> group_labels;
   for (int group = 0; group < 3; ++group) {
@@ -439,7 +440,7 @@ TEST_CASE("k-medoids groups series of different lengths by shape", "[Phase1][clu
                                      { 100.0, 200.0 },
                                      { 100.0, 200.0, 300.0, 400.0 } },
                                    2, 5);
-  const auto labels = prob.labels();
+  const auto &labels = prob.labels();
   REQUIRE(labels[0] == labels[1]);
   REQUIRE(labels[2] == labels[3]);
   REQUIRE(labels[0] != labels[2]);
@@ -466,6 +467,7 @@ TEST_CASE("Clustering is the same for series scaled by a power of two", "[cluste
   const auto problem = [](const std::vector<std::vector<data_t>> &data, core::DTWVariant variant,
                           core::MetricType metric, Method method) {
     std::vector<std::string> names;
+    names.reserve(data.size());
     for (std::size_t i = 0; i < data.size(); ++i) names.push_back("s" + std::to_string(i));
     Problem prob("scale");
     prob.set_data(Data(std::vector<std::vector<data_t>>(data), std::move(names)));

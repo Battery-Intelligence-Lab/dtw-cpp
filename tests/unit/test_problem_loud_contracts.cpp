@@ -57,9 +57,9 @@ dtwc::Data named(std::vector<std::vector<double>> series, std::vector<std::strin
 }
 
 /// Six short series in two obvious groups, named s0..s5.
-dtwc::Problem six_series(std::string name)
+dtwc::Problem six_series(const std::string &name)
 {
-  dtwc::Problem prob(std::move(name));
+  dtwc::Problem prob(name);
   prob.set_data(named({ { 0, 1, 2, 1 }, { 0, 1, 2, 2 }, { 0, 1, 1, 1 },
                         { 9, 8, 9, 9 }, { 9, 9, 8, 9 }, { 8, 9, 9, 9 } },
                       { "s0", "s1", "s2", "s3", "s4", "s5" }));

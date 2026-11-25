@@ -172,7 +172,7 @@ dtwc_add_test(NAME dtwc_unit_api_io SOURCE ${_dtwc_suite_api_io})
 # vendored nanoarrow builder (the symbols are linked in via dtwc_core). nanoarrow is
 # a PRIVATE include of dtwc_core, so grant the api_io suite target the include path.
 if(TARGET dtwc_unit_api_io)
-    target_include_directories(dtwc_unit_api_io PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
+    target_include_directories(dtwc_unit_api_io SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
 endif()
 
 # Public reachability: compare a real native Result::save with resident CLI

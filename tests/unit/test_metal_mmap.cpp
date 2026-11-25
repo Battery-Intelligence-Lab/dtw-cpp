@@ -33,15 +33,15 @@
 #include <string>
 #include <vector>
 
-using Catch::Matchers::WithinAbs;
-using Catch::Matchers::WithinRel;
-
 #ifndef DTWC_HAS_METAL
 TEST_CASE("Metal mmap path skipped", "[metal][mmap]")
 {
   SKIP("DTWC_HAS_METAL not defined");
 }
 #else
+
+using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 
 namespace {
 std::vector<std::vector<double>> gen(size_t N, size_t L, unsigned seed)

@@ -14,6 +14,7 @@ function(dtwc_setup_dependencies)
       NAME Catch2
       URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
       URL_HASH SHA256=650795f6501af514f806e78c554729847b98db6935e69076f36bb03ed2e985ef
+      SYSTEM YES
       OPTIONS
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
@@ -45,7 +46,7 @@ function(dtwc_setup_dependencies)
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
     URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
-    SYSTEM
+    SYSTEM YES
     EXCLUDE_FROM_ALL
     OPTIONS
       "CI OFF"
@@ -366,7 +367,7 @@ function(dtwc_setup_dependencies)
         URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-19.0.1.tar.gz"
         URL_HASH SHA256=4c898504958841cc86b6f8710ecb2919f96b5e10fa8989ac10ac4fca8362d86a
         SOURCE_SUBDIR cpp
-        SYSTEM
+        SYSTEM YES
         EXCLUDE_FROM_ALL
         OPTIONS
           "ARROW_BUILD_STATIC ON"

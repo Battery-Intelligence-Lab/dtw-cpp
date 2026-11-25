@@ -117,8 +117,9 @@ target_sources(dtwc_cli PRIVATE api.cpp PUBLIC FILE_SET HEADERS FILES api.hpp)
 
 # The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp,
 # io/arrow_ipc.cpp and io/parse_number.cpp include them, behind headers that name
-# none of their types, so they never reach a consumer.
-target_include_directories(dtwc_core PRIVATE extern)
+# none of their types, so they never reach a consumer. SYSTEM: their C casts are
+# not held to the project's warning set.
+target_include_directories(dtwc_core SYSTEM PRIVATE extern)
 
 target_link_libraries(dtwc_core PRIVATE mip-solvers)
 # Header-only, included by cli/config.cpp alone. PUBLIC because the public
