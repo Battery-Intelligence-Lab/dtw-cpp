@@ -1,11 +1,12 @@
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp")
 
 # A DP cell makes no call: codegen_report.py compiles the probe (the univariate and multivariate kernels) to assembly
-# with dtw_dispatch.cpp's flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. Under a
-# sanitizer every loop calls its checks, so there the gate has nothing to prove.
+# with dtw_dispatch.cpp's flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. The gate
+# is a Release build's: under a sanitizer every loop calls its checks, and Debug, RelWithDebInfo (-O2: 6 calls) and
+# MinSizeRel (-Os: 110) keep calls that -O3 inlines.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU"
-   AND CMAKE_GENERATOR MATCHES "Ninja|Makefiles" AND Python3_Interpreter_FOUND
+   AND CMAKE_GENERATOR MATCHES "Ninja|Makefiles" AND Python3_Interpreter_FOUND AND CMAKE_BUILD_TYPE STREQUAL "Release"
    AND NOT (DTWC_ENABLE_SANITIZER_ADDRESS OR DTWC_ENABLE_SANITIZER_UNDEFINED
             OR DTWC_ENABLE_SANITIZER_THREAD OR DTWC_ENABLE_SANITIZER_MEMORY))
     add_test(NAME test_codegen_no_calls COMMAND "${Python3_EXECUTABLE}"
