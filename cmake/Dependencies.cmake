@@ -387,7 +387,9 @@ function(dtwc_setup_dependencies)
           "ARROW_HDFS OFF"
           "ARROW_JEMALLOC OFF"
           "ARROW_MIMALLOC OFF"
-          "ARROW_WITH_SNAPPY OFF"
+          # Snappy, the codec pyarrow writes Parquet with by default, from Arrow's bundled copy; zstd and lz4 stay
+          # off, since dtwc builds its own copies for Arrow IPC and a second one would clash in a static link.
+          "ARROW_WITH_SNAPPY ON"
           "ARROW_WITH_ZSTD OFF"
           "ARROW_WITH_LZ4 OFF"
           "ARROW_WITH_BROTLI OFF"
