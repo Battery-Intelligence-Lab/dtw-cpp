@@ -47,7 +47,6 @@ function(dtwc_setup_dependencies)
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
     URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
     SYSTEM YES
-    EXCLUDE_FROM_ALL
     OPTIONS
       "CI OFF"
       "ZLIB OFF"
@@ -368,7 +367,6 @@ function(dtwc_setup_dependencies)
         URL_HASH SHA256=4c898504958841cc86b6f8710ecb2919f96b5e10fa8989ac10ac4fca8362d86a
         SOURCE_SUBDIR cpp
         SYSTEM YES
-        EXCLUDE_FROM_ALL
         OPTIONS
           "ARROW_BUILD_STATIC ON"
           "ARROW_BUILD_SHARED OFF"
