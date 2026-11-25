@@ -161,6 +161,12 @@ void MIP_clustering_byHiGHS(Problem &prob)
   }
   model = {}; // HiGHS holds its own copy now: the model's N²-sized arrays go before the solve
 
+  // HiGHS keeps a scheduler per calling thread and refuses a run whose thread count differs from it: the run starts
+  // from none and leaves none, as in Python.
+  struct ThreadScheduler {
+    ThreadScheduler() { Highs::resetThreadScheduler(true); }
+    ~ThreadScheduler() { Highs::resetThreadScheduler(true); }
+  } const scheduler;
   return_status = highs.run();
   if (return_status != HighsStatus::kOk)
     throw SolverError("HiGHS failed to solve the MIP (run returned status "
