@@ -17,7 +17,7 @@ cmake --build build -j
 
 Metal is on by default on Apple. A compile error in `dtwc/metal/metal_dtw.mm` or in a Metal test is the first thing
 to fix: those files have never been compiled since the edits listed in step 5. Off the Mac, every C++ translation
-unit of a Windows build (512) passes `clang++ -fsyntax-only -DDTWC_HAS_METAL`, so a build error most likely sits in
+unit of a Windows build, its dependencies' included, passes `clang++ -fsyntax-only -DDTWC_HAS_METAL`, so a build error most likely sits in
 the Objective-C++ of `metal_dtw.mm`. Its kernels (MSL source) are compiled at run time by `newLibraryWithSource`: a
 shader error is no build error, it makes `Metal backend is available` skip with the Metal compiler's message, and
 step 2 counts that skip as a failure.
