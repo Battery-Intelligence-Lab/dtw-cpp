@@ -100,7 +100,7 @@ jobs:
       #
       # VERSION SKEW — deliberate, not an oversight. The CPMAddPackage of Arrow in cmake/Dependencies.cmake
       # pins the CPM *source* build to Arrow 26.0.1; this apt path takes whatever the
-      # repository currently serves (a much newer release). We do NOT pin the apt
+      # repository currently serves, which moves on as Arrow releases. We do NOT pin the apt
       # version, for three reasons:
       #   1. Apache prunes old versions from the apt repo, so a pin is a guaranteed
       #      future hard failure ("Version '...' for 'libarrow-dev' was not found")
