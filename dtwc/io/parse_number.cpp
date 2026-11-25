@@ -8,7 +8,7 @@
 
 #include "parse_number.hpp"
 
-#include "fast_float/fast_float.h" // vendored v8.3.0; PRIVATE include of dtwc++
+#include "fast_float/fast_float.h" // vendored v8.3.3; PRIVATE include of dtwc++
 
 #include <system_error>
 

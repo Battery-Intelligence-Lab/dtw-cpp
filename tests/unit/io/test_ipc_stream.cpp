@@ -506,10 +506,10 @@ TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the fil
   CHECK(plain.streams(Precision::Float64));
 #endif
   // A reading thread's codec scratch, from each frame's descriptor, each a heap block: pyarrow's LZ4 frames of one
-  // block are independent blocks of 64 KB (LZ4F's context, 288 bytes; its 64 KB in, with its checksum, and out);
+  // block are independent blocks of 64 KB (LZ4F's context, 304 bytes; its 64 KB in, with its checksum, and out);
   // zstd's context.
-  CHECK(lz4.reader_bytes() == decoders + heap(288) + heap(65536 + 4) + heap(65536));
-  CHECK(zstd.reader_bytes() == decoders + heap(95968));
+  CHECK(lz4.reader_bytes() == decoders + heap(304) + heap(65536 + 4) + heap(65536));
+  CHECK(zstd.reader_bytes() == decoders + heap(95984));
   // The same frames declaring linked blocks of 4 MB (FLG 0x40, BD 0x70; walked, never decoded): 128 KB more out.
   auto big = bytes_of(fixture("clara_256_lz4.arrow"));
   const std::byte magic[] = { std::byte{ 0x04 }, std::byte{ 0x22 }, std::byte{ 0x4D }, std::byte{ 0x18 } };
@@ -522,7 +522,7 @@ TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the fil
   REQUIRE(frames == 40); // eight batches of five buffers
   write(scratch() / "blocks_4mb.arrow", big);
   CHECK(IpcFile(scratch() / "blocks_4mb.arrow").reader_bytes()
-        == decoders + heap(288) + heap(4194304 + 4) + heap(4194304 + 131072));
+        == decoders + heap(304) + heap(4194304 + 4) + heap(4194304 + 131072));
   // read_arrow_ipc decodes the eight LZ4 batches with a thread each, up to the team, each its reader's scratch, and
   // each batch's decoded columns' objects and its view of the schema's four fields last the read.
   const auto readers = static_cast<std::size_t>(std::min(8, dtwc::get_max_threads()));

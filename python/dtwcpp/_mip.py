@@ -29,7 +29,8 @@ def cluster(prob):
 
     The MIPSettings that apply are mapped as C++ maps them for linked HiGHS (``mip_gap``,
     ``time_limit_sec``, ``verbose_solver``, the FastPAM ``warm_start`` as the MIP start),
-    and HiGHS runs on the threads OpenMP gives dtwcpp. An installed highspy that cannot be
+    and HiGHS runs serially (one thread, ``parallel`` off), as in C++: the medoids found do not
+    depend on the machine, and its own threads slowed its solves. An installed highspy that cannot be
     imported is ``SolverError``, saying to reinstall dtwcpp, which requires highspy; a solve
     that does not reach optimality is ``SolverError``.
     """
@@ -46,7 +47,7 @@ def cluster(prob):
     settings = prob.mip_settings
     highs = highspy.Highs()
     options = {"output_flag": settings.verbose_solver, "mip_rel_gap": settings.mip_gap,
-               "threads": _dtwcpp_core.openmp_max_threads()}
+               "threads": 1, "parallel": "off"}
     if settings.time_limit_sec > 0:
         options["time_limit"] = float(settings.time_limit_sec)
     for name, value in options.items():  # a rejected option must not leave HiGHS's default
@@ -64,7 +65,8 @@ def cluster(prob):
         start = highspy.HighsSolution()
         start.col_value = model.start
         start.value_valid = True
-        highs.setSolution(start)
+        if highs.setSolution(start) == highspy.HighsStatus.kError:
+            raise SolverError("highspy rejected the warm-start solution (setSolution returned an error).")
 
     # HiGHS keeps one scheduler per calling thread and refuses a run whose thread
     # count differs from it: the run starts from none and leaves none.

@@ -260,8 +260,10 @@ endif()
 # build that links nothing.
 if(TARGET dtwc_io)
   if(DTWC_ARROW_FROM_CPM)
-    # CPM-built static Arrow + Parquet
+    # CPM-built static Arrow + Parquet. Its targets carry no include directory of their own in Arrow's build tree
+    # (Arrow adds them to its directory only), so its headers and the ones it generates are named here.
     target_link_libraries(dtwc_io PUBLIC arrow_static parquet_static)
+    target_include_directories(dtwc_io SYSTEM PUBLIC "${arrow_SOURCE_DIR}/src" "${arrow_BINARY_DIR}/src")
     target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
     message(STATUS "Arrow + Parquet linked — Parquet reading enabled")
   elseif(TARGET Arrow::arrow_shared)

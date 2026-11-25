@@ -12,8 +12,8 @@ function(dtwc_setup_dependencies)
   if(DTWC_BUILD_TESTING AND NOT TARGET Catch2::Catch2WithMain)
     CPMAddPackage(
       NAME Catch2
-      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
-      URL_HASH SHA256=650795f6501af514f806e78c554729847b98db6935e69076f36bb03ed2e985ef
+      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.16.1.tar.gz"
+      URL_HASH SHA256=d16bd1b8b2364918bd472cb216394acb93bde6784890df0d91bccfb3f28d777d
       SYSTEM YES
       OPTIONS
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
@@ -44,8 +44,8 @@ function(dtwc_setup_dependencies)
   message(STATUS "  HiGHS:    fetching (DTWC_ENABLE_HIGHS=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_HIGHS=OFF)")
   CPMAddPackage(
     NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
-    URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.16.0.tar.gz"
+    URL_HASH SHA256=0fa9da512955fb08c6cca7bfb274ca12e8a0e8a12e44189bd6e0c355ce7701bc
     SYSTEM YES
     OPTIONS
       "CI OFF"
@@ -59,7 +59,7 @@ function(dtwc_setup_dependencies)
     # fired on valid warm-start MIP solves (primal-dual integral bookkeeping
     # tolerance 1e-12 too tight after a presolve reset). Retained defensively:
     # forcing NDEBUG on the HiGHS target keeps its internal asserts off in Debug
-    # builds of DTWC++ regardless of whether 1.15.1 tightened the tolerance.
+    # builds of DTWC++, whatever a later HiGHS did to that tolerance.
     if(TARGET highs)
       target_compile_definitions(highs PRIVATE NDEBUG)
     endif()
@@ -90,8 +90,8 @@ function(dtwc_setup_dependencies)
   if (NOT TARGET CLI11::CLI11)
     CPMAddPackage(
       NAME CLI11
-      URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz"
-      URL_HASH SHA256=c6ea6b2e5608b3ea8617999bd5f47420c71b2ebdb8dc4767c1034d1da5785711
+      URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.7.2.tar.gz"
+      URL_HASH SHA256=46eef3101da70852ec7af026e09d485ccee81813331c8c6052d39344443b83da
       DOWNLOAD_ONLY YES
     )
 
@@ -100,14 +100,14 @@ function(dtwc_setup_dependencies)
       INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
-  # lz4 1.10.0 and zstd 1.5.7: decoders for compressed Arrow IPC record batches,
+  # lz4 1.11.1 and zstd 1.6.0: decoders for compressed Arrow IPC record batches,
   # compiled into dtwc_third_party by dtwc/CMakeLists.txt.
   CPMAddPackage(NAME lz4 DOWNLOAD_ONLY YES
-    URL "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
-    URL_HASH SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b)
+    URL "https://github.com/lz4/lz4/releases/download/v1.11.1/lz4-1.11.1.tar.gz"
+    URL_HASH SHA256=683fed08a844ad012196381e40badf80c0bbe4962959761416d41c9e67d77ec7)
   CPMAddPackage(NAME zstd DOWNLOAD_ONLY YES
-    URL "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz"
-    URL_HASH SHA256=eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3)
+    URL "https://github.com/facebook/zstd/releases/download/v1.6.0/zstd-1.6.0.tar.gz"
+    URL_HASH SHA256=2ba599ae2a257976278e7e71e998433a387bfd18aa7b78678229fd5d84f5e9b8)
   set(lz4_SOURCE_DIR "${lz4_SOURCE_DIR}" PARENT_SCOPE)
   set(zstd_SOURCE_DIR "${zstd_SOURCE_DIR}" PARENT_SCOPE)
 
@@ -117,8 +117,8 @@ function(dtwc_setup_dependencies)
     message(STATUS "  YAML:     fetching fkYAML (DTWC_ENABLE_YAML=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_YAML=OFF)")
     CPMAddPackage(
       NAME fkYAML
-      URL "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.4.4.tar.gz"
-      URL_HASH SHA256=75fa1ce37480ac2ef47b820bfdba04894d4f19ac122ad59d892601553aa45c4e
+      URL "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.5.0.tar.gz"
+      URL_HASH SHA256=eaab648ff79d4688a8fb41f36a83211e56df3287e1d7ccfb2d09c5daed318143
       DOWNLOAD_ONLY YES
     )
     add_library(fkYAML::fkYAML INTERFACE IMPORTED)
@@ -133,8 +133,9 @@ function(dtwc_setup_dependencies)
 
   # PMU counters. Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
-  # be relied on: the BM_CHECK at v1.9.5 benchmark_runner.cc:323 is inverted (it
+  # be relied on: the BM_CHECK at v1.10.0 benchmark_runner.cc:328 is inverted (it
   # aborts when the counters *were* set up and stays silent when they were not),
+  # compiled out where NDEBUG is defined,
   # and it sits inside an `aggregation_report_mode() != ARM_Unspecified` branch
   # that an ordinary benchmark never enters. A build without libpfm therefore
   # accepts --benchmark_perf_counters, writes a normal-looking JSON with no counter
@@ -178,8 +179,8 @@ function(dtwc_setup_dependencies)
       CPMAddPackage(
         NAME benchmark
         GITHUB_REPOSITORY google/benchmark
-        VERSION 1.9.5
-        GIT_TAG 192ef10025eb2c4cdd392bc502f0c852196baa48 # v1.9.5
+        VERSION 1.10.0
+        GIT_TAG a6b4a9f00b36c19af9997d68a1cf6e0b5b3d032c # v1.10.0
         OPTIONS
           "BENCHMARK_ENABLE_TESTING OFF"
           "BENCHMARK_ENABLE_GTEST_TESTS OFF"
@@ -288,8 +289,8 @@ function(dtwc_setup_dependencies)
   if(DTWC_ENABLE_CPUINFO AND NOT TARGET cpuinfo)
     message(STATUS "  cpuinfo:  fetching (DTWC_ENABLE_CPUINFO=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_CPUINFO=OFF)")
     CPMAddPackage(NAME cpuinfo
-      URL "https://github.com/pytorch/cpuinfo/archive/e9320ce3398899fbecc986c82f49b5d59b80dff7.tar.gz"
-      URL_HASH SHA256=0f19bffed603d591240b6e25e8def96d203ccf59db09c28cd15c92bf856f5e90
+      URL "https://github.com/pytorch/cpuinfo/archive/fd8b912165dfffccb4f652610a0a19afc51d98ee.tar.gz"
+      URL_HASH SHA256=196577afcc8c156d64667aa008d6d8aa828b397333acc7b055850726e2f046bb
       SYSTEM YES
       EXCLUDE_FROM_ALL YES
       OPTIONS
@@ -366,9 +367,9 @@ function(dtwc_setup_dependencies)
 
       CPMAddPackage(
         NAME Arrow
-        VERSION 19.0.1
-        URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-19.0.1.tar.gz"
-        URL_HASH SHA256=4c898504958841cc86b6f8710ecb2919f96b5e10fa8989ac10ac4fca8362d86a
+        VERSION 26.0.1
+        URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-26.0.1.tar.gz"
+        URL_HASH SHA256=1fee09a4b032cd814ad8ce27365499a42d4fd78ab64870045453b3dd0343e64a
         SOURCE_SUBDIR cpp
         SYSTEM YES
         OPTIONS
@@ -390,7 +391,9 @@ function(dtwc_setup_dependencies)
           "ARROW_HDFS OFF"
           "ARROW_JEMALLOC OFF"
           "ARROW_MIMALLOC OFF"
-          "ARROW_WITH_SNAPPY OFF"
+          # Snappy, the codec pyarrow writes Parquet with by default, from Arrow's bundled copy; zstd and lz4 stay
+          # off, since dtwc builds its own copies for Arrow IPC and a second one would clash in a static link.
+          "ARROW_WITH_SNAPPY ON"
           "ARROW_WITH_ZSTD OFF"
           "ARROW_WITH_LZ4 OFF"
           "ARROW_WITH_BROTLI OFF"

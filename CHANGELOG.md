@@ -197,7 +197,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each series is a
   view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's `Data.p_vec`
   and `p_names` read through it). A compressed (LZ4, ZSTD), big-endian or misaligned record batch is decoded instead,
-  the batches in parallel (lz4 1.10.0 and zstd 1.5.7's decoder are built in, their symbols hidden). A file whose
+  the batches in parallel (lz4 1.11.1 and zstd 1.6.0's decoder are built in, their symbols hidden). A file whose
   buffers declare more decoded bytes than their lengths allow beyond Arrow's 64-byte padding, or more than the memory
   available, is an `IOError` before any decode; bytes handed to the reader at an address not 8-aligned are read from an
   aligned copy; a file with a dictionary-encoded column is an `IOError` naming why. `-v`'s `Data loaded` line and the

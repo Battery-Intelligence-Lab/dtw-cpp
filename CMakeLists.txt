@@ -388,6 +388,8 @@ endif()
 
 include(CTest)
 if(DTWC_BUILD_TESTING)
+  # A CPM-built Arrow caches BUILD_TESTING=OFF, which leaves CTest's enable_testing() out: register the tests anyway.
+  enable_testing()
   include(cmake/DtwcTest.cmake)
   add_subdirectory(tests)
 endif()

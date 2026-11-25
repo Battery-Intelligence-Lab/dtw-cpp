@@ -227,11 +227,11 @@ References used during development. Verify each citation independently before pu
 
 - Applegate, D., Díaz, M., Hinder, O., Lu, H., Lubin, M., O'Donoghue, B., & Schudy, W. (2021). *Practical Large-Scale Linear Programming using Primal-Dual Hybrid Gradient*. NeurIPS 2021. arXiv:2106.04756 — the PDLP method (PDHG on the LP saddle point; core op is matrix-vector, hence GPU-friendly).
 - Lu, H., et al. (2023). *cuPDLP-C: A Strengthened Implementation of cuPDLP for Linear Programming by C language*. arXiv:2312.14832 — the C/CUDA implementation HiGHS vendors as `solver="pdlp"`.
-- HiGHS. ERGO-Code/HiGHS v1.15.1 release and versioned/tagged source:
-  https://github.com/ERGO-Code/HiGHS/releases/tag/v1.15.1,
-  https://github.com/ERGO-Code/HiGHS/tree/v1.15.1/highs/pdlp, and tagged
+- HiGHS. ERGO-Code/HiGHS v1.16.0 release and versioned/tagged source:
+  https://github.com/ERGO-Code/HiGHS/releases/tag/v1.16.0,
+  https://github.com/ERGO-Code/HiGHS/tree/v1.16.0/highs/pdlp, and tagged
   CMake configuration
-  https://github.com/ERGO-Code/HiGHS/blob/v1.15.1/CMakeLists.txt — The HiGHS
+  https://github.com/ERGO-Code/HiGHS/blob/v1.16.0/CMakeLists.txt — The HiGHS
   release DTWC++ fetches as its MIP solver; DTWC++ does not use its PDLP solver,
   and the build keeps the upstream `CUPDLP_GPU` option (its GPU path) off.
 
@@ -268,19 +268,19 @@ References used during development. Verify each citation independently before pu
   configurations. Linux-only by construction: `perf_event_open(2)` is a Linux
   system call, so macOS (use `xctrace`/Instruments) and hosts that do not expose
   the PMU to guests cannot serve it.
-- Google Benchmark v1.9.5, `BENCHMARK_ENABLE_LIBPFM`:
-  https://github.com/google/benchmark/blob/v1.9.5/CMakeLists.txt#L43 — the option;
-  `CMakeLists.txt:338` runs `find_package(PFM REQUIRED)`, so a missing libpfm4
+- Google Benchmark v1.10.0, `BENCHMARK_ENABLE_LIBPFM`:
+  https://github.com/google/benchmark/blob/v1.10.0/CMakeLists.txt#L43 — the option;
+  `CMakeLists.txt:344` runs `find_package(PFM REQUIRED)`, so a missing libpfm4
   stops the configure rather than dropping the feature. `cmake/Modules/FindPFM.cmake`
   searches for `libpfm` and `perfmon/pfmlib.h`. `src/CMakeLists.txt` links
   `PFM::libpfm` and defines `HAVE_LIBPFM` only when `PFM_FOUND`.
-- Google Benchmark v1.9.5, `src/perf_counters.cc:245-263` — the no-`HAVE_LIBPFM`
+- Google Benchmark v1.10.0, `src/perf_counters.cc:304-319` — the no-`HAVE_LIBPFM`
   stub: `kSupported = false`, `Initialize()` returns false, and `Create()` logs
   `"Performance counters not supported."` for a non-empty request, then returns
   `NoCounters()`. The benchmark still runs, still writes JSON, and still exits 0.
-- Google Benchmark v1.9.5, `src/benchmark_runner.cc:323-325` — the only runtime
-  guard, and it does not work: `BM_CHECK` (`src/check.h:85`) fires when its
-  argument is **false**, and the argument is
+- Google Benchmark v1.10.0, `src/benchmark_runner.cc:328-330` — the only runtime
+  guard, and it does not work: `BM_CHECK` (`src/check.h:84-98`) fires when its
+  argument is **false** (only where `NDEBUG` is not defined), and the argument is
   `FLAGS_benchmark_perf_counters.empty() || (num_counters() == 0)`, which is false
   precisely when counters were requested *and* successfully created. The attached
   message, "Perf counters were requested but could not be set up.", describes the

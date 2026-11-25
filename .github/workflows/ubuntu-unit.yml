@@ -99,7 +99,7 @@ jobs:
       # Official Apache apt repository (https://arrow.apache.org/install/).
       #
       # VERSION SKEW — deliberate, not an oversight. The CPMAddPackage of Arrow in cmake/Dependencies.cmake
-      # pins the CPM *source* build to Arrow 19.0.1; this apt path takes whatever the
+      # pins the CPM *source* build to Arrow 26.0.1; this apt path takes whatever the
       # repository currently serves (a much newer release). We do NOT pin the apt
       # version, for three reasons:
       #   1. Apache prunes old versions from the apt repo, so a pin is a guaranteed
@@ -110,7 +110,7 @@ jobs:
       #      FileReader::ReadRowGroups (dtwc/io/parquet_chunk_reader.hpp:230,369,394,539)
       #      — is long-stable public Parquet C++ API.
       #   3. An upstream API break that reddens this job is information we want: it is
-      #      precisely the skew signal that the frozen 19.0.1 CPM pin hides.
+      #      precisely the skew signal that the frozen 26.0.1 CPM pin hides.
       # The honest cost: this job can break from an upstream release we did not choose,
       # and that break will land on an unrelated PR. If that becomes noisy, pin here to
       # the then-current libarrow-dev/libparquet-dev version and accept owning the bump.

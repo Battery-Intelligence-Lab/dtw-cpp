@@ -797,12 +797,13 @@ TEST_CASE("Parquet: a stream's decoding stays within the reader's decode price",
       value = x;
     }
   }
-  // Built and written through the system pool: the default pool's high-water mark is the reads'.
-  auto *system = arrow::system_memory_pool();
+  // Built and written through a pool of its own, so the default pool's high-water mark is the reads' (the system pool
+  // would not do: it is the default one where Arrow is built with neither jemalloc nor mimalloc).
+  const auto writing = arrow::MemoryPool::CreateDefault();
   const auto path = tmpdir() / "clara_stream_decode.parquet";
   write_parquet(path, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
-                                         { make_list_f64(series, system) }),
-                4096, system);
+                                         { make_list_f64(series, writing.get()) }),
+                4096, writing.get());
   const auto decode = static_cast<int64_t>(dtwc::io::ParquetChunkReader(path, "series").decode_bytes());
   auto *pool = arrow::default_memory_pool();
   REQUIRE(pool->max_memory() < decode / 2); // no earlier read in this process reached what this one may
