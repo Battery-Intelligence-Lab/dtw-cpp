@@ -56,7 +56,7 @@ function test_distance_refuses_what_no_kernel_computes(testCase)
         {'MissingStrategy', 'zero_cost'}, [0 NaN 2], [0 9 Inf 0], 'y[2] is +inf'
         {'Bogus', 1}, 0, 0, ...
             ['unknown distance setting ''Bogus''. Valid: Variant, Band, Metric, ' ...
-             'MissingStrategy, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda.']
+             'MissingStrategy, MvMode, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda.']
     };
     for i = 1:size(rows, 1)
         [settings, x, y, message] = rows{i, :};

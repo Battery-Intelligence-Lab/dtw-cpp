@@ -502,6 +502,7 @@ constexpr dtwc::Name<Key> distance_keys[]{
   { "Band", Key::Band },
   { "Metric", Key::Metric },
   { "MissingStrategy", Key::MissingStrategy },
+  { "MvMode", Key::MvMode },
   { "WdtwG", Key::WdtwG },
   { "AdtwPenalty", Key::AdtwPenalty },
   { "SdtwGamma", Key::SdtwGamma },
@@ -1237,6 +1238,21 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   plhs[0] = mxCreateLogicalScalar(ok); // false => requested solver not compiled in
 }
 
+/// Validate that every field on MATLAB struct `s` is listed in `valid_names`.
+template <std::size_t N>
+static void require_known_struct_fields(const mxArray *s, const char *what,
+                                        const char *const (&valid_names)[N])
+{
+  for (int i = 0; i < mxGetNumberOfFields(s); ++i) {
+    const std::string field = mxGetFieldNameByNumber(s, i);
+    if (std::find(std::begin(valid_names), std::end(valid_names), field) != std::end(valid_names))
+      continue;
+    std::string valid;
+    for (const char *name : valid_names) valid += (valid.empty() ? "" : ", ") + std::string(name);
+    throw std::invalid_argument("unknown " + std::string(what) + " '" + field + "'. Valid: " + valid + ".");
+  }
+}
+
 /// The MIPSettings fields a struct carries, as set_mip_settings reads and get_mip_settings returns them.
 static const char *mip_setting_names[] = { "mip_gap",       "time_limit_sec", "warm_start",    "numeric_focus",
                                           "mip_focus",     "verbose_solver", "lr_max_nodes" };
@@ -1252,14 +1268,7 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
     throw std::invalid_argument(
       "mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
       "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes).");
-  for (int i = 0; i < mxGetNumberOfFields(s); ++i) {
-    const std::string field = mxGetFieldNameByNumber(s, i);
-    if (std::find(std::begin(mip_setting_names), std::end(mip_setting_names), field) != std::end(mip_setting_names))
-      continue;
-    std::string valid;
-    for (const char *name : mip_setting_names) valid += (valid.empty() ? "" : ", ") + std::string(name);
-    throw std::invalid_argument("unknown mip setting '" + field + "'. Valid: " + valid + ".");
-  }
+  require_known_struct_fields(s, "mip setting", mip_setting_names);
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap")) m.mip_gap = get_scalar(f, "mip_gap");
@@ -1290,6 +1299,8 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   plhs[0] = s;
 }
 
+static const char *checkpoint_option_names[] = { "directory", "save_interval", "enabled" };
+
 /// set_checkpoint(handle, struct) -- writes Problem::checkpoint, which
 /// fill_distance_matrix() consumes. Fields are optional; the
 /// current value is kept for any field the struct omits.
@@ -1303,6 +1314,7 @@ static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
     throw std::invalid_argument(
       "checkpoint must be a struct (fields: directory, "
       "save_interval, enabled).");
+  require_known_struct_fields(s, "checkpoint option", checkpoint_option_names);
 
   dtwc::CheckpointOptions options = prob.checkpoint;
   if (mxArray *f = mxGetField(s, 0, "directory")) {
@@ -1688,8 +1700,9 @@ static mxArray *execute_mex_run(dtwc::Config &config, const mxArray *source_mx, 
   const std::string name = dtwc::run_name(config);
   // The Result is stored: from here MATLAB arrays are made, which own nothing of it.
   const dtwc::Result &result = *HandleManager<dtwc::Result>::get(handle);
-  const char *fields[] = { "handle", "labels", "medoids", "cost", "device", "name", "report" };
-  mxArray *out = mxCreateStructMatrix(1, 1, 7, fields);
+  const char *fields[] = { "handle", "labels", "medoids", "cost", "device", "name", "report",
+                           "method", "iterations", "converged" };
+  mxArray *out = mxCreateStructMatrix(1, 1, 10, fields);
   mxSetField(out, 0, "handle", handle_to_mx(handle));
   mxSetField(out, 0, "labels", ivec_to_mx_1based(result.labels()));
   mxSetField(out, 0, "medoids", ivec_to_mx_1based(result.medoids()));
@@ -1697,11 +1710,14 @@ static mxArray *execute_mex_run(dtwc::Config &config, const mxArray *source_mx, 
   mxSetField(out, 0, "device", mxCreateString(result.device().c_str()));
   mxSetField(out, 0, "name", mxCreateString(name.c_str()));
   mxSetField(out, 0, "report", mxCreateString(result.report().c_str()));
+  mxSetField(out, 0, "method", mxCreateString(std::string(dtwc::name_of(dtwc::method_names, result.method())).c_str()));
+  mxSetField(out, 0, "iterations", mxCreateDoubleScalar(static_cast<double>(result.iterations())));
+  mxSetField(out, 0, "converged", mxCreateLogicalScalar(result.converged()));
   return out;
 }
 
 /// run_workflow(source, names, ndim, skip_cols, skip_rows, delimiter, dtype, name, output, checkpoint,
-/// checkpoint_interval, k, Name, Value, ...) -> struct {handle, labels, medoids, cost, device, name, report}: dtwc::run,
+/// checkpoint_interval, k, Name, Value, ...) -> struct {handle, labels, medoids, cost, device, name, report, method, iterations, converged}: dtwc::run,
 /// the run dtwc_cl makes, which dtwc.cluster calls for a path and for series in memory. `source` is a path C++ reads
 /// (CSV/TSV text, a folder of it or an Arrow IPC file, which the run's memory plan may stream through FastCLARA) with
 /// its reader options, and `names` {}; or series in memory (Parquet that parquetread read, or arrays), an N x L matrix
@@ -2026,7 +2042,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
   }
   // Catch dtwc::Error leaf types before std::runtime_error, from which they derive.
-  catch (const dtwc::InvalidInput &e) {
+  catch (const dtwc::UndefinedScore &e) {
+    // Must precede InvalidInput: UndefinedScore derives from it.
+    error_id = "dtwc:undefinedScore";
+    std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
+  } catch (const dtwc::InvalidInput &e) {
     error_id = "dtwc:invalidArgument";
     std::snprintf(error_msg, sizeof error_msg, "%s", e.what());
   } catch (const dtwc::SolverError &e) {

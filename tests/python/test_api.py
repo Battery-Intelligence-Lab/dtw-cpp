@@ -713,3 +713,114 @@ print("JSON " + json.dumps(out))
         for table in ("labels", "medoids"):
             assert (saved / f"t_{table}.csv").read_bytes() == (in_ram / f"t_{table}.csv").read_bytes()
         assert (saved / "t_report.txt").stat().st_size > 0
+
+
+class TestApiFreezeSurface:
+    """API-freeze coverage: scores, barycenter, Arrow ingest, float32 Data, Result fields."""
+
+    def test_external_and_internal_scores_and_barycenter(self):
+        assert dtwcpp.adjusted_rand([0, 0, 1, 1], [1, 1, 0, 0]) == pytest.approx(1.0)
+        assert dtwcpp.normalized_mutual_info([0, 0, 1, 1], [1, 1, 0, 0]) == pytest.approx(1.0)
+        assert -1.0 <= dtwcpp.adjusted_rand([0, 0, 1, 1], [0, 1, 0, 1]) <= 1.0
+        assert 0.0 <= dtwcpp.normalized_mutual_info([0, 0, 1, 1], [0, 1, 0, 1]) <= 1.0
+
+        series = [[0.0, 0.1, 0.0], [0.1, 0.2, 0.1], [9.0, 9.1, 9.0], [9.1, 9.2, 9.1]]
+        prob = dtwcpp.Problem("scores_barycenter")
+        prob.set_data(series, ["0", "1", "2", "3"])
+        dtwcpp.fast_pam(prob, 2)
+        ch = dtwcpp.calinski_harabasz(prob)
+        assert np.isfinite(ch) and ch > 0.0
+
+        opts = dtwcpp.BarycenterOptions()
+        opts.method = dtwcpp.BarycenterMethod.DBA
+        opts.max_iter = 10
+        bc = dtwcpp.dtw_barycenter(prob, [0, 1], 3, opts)
+        assert len(bc) == 3
+        assert np.all(np.isfinite(bc))
+        assert np.allclose(bc, [0.05, 0.15, 0.05], atol=0.2)
+
+    def test_data_from_arrow_c_array_and_load_with_table_and_reader(self):
+        pa = pytest.importorskip("pyarrow")
+        rows = [[0.0, 0.5, 1.0], [2.5, 1.0], [9.0, 9.5, 10.0, 10.5]]
+        names = ["s0", "s1", "s2"]
+        table = pa.table({
+            "name": names,
+            "data": pa.array(rows, type=pa.list_(pa.float64())),
+        })
+        from_table = dtwcpp.data_from_arrow_c_array(table)
+        assert from_table.p_vec == rows
+        assert from_table.p_names == names
+        assert dtwcpp.load(table).as_series() == rows
+
+        reader = pa.RecordBatchReader.from_batches(table.schema, table.to_batches(max_chunksize=2))
+        from_reader = dtwcpp.data_from_arrow_c_array(reader)
+        assert from_reader.p_vec == rows
+        assert from_reader.p_names == names
+
+        reader2 = pa.RecordBatchReader.from_batches(table.schema, table.to_batches(max_chunksize=2))
+        loaded = dtwcpp.load(reader2)
+        assert loaded.as_series() == rows
+        assert loaded.series_names() == names
+
+    def test_float32_data_is_preserved_and_conflicting_dtype_refused(self):
+        rng = np.random.default_rng(11)
+        rows = [rng.standard_normal(25) * 100.0 + 1000.0 * (i % 3) for i in range(9)]
+        names = [str(i) for i in range(len(rows))]
+        f32 = dtwcpp.Data.from_float32(rows, names)
+        assert f32.is_f32()
+
+        ds = dtwcpp.load(f32)
+        assert ds.dtype == "float32"
+        assert ds.as_data() is f32
+        assert ds.as_data().is_f32()
+        assert dtwcpp.load(f32, dtype="f32").as_data() is f32
+
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32'.*dtype='float64'"):
+            dtwcpp.load(f32, dtype="float64")
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32'.*dtype='float64'"):
+            dtwcpp.Dataset(f32, dtype="float64")
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32'.*dtype='float64'"):
+            dtwcpp.cluster(f32, k=3, dtype="float64")
+
+        res = dtwcpp.cluster(f32, k=3, method="pam")
+        oracle = dtwcpp.Problem("f32_oracle")
+        oracle.set_data(f32)
+        expected = dtwcpp.fast_pam(oracle, 3)
+        np.testing.assert_array_equal(res.labels, expected.labels)
+        assert res.cost == expected.total_cost
+
+        prob_f32 = dtwcpp.Problem("set_data_f32")
+        prob_f32.set_data(rows, names=names, dtype="float32")
+        assert prob_f32.series(0) == f32.series(0)
+        with pytest.raises(TypeError, match="dtype"):
+            prob_f32.set_data(f32, dtype="float32")
+
+    def test_result_exposes_method_iterations_converged_and_device_ordinal(self, monkeypatch):
+        res = dtwcpp.cluster(_two_groups(), k=2, method="pam")
+        assert res.device == "cpu"
+        assert res.method == "pam"
+        assert isinstance(res.iterations, int) and res.iterations >= 0
+        assert isinstance(res.converged, bool) and res.converged is True
+
+        class FakeCoreResult:
+            def __init__(self, dev):
+                self.labels = np.array([0, 0, 1, 1], dtype=np.int64)
+                self.medoids = np.array([0, 2], dtype=np.int64)
+                self.cost = 1.5
+                self.device = dev
+                self.method = "clara"
+                self.iterations = 4
+                self.converged = True
+                self.report = "fake"
+
+        from dtwcpp import _api, _dtwcpp_core
+        monkeypatch.setattr(_dtwcpp_core, "apply", lambda cfg, prob: None)
+        for dev in ("gpu:1", "cpu+gpu:1"):
+            monkeypatch.setattr(_dtwcpp_core, "_run", lambda *a, _d=dev, **kw: FakeCoreResult(_d))
+            cfg = _dtwcpp_core.Config()
+            cfg.n_clusters = 2
+            r = _api._run_local(dtwcpp.load([[0.0], [0.1], [5.0], [5.1]]), cfg, "cpu")
+            assert r.device == dev
+            assert r.method == "clara"
+            assert r.iterations == 4
+            assert r.converged is True

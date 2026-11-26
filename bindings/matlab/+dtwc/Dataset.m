@@ -84,7 +84,7 @@ classdef Dataset < handle
                 else
                     obj.Series = obj.trimmed();
                     if strcmp(obj.Dtype, 'float32')
-                        obj.Series = cast_series(obj.Series, 'float32');
+                        obj.Series = dtwc.internal.cast_series(obj.Series, 'float32');
                     end
                 end
                 obj.IsRead = true;
@@ -140,7 +140,7 @@ classdef Dataset < handle
             for i = 1:numel(files)
                 [s, n] = dtwc.Dataset.read_parquet(files{i}, numel(series), skipCols, skipRows);
                 if strcmp(dtype, 'float32')   % file by file: no double copy of them all
-                    s = cast_series(s, 'float32');
+                    s = dtwc.internal.cast_series(s, 'float32');
                 end
                 series = [series, s]; %#ok<AGROW>
                 names = [names, n]; %#ok<AGROW>

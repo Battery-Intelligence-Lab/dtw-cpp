@@ -21,9 +21,16 @@ def dtw(x, y, **settings):
 dtw.__doc__ = _dtw.__doc__
 
 
-def _as_cdist_data(source, *, ndim: int, dtype):
+def _as_cdist_data(source, *, ndim: int | None, dtype):
     from dtwcpp import Data, InvalidInput, _dtwcpp_core
     from dtwcpp._api import Dataset, _to_data
+
+    if ndim is not None:
+        if isinstance(ndim, (bool, np.bool_)) or not isinstance(ndim, (int, np.integer)):
+            raise TypeError(f"ndim must be an integer, got {type(ndim).__name__}")
+        if int(ndim) < 1:
+            raise InvalidInput("ndim must be at least 1.")
+        ndim = int(ndim)
 
     if isinstance(source, (Data, Dataset)):  # each keeps its own dtype: refuse another, never drop it
         kind, own = (("Dataset", source.dtype) if isinstance(source, Dataset)
@@ -34,22 +41,27 @@ def _as_cdist_data(source, *, ndim: int, dtype):
                 f"cdist: the {kind} was made with dtype={own!r} and dtype={given!r} was given; "
                 f"a {kind} keeps the options it was made with, so pass dtype to load, or leave it out.")
     if isinstance(source, Data):
-        if ndim != 1 and source.ndim != ndim:
+        if ndim is not None and source.ndim != ndim:
             raise InvalidInput(
                 f"cdist: Data already carries ndim={source.ndim}, which disagrees with ndim={ndim}."
             )
         return source
     if isinstance(source, Dataset):
         data = source.as_data()
-        if ndim != 1 and data.ndim != ndim:
+        if ndim is not None and data.ndim != ndim:
             raise InvalidInput(
                 f"cdist: Dataset carries ndim={data.ndim}, which disagrees with ndim={ndim}."
             )
         return data
     dtype = "float64" if dtype is None else dtype
     if isinstance(source, (str, os.PathLike)):
-        return Dataset(source, dtype=dtype, ndim=ndim).as_data()
-    return _to_data(source, ndim=ndim, dtype=dtype)
+        data = Dataset(source, dtype=dtype, ndim=ndim).as_data()
+        if ndim is not None and data.ndim != ndim:
+            raise InvalidInput(
+                f"cdist: Dataset carries ndim={data.ndim}, which disagrees with ndim={ndim}."
+            )
+        return data
+    return _to_data(source, ndim=1 if ndim is None else ndim, dtype=dtype)
 
 
 def cdist(
@@ -67,7 +79,7 @@ def cdist(
     twe_nu=0.001,
     twe_lambda=1.0,
     mv_mode="dependent",
-    ndim=1,
+    ndim=None,
     dtype=None,
     matrix_dtype="float64",
     device=None,
@@ -85,8 +97,9 @@ def cdist(
         Second collection of ``n_Y`` time series. When ``None``, computes ``cdist(X, X)``.
     variant, band, metric, missing_strategy, wdtw_g, adtw_penalty, sdtw_gamma, msm_c, twe_nu, twe_lambda, mv_mode
         DTW family settings (same names and defaults as :func:`dtw` and :func:`dtwcpp.cluster`).
-    ndim : int, default=1
-        Number of channels per timestep for multivariate series.
+    ndim : int or None, default=None
+        Number of channels per timestep for multivariate series (None: a Dataset/Data/Arrow
+        IPC file's own ndim, else 1).
     dtype : str or None, default=None
         Storage precision for converted inputs (``'float64'`` or ``'float32'``; None: ``'float64'``).
         A Dataset or Data keeps its own: a dtype other than its own raises :class:`dtwcpp.InvalidInput`.

@@ -48,6 +48,23 @@ function test_softdtw_predict_reads_the_divergence_of_the_fit(testCase)
     c = dtwc.DTWClustering('NClusters', 2, 'Variant', 'softdtw').fit(X);
     verifyEqual(testCase, double(c.predict(X)), double(c.Labels));
     verifyEqual(testCase, c.Labels(7), c.Labels(4));
+
+    % SdtwGamma is validated and forwarded to fit and transform Soft-DTW divergence
+    c_gamma = dtwc.DTWClustering('NClusters', 2, 'Variant', 'softdtw', 'SdtwGamma', 0.5).fit(X);
+    D_t = c_gamma.transform(X);
+    for i = 1:size(X, 1)
+        for m = 1:numel(c_gamma.MedoidIndices)
+            med = X(c_gamma.MedoidIndices(m), :);
+            div = dtwc.distance.dtw(X(i, :), med, 'Variant', 'softdtw', 'SdtwGamma', 0.5) ...
+                - 0.5 * (dtwc.distance.dtw(X(i, :), X(i, :), 'Variant', 'softdtw', 'SdtwGamma', 0.5) ...
+                + dtwc.distance.dtw(med, med, 'Variant', 'softdtw', 'SdtwGamma', 0.5));
+            verifyEqual(testCase, D_t(i, m), max(div, 0), 'AbsTol', 1e-12);
+        end
+    end
+    verifyError(testCase, @() dtwc.DTWClustering('NClusters', 2, 'Variant', 'softdtw', 'SdtwGamma', 0).fit(X), ...
+                'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc.DTWClustering('NClusters', 2, 'Variant', 'softdtw', 'SdtwGamma', -1).fit(X), ...
+                'dtwc:invalidArgument');
 end
 
 function test_problem_config_reaches_the_native_problem(testCase)

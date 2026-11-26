@@ -40,7 +40,7 @@ function D = cdist(X, varargin)
         error('dtwc:invalidArgument', 'cdist settings must come in Name-Value pairs.');
     end
 
-    ndim = 1;
+    ndim = [];
     dtype = '';   % not given: a Dataset keeps its own, other series are stored as 'float64'
     keep = true(1, numel(opts));
     for i = 1:2:numel(opts)
@@ -67,24 +67,15 @@ function D = cdist(X, varargin)
         error('dtwc:invalidArgument', 'cdist: X.Ndim (%d) and Y.Ndim (%d) must match.', xNdim, yNdim);
     end
 
-    D = dtwc_mex('cdist', cast_for_cdist(xSeries, xDtype), cast_for_cdist(ySeries, yDtype), ...
+    D = dtwc_mex('cdist', dtwc.internal.cast_series(xSeries, xDtype), dtwc.internal.cast_series(ySeries, yDtype), ...
                  double(xNdim), xDtype, yDtype, mexOpts{:});
 end
 
-function series = cast_for_cdist(series, dtype)
-    type = 'double';
-    if strcmp(dtype, 'float32')
-        type = 'single';
-    end
-    if iscell(series)
-        numeric = cellfun(@isnumeric, series);
-        series(numeric) = cellfun(@(s) cast(s, type), series(numeric), 'UniformOutput', false);
-    elseif isnumeric(series)
-        series = cast(series, type);
-    end
-end
-
 function [series, dtype, effNdim] = materialize_for_cdist(src, givenDtype, requestedNdim)
+    if ~isempty(requestedNdim) && ~(isnumeric(requestedNdim) && isscalar(requestedNdim) && isreal(requestedNdim) ...
+            && isfinite(requestedNdim) && requestedNdim >= 1 && requestedNdim == fix(requestedNdim))
+        error('dtwc:invalidArgument', 'cdist: Ndim must be a positive integer.');
+    end
     dtype = givenDtype;
     if isempty(dtype)
         dtype = 'float64';
@@ -98,7 +89,7 @@ function [series, dtype, effNdim] = materialize_for_cdist(src, givenDtype, reque
         [series, ~, dsNdim] = src.as_series();
         dtype = src.Dtype;
         effNdim = dsNdim;
-        if requestedNdim ~= 1 && dsNdim ~= requestedNdim
+        if ~isempty(requestedNdim) && dsNdim ~= requestedNdim
             error('dtwc:invalidArgument', 'cdist: Dataset Ndim (%d) disagrees with Ndim (%d).', ...
                   dsNdim, requestedNdim);
         end
@@ -106,9 +97,17 @@ function [series, dtype, effNdim] = materialize_for_cdist(src, givenDtype, reque
         ds = dtwc.Dataset(char(src), 0, 0, '', '', dtype, requestedNdim);
         [series, ~, effNdim] = ds.as_series();
         dtype = ds.Dtype;
+        if ~isempty(requestedNdim) && effNdim ~= requestedNdim
+            error('dtwc:invalidArgument', 'cdist: Dataset Ndim (%d) disagrees with Ndim (%d).', ...
+                  effNdim, requestedNdim);
+        end
     else
         series = src;
-        effNdim = requestedNdim;
+        if isempty(requestedNdim)
+            effNdim = 1;
+        else
+            effNdim = requestedNdim;
+        end
     end
 end
 

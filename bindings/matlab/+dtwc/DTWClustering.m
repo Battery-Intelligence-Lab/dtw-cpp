@@ -17,8 +17,8 @@ classdef DTWClustering
 %   default (dtwc_cl's), and C++ checks every value when fit runs, so a value
 %   no run can take (MaxIter = 0, an unknown Metric) raises dtwc:invalidArgument.
 %     NClusters (3), Method ('pam'): any dtwc.cluster method.
-%     Variant, Band, Metric, MissingStrategy, WdtwG, AdtwPenalty, MsmC, TweNu,
-%     TweLambda: the distance, as dtwc.distance.dtw takes it.
+%     Variant, Band, Metric, MissingStrategy, WdtwG, AdtwPenalty, SdtwGamma,
+%     MsmC, TweNu, TweLambda: the distance, as dtwc.distance.dtw takes it.
 %     MaxIter, NInit, MvMode, BatchSize, Device, Fallback: as dtwc.cluster's keys;
 %     Device empty is dtwc.device(); Fallback true runs a GPU request that cannot
 %     be honoured on the CPU, saying so on stderr, instead of raising
@@ -45,6 +45,7 @@ classdef DTWClustering
         NInit = []
         WdtwG = []
         AdtwPenalty = []
+        SdtwGamma = []
         MsmC = []
         TweNu = []
         TweLambda = []
@@ -70,7 +71,7 @@ classdef DTWClustering
 
     properties (Constant, Access = private)
         DistanceKeys = {'Variant', 'Band', 'Metric', 'MissingStrategy', 'WdtwG', 'AdtwPenalty', ...
-                        'MsmC', 'TweNu', 'TweLambda'}
+                        'SdtwGamma', 'MsmC', 'TweNu', 'TweLambda'}
         RunKeys = {'Method', 'MaxIter', 'NInit', 'MvMode', 'BatchSize', 'Device', 'Fallback'}
     end
 

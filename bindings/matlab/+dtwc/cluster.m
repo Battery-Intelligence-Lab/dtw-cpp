@@ -34,11 +34,11 @@ function res = cluster(data, k, varargin)
 %   run repeats; Fallback true runs a Device that cannot be honoured (no GPU
 %   backend or device, a Variant, MissingStrategy, GpuPrecision or number of
 %   features the kernels lack, a Method with no GPU path) on the CPU instead of
-%   raising dtwc:deviceError, one line on stderr and Result.Report saying why and
+%   raising dtwc:deviceError, one line on stderr and Result.report saying why and
 %   Result.device 'cpu' (this call only: dtwc.device has none; a failure once
 %   the GPU has begun is an error either way); Verbose prints dtwc_cl -v's lines,
 %   the memory plan among them; NoReport true makes no run report, so
-%   Result.Report is '').
+%   Result.report is '').
 %   RamLimit is the memory the run plans for, bytes or a size such as '8G'; 0,
 %   the default, plans with 90 % of the memory available (a MEX built without
 %   llfio cannot tell it, and plans nothing): a limit that cannot hold the run
@@ -90,7 +90,7 @@ function res = cluster(data, k, varargin)
         dtwc_mex('apply', settings.get_handle(), k, varargin{:});
         delete(settings);
         [series, names, ndim] = data.as_series();
-        out = dtwc_mex('run_workflow', cast_series(series, data.Dtype), names, ndim, 0, 0, '', data.Dtype, ...
+        out = dtwc_mex('run_workflow', dtwc.internal.cast_series(series, data.Dtype), names, ndim, 0, 0, '', data.Dtype, ...
                        data.Name, output, checkpoint, interval, k, varargin{:});
     end
     res = dtwc.Result(out);

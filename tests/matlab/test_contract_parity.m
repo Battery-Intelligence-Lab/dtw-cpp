@@ -301,7 +301,7 @@ function test_keys_are_python_words_in_camel_case(testCase)
         'mip_focus', 'verbose_solver', 'lr_max_nodes', 'device', 'gpu_precision', 'gpu_share', 'fallback', ...
         'matrix_dtype', 'verbose', 'no_report'};
     estimator_words = {'n_clusters', 'method', 'variant', 'band', 'max_iter', 'n_init', ...
-        'wdtw_g', 'adtw_penalty', 'msm_c', 'twe_nu', 'twe_lambda', 'mv_mode', ...
+        'wdtw_g', 'adtw_penalty', 'sdtw_gamma', 'msm_c', 'twe_nu', 'twe_lambda', 'mv_mode', ...
         'missing_strategy', 'metric', 'batch_size', 'random_state', 'device', 'fallback'};
     camel = @(words) sort(cellfun(@(w) strjoin(cellfun(@(p) [upper(p(1)) p(2:end)], ...
         strsplit(w, '_'), 'UniformOutput', false), ''), words, 'UniformOutput', false));
@@ -441,7 +441,7 @@ function test_gpu_share_is_one_key_with_cpps_range_and_device_refusals(testCase)
     if report.hybrid
         res = dtwc.cluster(testCase.TestData.X, 2, 'Device', 'cpu+gpu', 'Method', 'pam', ...
                            'GpuPrecision', 'fp64', 'GpuShare', 0.5);
-        verifyNotEmpty(testCase, strfind(regexprep(res.Report, '\s+', ' '), 'share 0.5, forced')); % the report wraps its notes
+        verifyNotEmpty(testCase, strfind(regexprep(res.report, '\s+', ' '), 'share 0.5, forced')); % the report wraps its notes
     end
 end
 
@@ -457,7 +457,7 @@ function test_fallback_runs_a_gpu_request_the_kernels_cannot_run_on_the_cpu(test
     verifyEqual(testCase, res.device, 'cpu');
     verifyEqual(testCase, res.labels, cpu.labels);
     verifyEqual(testCase, res.cost, cpu.cost);
-    verifySubstring(testCase, regexprep(res.Report, '\s+', ' '), 'device cpu (gpu requested; fallback: ');
+    verifySubstring(testCase, regexprep(res.report, '\s+', ' '), 'device cpu (gpu requested; fallback: ');
 
     verifyError(testCase, @() dtwc.distance.cdist(X, X, request{:}), 'dtwc:deviceError');
     verifyEqual(testCase, dtwc.distance.cdist(X, X, request{:}, 'Fallback', true), ...
@@ -520,6 +520,7 @@ function test_problem_setters_all_callable(testCase)
     prob.set_variant('standard');
     prob.set_missing_strategy('error');
     prob.set_distance('Variant', 'ddtw', 'Metric', 'squared_euclidean');
+    prob.set_distance('Variant', 'standard', 'MvMode', 'independent');
     ok = prob.set_solver('highs');
     verifyTrue(testCase, islogical(ok));
     prob.set_verbose(false);
@@ -579,6 +580,12 @@ function test_problem_set_data_ndim_multivariate(testCase)
     verifyEqual(testCase, prob.size(), 6);
     prob.fill_distance_matrix();
     verifyTrue(testCase, prob.is_distance_matrix_filled());
+
+    prob.set_distance('MvMode', 'independent');
+    verifyFalse(testCase, prob.is_distance_matrix_filled());
+    D_ind = prob.distance_matrix();
+    verifyEqual(testCase, D_ind, dtwc.distance.cdist(testCase.TestData.X, 'Ndim', 2, 'MvMode', 'independent'), ...
+                'RelTol', 1e-12);
 end
 
 % =========================================================================

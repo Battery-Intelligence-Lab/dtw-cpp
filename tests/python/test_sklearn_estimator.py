@@ -152,6 +152,7 @@ def _configured_problem(estimator, series):
     }[estimator.variant]
     params.wdtw_g = estimator.wdtw_g
     params.adtw_penalty = estimator.adtw_penalty
+    params.sdtw_gamma = estimator.sdtw_gamma
     params.msm_c = estimator.msm_c
     params.twe_nu = estimator.twe_nu
     params.twe_lambda = estimator.twe_lambda
@@ -367,3 +368,27 @@ def test_fit_computes_every_metric_cpp_computes(settings, series):
         for s, label in zip(series, estimator.labels_)
     )
     assert estimator.inertia_ == pytest.approx(cost, rel=1e-12)
+
+
+@pytest.mark.parametrize("gamma", [0.25, 2.5])
+def test_softdtw_gamma_controls_fit_and_transform_divergence(gamma):
+    series = [[0.0, 0.2, 0.0, 0.1], [0.1, 0.0, 0.2, 0.0], [3.0, 3.3, 3.0, 3.1], [3.1, 3.0, 3.2, 3.0]]
+    est = DTWClustering(n_clusters=2, variant="softdtw", sdtw_gamma=gamma).fit(series)
+    oracle = _configured_problem(est, series)
+    oracle.fill_distance_matrix()
+
+    expected_transform = np.array([
+        [oracle.dist_by_ind(i, int(m)) for m in est.medoid_indices_]
+        for i in range(len(series))
+    ])
+    np.testing.assert_allclose(est.transform(series), expected_transform, atol=1e-12)
+    assert est.inertia_ == pytest.approx(
+        sum(oracle.dist_by_ind(i, int(est.medoid_indices_[est.labels_[i]])) for i in range(len(series))),
+        rel=1e-12,
+    )
+
+
+@pytest.mark.parametrize("bad_gamma", [0.0, -1.0, float("nan"), float("inf")])
+def test_invalid_sdtw_gamma_is_rejected(bad_gamma):
+    with pytest.raises(dtwcpp.InvalidInput, match="Soft-DTW gamma"):
+        DTWClustering(n_clusters=2, variant="softdtw", sdtw_gamma=bad_gamma).fit(SQUARED_FIXTURE)

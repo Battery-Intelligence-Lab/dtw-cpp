@@ -87,7 +87,7 @@ classdef Problem < handle
             if nargin < 4, ndim = 1; end
             if nargin < 5, dtype = 'float64'; end
             dtype = dtwc_mex('dtype', char(dtype));
-            dtwc_mex('Problem_set_data', obj.Handle, cast_series(data, dtype), names, double(ndim), dtype);
+            dtwc_mex('Problem_set_data', obj.Handle, dtwc.internal.cast_series(data, dtype), names, double(ndim), dtype);
         end
 
         function fill_distance_matrix(obj)
