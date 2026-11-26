@@ -119,7 +119,7 @@ triangle's, its diagonal counted), `gpu_fp32` (the GPU's rows are float32) and `
 empty before the first fill and after a fill on another device. `dtwc::describe(fill_split)` is
 the `-v` text, and a FastCLARA pass's `ClusteringResult::hybrid` (a `HybridSplit`) has
 `dtwc::algorithms::describe(split, n_points)`. Python and MATLAB bind neither: the run
-report (`Result.report`, `Result.Report`) carries the same text.
+report (`Result.report`) carries the same text.
 `dtwc::resolve_method(method, device, n_series)` returns the method `auto` stands for: `pam` on a
 GPU and on `cpu+gpu`, and on the CPU `pam` up to 5000 series and `clara` above.
 

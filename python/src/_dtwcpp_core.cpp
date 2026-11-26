@@ -750,25 +750,19 @@ NB_MODULE(_dtwcpp_core, m)
     const auto out_prec = dtwc::parse_name(dtwc::core::precision_names, matrix_dtype, "matrix_dtype");
     const auto n_x = static_cast<std::size_t>(X.size());
     const auto n_y = static_cast<std::size_t>(Y.size());
+    if (out_prec == dtwc::core::Precision::Float32) {
+      std::vector<float> f32;
+      {
+        nb::gil_scoped_release release;
+        f32 = dtwc::cdist_f32(X, Y, c, dev, dev_idx, gprec, gpu_share, fallback);
+      }
+      return nb::cast(adopt_as_ndarray(std::move(f32), { n_x, n_y }));
+    }
     std::vector<double> f64;
-    std::vector<float> f32;
     {
       nb::gil_scoped_release release;
       f64 = dtwc::cdist(X, Y, c, dev, dev_idx, gprec, gpu_share, fallback);
-      if (out_prec == dtwc::core::Precision::Float32) {
-        f32.resize(f64.size());
-        for (std::size_t idx = 0; idx < f64.size(); ++idx) {
-          const float v = static_cast<float>(f64[idx]);
-          if (!std::isfinite(v) && std::isfinite(f64[idx])) {
-            dtwc::core::refuse_float32_range("cdist", idx / n_y, idx % n_y, f64[idx]);
-          }
-          f32[idx] = v;
-        }
-        std::vector<double>{}.swap(f64);
-      }
     }
-    if (out_prec == dtwc::core::Precision::Float32)
-      return nb::cast(adopt_as_ndarray(std::move(f32), { n_x, n_y }));
     return nb::cast(adopt_as_ndarray(std::move(f64), { n_x, n_y })); }, "X"_a, "Y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g, "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda, "mv_mode"_a = "dependent", "device"_a = "cpu", "gpu_precision"_a = "auto", "gpu_share"_a = -1.0, "matrix_dtype"_a = "float64", "fallback"_a = false, "Compute cross-collection (n_X x n_Y) DTW distance matrix in C++/CUDA. fallback: a GPU request that cannot be honoured computes on the CPU, saying so on stderr, instead of raising DeviceError.");
 
   // =========================================================================
@@ -1238,7 +1232,10 @@ NB_MODULE(_dtwcpp_core, m)
     if (x.size() != n * n)
       throw dtwc::InvalidInput("_mip_set_solution: expected N * N = " + std::to_string(n * n)
                                + " values, got " + std::to_string(x.size()) + ".");
-    auto result = dtwc::mip::decode_assignment({ x.data(), x.size() }, n, prob.n_clusters(), false, "highspy");
+    auto result = prob.is_distance_matrix_filled()
+                    ? dtwc::mip::decode_assignment_nearest({ x.data(), x.size() }, prob.distance_matrix(), n,
+                                                           prob.n_clusters(), "highspy")
+                    : dtwc::mip::decode_assignment({ x.data(), x.size() }, n, prob.n_clusters(), false, "highspy");
     prob.set_result(result);
     result.total_cost = prob.find_total_cost();
     result.converged = true; // as Problem::cluster() returns an exact method's result

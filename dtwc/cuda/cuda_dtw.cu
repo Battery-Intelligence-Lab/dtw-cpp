@@ -1690,7 +1690,7 @@ void launch_medoid_kernel(
 }
 
 template <typename T>
-void launch_medoid_argmin_kernel(
+size_t launch_medoid_argmin_kernel(
     size_t N, const SeriesAt &series,
     const std::vector<std::span<const double>> &unique_medoids,
     const std::vector<int> &slot_to_unique,
@@ -1703,7 +1703,9 @@ void launch_medoid_argmin_kernel(
 {
   const size_t u = unique_medoids.size();
   const size_t slots = n_samples * k;
-  const auto plan = detail::medoid_blocks(N, u, max_L, sizeof(T), opts.host_staging_bytes);
+  // Price host staging against all `slots` medoids so `--ram-limit` matches `run.cpp`'s budget estimate even when
+  // unique_medoids.size() < slots after deduplication.
+  const auto plan = detail::medoid_blocks(N, slots, max_L, sizeof(T), opts.host_staging_bytes);
   const size_t block = plan.block, blocks = (N + block - 1) / block;
   const Launches<T, Pairs::Rectangle> launches(kernel_path, max_L, opts.use_squared_l2, opts.band,
                                                false, static_cast<std::int64_t>(block * u),
@@ -1846,6 +1848,18 @@ void launch_medoid_argmin_kernel(
   float elapsed_ms = 0.0f;
   CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, workspace.evt_start.get(), workspace.evt_end.get()));
   gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
+  return block;
+}
+
+void print_medoid_verbose(const CUDADistMatResult &result, std::size_t n_series, std::size_t n_medoid_slots,
+                          bool use_fp32, int device_id, std::size_t block)
+{
+  std::cout << "CUDA DTW: " << result.pairs_computed << " pairs (" << n_series
+            << " series x " << n_medoid_slots << " medoids)"
+            << (use_fp32 ? " [FP32]" : " [FP64]")
+            << " in " << result.gpu_time_sec * 1000 << "ms"
+            << " on " << cuda_device_info(device_id)
+            << ", in blocks of " << block << " series" << std::endl;
 }
 
 } // anonymous namespace
@@ -1991,12 +2005,7 @@ CUDADistMatResult compute_medoid_distances_cuda(
     const size_t block = detail::medoid_blocks(n_series, medoids.size(), max_L,
                                                use_fp32 ? sizeof(float) : sizeof(double),
                                                opts.host_staging_bytes).block;
-    std::cout << "CUDA DTW: " << result.pairs_computed << " pairs (" << n_series
-              << " series x " << medoids.size() << " medoids)"
-              << (use_fp32 ? " [FP32]" : " [FP64]")
-              << " in " << result.gpu_time_sec * 1000 << "ms"
-              << " on " << cuda_device_info(opts.device_id)
-              << ", in blocks of " << block << " series" << std::endl;
+    print_medoid_verbose(result, n_series, medoids.size(), use_fp32, opts.device_id, block);
   }
 
   return result;
@@ -2064,14 +2073,17 @@ CUDADistMatResult compute_medoid_argmin_cuda(
   result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
   result.pairs_computed = n_series * unique_medoids.size();
 
-  if (use_fp32)
-    launch_medoid_argmin_kernel<float>(n_series, series, unique_medoids, slot_to_unique,
-                                       medoid_indices, first_point_index, n_samples, k, max_L,
-                                       opts, result.gpu_time_sec, kernel_path, parallel, consume);
-  else
-    launch_medoid_argmin_kernel<double>(n_series, series, unique_medoids, slot_to_unique,
-                                        medoid_indices, first_point_index, n_samples, k, max_L,
-                                        opts, result.gpu_time_sec, kernel_path, parallel, consume);
+  const size_t block = use_fp32
+      ? launch_medoid_argmin_kernel<float>(n_series, series, unique_medoids, slot_to_unique,
+                                           medoid_indices, first_point_index, n_samples, k, max_L,
+                                           opts, result.gpu_time_sec, kernel_path, parallel, consume)
+      : launch_medoid_argmin_kernel<double>(n_series, series, unique_medoids, slot_to_unique,
+                                            medoid_indices, first_point_index, n_samples, k, max_L,
+                                            opts, result.gpu_time_sec, kernel_path, parallel, consume);
+
+  if (opts.verbose) {
+    print_medoid_verbose(result, n_series, medoids.size(), use_fp32, opts.device_id, block);
+  }
 
   return result;
 }

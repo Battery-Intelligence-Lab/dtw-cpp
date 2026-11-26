@@ -197,6 +197,14 @@ TEST_CASE("cdist matches per-pair dtw oracle across rectangular, ragged, banded,
     dtwc::Data Y_data_f64(std::vector<std::vector<double>>(Y), std::move(yn), 1);
     const auto D_mixed = dtwc::cdist(X_data_f32, Y_data_f64);
     REQUIRE(D_mixed.size() == X.size() * Y.size());
+
+    dtwc::Config f32_cfg;
+    f32_cfg.matrix_dtype = dtwc::core::Precision::Float32;
+    REQUIRE_THROWS_AS(dtwc::cdist(X_data_f32, Y_data_f64, f32_cfg), dtwc::InvalidInput);
+    const auto D_out_f32 = dtwc::cdist_f32(X_data_f32, Y_data_f64, f32_cfg);
+    REQUIRE(D_out_f32.size() == D_mixed.size());
+    for (std::size_t idx = 0; idx < D_mixed.size(); ++idx)
+      REQUIRE(D_out_f32[idx] == static_cast<float>(D_mixed[idx]));
   }
 
   SECTION("NaN rejected under Error strategy and accepted under ZeroCost")

@@ -78,6 +78,8 @@ def test_distance_refuses_what_no_kernel_computes(settings, x, y, message):
 
 def test_band_below_minus_one_refused_in_cdist_and_problem():
     with pytest.raises(dtwcpp.InvalidInput, match="band must be -1"):
+        dtwcpp.distance.dtw([0.0], [0.0], band=-2)
+    with pytest.raises(dtwcpp.InvalidInput, match="band must be -1"):
         dtwcpp.cdist([[0.0]], [[0.0]], band=-2)
     prob = dtwcpp.Problem("band_check")
     with pytest.raises(dtwcpp.InvalidInput, match="band must be -1"):

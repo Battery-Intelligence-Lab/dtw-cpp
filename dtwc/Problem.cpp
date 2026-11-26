@@ -29,6 +29,7 @@
 #include "warping.hpp"         // for detail::all_usable, refuse_unusable
 #include "core/dtw_kernel.hpp" // for dtw_lanes
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
+#include "core/gpu_policy.hpp"             // shared GPU capability checks
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "base/missing_utils.hpp"               // for all_missing
 #include "algorithms/fast_clara.hpp"       // the methods cluster() dispatches
@@ -112,55 +113,15 @@ void hash_float(FingerprintHash &hash, float value)
   hash_u32(hash, bits);
 }
 
-// Enum spellings for validate_gpu_request's messages: the C++ and Python
-// enumerator names.
-const char *variant_name(core::DTWVariant v)
-{
-  switch (v) {
-  case core::DTWVariant::Standard: return "Standard";
-  case core::DTWVariant::DDTW: return "DDTW";
-  case core::DTWVariant::WDTW: return "WDTW";
-  case core::DTWVariant::ADTW: return "ADTW";
-  case core::DTWVariant::SoftDTW: return "SoftDTW";
-  case core::DTWVariant::MSM: return "MSM";
-  case core::DTWVariant::TWE: return "TWE";
-  }
-  return "?";
-}
-
-const char *missing_strategy_name(core::MissingStrategy m)
-{
-  switch (m) {
-  case core::MissingStrategy::Error: return "Error";
-  case core::MissingStrategy::ZeroCost: return "ZeroCost";
-  case core::MissingStrategy::AROW: return "AROW";
-  case core::MissingStrategy::Interpolate: return "Interpolate";
-  }
-  return "?";
-}
-
 /// The backend Device::GPU resolves to: CUDA if built, else Metal (a build
 /// with neither refuses Device::GPU in set_device).
-#ifdef DTWC_HAS_CUDA
-constexpr std::string_view gpu_backend = "CUDA";
-#else
-constexpr std::string_view gpu_backend = "Metal";
-#endif
+constexpr std::string_view gpu_backend = core::detail::kGpuBackendName;
 
 /// What Device::GPU computes in for `precision`: Metal has no FP64, so its Auto
 /// is FP32; CUDA's Auto stays open until a fill meets a GPU (FP64 where it is fast).
 constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
 {
   return gpu_backend == "Metal" && precision == GpuPrecision::Auto ? GpuPrecision::FP32 : precision;
-}
-
-/// A GPU request its backend cannot honour: a GpuRefusal (a DeviceError), which only the caller's `fallback` turns into
-/// a CPU run.
-[[noreturn]] void reject_gpu_request(std::string_view where, const std::string &request, const std::string &fix)
-{
-  throw GpuRefusal(std::string(where) + ": " + std::string(gpu_backend) + " " + request
-                     + "; no backend call or CPU fallback was attempted. " + fix,
-                   std::string(gpu_backend) + " " + request);
 }
 
 /// What this build alone refuses of a GPU request: no GPU backend, cpu+gpu without CUDA, and a GPU index other than 0
@@ -174,10 +135,10 @@ void require_gpu_build(std::string_view where, Device device, [[maybe_unused]] i
     throw detail::gpu_not_built_refusal();
 #elif !defined(DTWC_HAS_CUDA)
     if (index != 0)
-      reject_gpu_request(where,
-                         "runs on the system default GPU, but GPU index = " + std::to_string(index)
-                           + " was requested",
-                         "Use gpu (index 0).");
+      core::detail::reject_gpu(where,
+                               "runs on the system default GPU, but GPU index = " + std::to_string(index)
+                                 + " was requested",
+                               "Use gpu (index 0).");
 #endif
   }
 }
@@ -250,30 +211,14 @@ bind_pair_function(const core::DistanceConfig &config, const Data &data,
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision,
                           std::size_t ndim)
 {
-  // The GPU routes upload univariate Float64 series (CUDA's fill and FastCLARA assignment
-  // from the series' spans, Metal's fill p_vec or an owned copy of a view's) and run Standard
-  // DTW with no missing-data strategy, in L1 or squared L2; so does cpu+gpu, whose GPU share is the GPU's.
+  // The GPU routes upload univariate Float64 series and run Standard DTW with no missing-data strategy,
+  // in L1 or squared L2; so does cpu+gpu, whose GPU share is the GPU's.
   if (!uses_gpu(prob.device().first)) return;
-  if (series_precision == core::Precision::Float32)
-    reject_gpu_request(where, "computes from Float64 series, but precision = Float32 was requested",
-                       "Load the series as Float64, or use device cpu.");
-  const auto variant = prob.variant_params().variant;
-  if (variant != core::DTWVariant::Standard)
-    reject_gpu_request(where,
-                       std::string("implements Standard DTW only, but variant = ") + variant_name(variant)
-                         + " was requested",
-                       "Use device cpu for this variant.");
-  if (prob.missing_strategy() != core::MissingStrategy::Error)
-    reject_gpu_request(where,
-                       std::string("has no missing-data strategy, but missing_strategy = ")
-                         + missing_strategy_name(prob.missing_strategy()) + " was requested",
-                       "Use device cpu, or missing_strategy Error for data without NaN.");
+  core::detail::validate_gpu_distance_config(
+    where, series_precision == core::Precision::Float32, ndim, prob.variant_params().variant, prob.missing_strategy());
 #if !defined(DTWC_HAS_CUDA) && defined(DTWC_HAS_METAL)
   metal::validate_metal_precision(prob.gpu_precision());
 #endif
-  if (ndim > 1)
-    reject_gpu_request(where, "is univariate only, but ndim = " + std::to_string(ndim) + " was requested",
-                       "Use device cpu for multivariate series.");
 }
 
 void require_gpu_device(std::string_view where, int index)
@@ -1138,11 +1083,7 @@ void Problem::fillDistanceMatrix_BruteForce()
   const auto packed_fn_f32 = f32 ? core::resolve_dtw_packed_block_fn<float>(distance_)
                                  : decltype(core::resolve_dtw_packed_block_fn<float>(distance_)){};
   const size_t written = distMat.rows_written();
-#ifdef DTWC_HAS_CUDA
-  const bool fresh = !gpu && (!sized || (distMat.is_mapped() && written == 0));
-#else
-  const bool fresh = (!sized || (distMat.is_mapped() && written == 0));
-#endif
+  const bool fresh = !sized || (distMat.is_mapped() && written == 0);
   const bool use_slab_panels = fresh && ragged && lanes && ram_limit_ == 0 && !data_.is_mapped();
   constexpr size_t kMaxSlabPanelBytes = size_t{ 64 } << 20;
   bool slab_panels_ready = false;
@@ -1300,6 +1241,7 @@ void Problem::fillDistanceMatrix_BruteForce()
       const SlabUnits u = units(k0, k1);
       const size_t kw = u.kw;
       size_t from = kw, kg = kw; // the GPU's tile-rows [kw, kg), of which the region fills [from, kg)
+      bool calibrated_here = false;
       if (kw < k1) {
         if (slab == calibrating && share < 0) {
           using clock = std::chrono::steady_clock;
@@ -1310,15 +1252,27 @@ void Problem::fillDistanceMatrix_BruteForce()
           auto unit = [&](size_t i) { task(matrix, g0 + i); };
           run_openmp(unit, u.columns, true, 8);
           const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
-          const int threads = get_max_threads();
+          const int threads = std::max(1, get_max_threads());
           hybrid.split.gpu_rate =
-            static_cast<double>(entries(kw, u.ka) - (bounds[u.ka] - bounds[kw])) / gpu_time.count();
-          hybrid.split.cpu_rate = static_cast<double>(u.columns * (bounds[k1] - bounds[k1 - 1])) / team_time.count()
-                                  * (threads - 1) / threads;
+            gpu_time.count() > 0.0
+              ? static_cast<double>(entries(kw, u.ka) - (bounds[u.ka] - bounds[kw])) / gpu_time.count()
+              : 0.0;
+          if (threads <= 1) {
+            hybrid.split.cpu_rate = 0.0;
+            share = 1.0;
+          } else {
+            hybrid.split.cpu_rate =
+              team_time.count() > 0.0
+                ? static_cast<double>(u.columns * (bounds[k1] - bounds[k1 - 1])) / team_time.count() * (threads - 1)
+                    / threads
+                : 0.0;
+            const double denom = hybrid.split.gpu_rate + hybrid.split.cpu_rate;
+            share = denom > 0.0 ? (hybrid.split.gpu_rate / denom) : recorded;
+          }
           hybrid.split.source = "calibrated";
-          share = hybrid.split.gpu_rate / (hybrid.split.gpu_rate + hybrid.split.cpu_rate);
           hybrid.split.gpu_share = share;
           from = u.ka;
+          calibrated_here = true;
         }
         // Before the calibrating slab, the recorded ratio; with none, s everywhere (forced, or the recorded ratio).
         const bool early = calibrating + 1 < slabs.size() && slab < calibrating;
@@ -1335,13 +1289,17 @@ void Problem::fillDistanceMatrix_BruteForce()
       }
 
       const size_t a0 = first_column[k0], a1 = first_column[kw], b0 = first_column[kg], b1 = first_column[k1];
-      const size_t cpu_tasks = (a1 - a0) + (b1 - b0);
+      const bool skip_cal_cols = calibrated_here && kg < k1 && u.columns > 0;
+      const size_t cal_b = skip_cal_cols ? first_column[k1 - 1] : b1;
+      const size_t cal_e = skip_cal_cols ? (first_column[k1 - 1] + u.columns) : b1;
+      const size_t a_len = a1 - a0, b_len = cal_b - b0, c_len = b1 - cal_e;
+      const size_t cpu_tasks = a_len + b_len + c_len;
       const size_t none = first_column[K]; // a slot's failed_at where nothing failed
       struct Slot {
         std::exception_ptr failure;
         size_t failed_at; // the column task of what failed (the GPU's: its first tile-row's first)
       };
-      std::vector<Slot> slots(static_cast<size_t>(get_max_threads()), Slot{ nullptr, none });
+      std::vector<Slot> slots(static_cast<size_t>(std::max(1, get_max_threads())), Slot{ nullptr, none });
       const auto gpu_rows = [&](Slot &slot) {
         if (kg <= from) return;
         try {
@@ -1351,7 +1309,7 @@ void Problem::fillDistanceMatrix_BruteForce()
         }
       };
       const auto cpu_task = [&](Slot &slot, size_t i) {
-        const size_t g = i < a1 - a0 ? a0 + i : b0 + (i - (a1 - a0));
+        const size_t g = i < a_len ? a0 + i : (i < a_len + b_len ? b0 + (i - a_len) : cal_e + (i - a_len - b_len));
         if (g > slot.failed_at) return;
         try {
           task(matrix, g);
@@ -1532,21 +1490,22 @@ void Problem::fill_distance_matrix()
     // L2 is L1 on the univariate series the GPU routes take.
     opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     opts.verbose = verbose_;
-#  if defined(DTWC_HAS_CUDA)
-    // CUDA reads the Float64 series (checked above) where they lie, a view's (a mapped Arrow IPC file's, a decoded
-    // record batch's) or owned: this thread's team pads them into its staging, each its own rows; no copy is made.
+#  if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
     const auto parallel = [](std::size_t count, const std::function<void(std::size_t)> &task) {
       run_openmp(task, count, count > 64);
     };
+#  endif
+#  if defined(DTWC_HAS_CUDA)
+    // CUDA reads the Float64 series (checked above) where they lie, a view's (a mapped Arrow IPC file's, a decoded
+    // record batch's) or owned: this thread's team pads them into its staging, each its own rows; no copy is made.
     (void)cuda::compute_distance_matrix_cuda(
       static_cast<std::size_t>(data_.size()), [this](std::size_t i) { return data_.series(i); }, opts, parallel,
       distMat);
 #  else
-    // Metal uploads owned Float64 series, which a view (a mapped Arrow IPC file's series, a decoded record batch's)
-    // leaves p_vec empty of: it uploads an owned copy, checked above, freed when the fill returns.
-    std::optional<Data> copy;
-    if (data_.is_view()) copy.emplace(detail::owned_copy(data_, core::Precision::Float64));
-    (void)metal::compute_distance_matrix_metal(copy ? copy->p_vec : data_.p_vec, opts, distMat);
+    // Metal reads Float64 series directly via SeriesAt spans and converts/uploads in parallel, avoiding an owned copy.
+    (void)metal::compute_distance_matrix_metal(
+      static_cast<std::size_t>(data_.size()), [this](std::size_t i) { return data_.series(i); }, opts, parallel,
+      distMat);
 #  endif
     refuse_float32_overflow(0, distMat.size());
     if (distMat.rows_written() < distMat.size()) // a mapped file's rows are on the device, and it records them
@@ -1601,8 +1560,7 @@ core::ClusteringResult Problem::cluster()
   case Method::MIP: cluster_by_mip(); break;
   case Method::LRCore: LR_core_clustering(*this); break;
   case Method::TADPole:
-    algorithms::tadpole(*this, Nc, tadpole_dc_ > 0.0 ? tadpole_dc_ : algorithms::tadpole_auto_dc(*this));
-    break;
+    return algorithms::tadpole(*this, Nc, tadpole_dc_ > 0.0 ? tadpole_dc_ : algorithms::tadpole_auto_dc(*this));
   case Method::Auto: break; // resolved above
   }
   core::ClusteringResult result;
@@ -1662,7 +1620,10 @@ void Problem::assign_clusters()
       }
       labels[i_p] = best_slot;
     };
-    run(assignClustersTask, data_.size()); // read-only lookups, one label slot per point
+    if (data_.size() * centroids_ind.size() >= 32768)
+      run(assignClustersTask, data_.size()); // read-only lookups, one label slot per point
+    else
+      for (std::size_t i_p = 0; i_p < data_.size(); ++i_p) assignClustersTask(i_p);
   });
   clusters_ind = std::move(labels);
 }
@@ -1671,25 +1632,33 @@ void Problem::calculate_medoids()
 {
   require_clustered("calculate_medoids");
   fill_distance_matrix(); // every pair within a cluster
-  std::vector<double> pointCosts(size());
+  const auto n_series = static_cast<std::size_t>(size());
+  const auto k = static_cast<std::size_t>(n_clusters());
+  std::vector<std::vector<std::size_t>> members(k);
+  for (std::size_t i = 0; i < n_series; ++i)
+    members[static_cast<std::size_t>(clusters_ind[i])].push_back(i);
 
+  std::vector<double> pointCosts(n_series);
   distMat.visit([&](const auto *matrix) {
     auto findBetterMedoidTask = [&](size_t i_p) // i_p is point index.
     {
       // Keep sequential accumulation order across compilers so equal-cost medoid ties are deterministic.
       const auto *const *const values = &matrix;
+      const auto &cluster_members = members[static_cast<std::size_t>(clusters_ind[i_p])];
       double sum{ 0 };
-      const auto n_series = static_cast<std::size_t>(size());
 #if defined(__clang__)
 #pragma clang loop vectorize(disable)
 #endif
-      for (std::size_t i = 0; i < n_series; ++i)
-        if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
-          sum += static_cast<double>((*values)[core::tri_index(i_p, i)]);
+      for (const std::size_t i : cluster_members)
+        sum += static_cast<double>((*values)[core::tri_index(i_p, i)]);
 
       pointCosts[i_p] = sum;
     };
-    run(findBetterMedoidTask, size());
+    const std::size_t work = (n_series * n_series) / std::max<std::size_t>(k, 1);
+    if (work >= 32768)
+      run(findBetterMedoidTask, n_series);
+    else
+      for (std::size_t i_p = 0; i_p < n_series; ++i_p) findBetterMedoidTask(i_p);
   });
 
   std::vector<double> clusterCosts(n_clusters(), std::numeric_limits<double>::max());
@@ -1708,6 +1677,7 @@ void Problem::calculate_medoids()
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
+  require_clusterable(Nc, size());
   const int repetitions = n_repetitions();
 
   fill_distance_matrix(); // Ensure all distances computed before parallel clustering.

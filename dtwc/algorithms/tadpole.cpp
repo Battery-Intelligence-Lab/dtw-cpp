@@ -555,7 +555,7 @@ namespace algorithms {
     result.labels = std::move(label);
     result.medoid_indices = std::move(center_of_label);
     result.total_cost = total_cost;
-    result.iterations = 1; // single non-iterative pass
+    result.iterations = 0; // non-iterative (matches MIP / LRCore in Result)
     result.converged = true;
 
     prob.set_result(result); // scores::silhouette(prob) etc. read it back

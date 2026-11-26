@@ -21,11 +21,10 @@ int main()
                                                  { 9.0, 9.1, 9.2 }, { 9.1, 9.0, 9.2 }, { 9.2, 9.2, 9.0 } };
   std::vector<std::string> names{ "a1", "a2", "a3", "b1", "b2", "b3" };
 
-  dtwc::Config config;   // every setting starts at dtwc_cl's default
+  dtwc::Config config;   // defaults match dtwc_cl (except output == "" so no files are written)
   config.k = 2;          // --n-clusters, the one setting a run needs
   config.method = dtwc::Method::PAM;
   config.band = 1;       // --band: a Sakoe-Chiba window of one step
-  config.output.clear(); // write no files; Result::save(dir) writes them on request
 
   const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std::move(names) });
 

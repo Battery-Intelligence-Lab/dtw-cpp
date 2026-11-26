@@ -130,7 +130,7 @@ TEST_CASE("CUDA kernel choice follows the longest series length, pair count, and
   constexpr std::size_t ada_block_shared = 101376;
   constexpr std::size_t hopper_block_shared = 232448;
   constexpr std::size_t overhead = 32 + 1024;
-  const std::size_t many_pairs = static_cast<std::size_t>(8 * ada_sm);
+  const std::size_t many_pairs = std::size_t{ 8 } * static_cast<std::size_t>(ada_sm);
   const std::size_t few_pairs = 10;
 
   // High pair-count batches (and all batches with max_L <= 1024) take the unified warptile kernel:

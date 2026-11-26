@@ -45,7 +45,25 @@ std::vector<double> cdist(const Data &X, const Data &Y,
 
 /**
  * @brief Cross-collection DTW distance matrix reading distance and device settings from `config`.
+ * @throws InvalidInput if `config.matrix_dtype == core::Precision::Float32`; call `cdist_f32` for single-precision output.
  */
 std::vector<double> cdist(const Data &X, const Data &Y, const Config &config);
+
+/**
+ * @brief Compute the dense row-major (X.size() x Y.size()) cross-collection DTW distance matrix in float32.
+ * @throws InvalidInput if any distance overflows float32 range.
+ */
+std::vector<float> cdist_f32(const Data &X, const Data &Y,
+                             const core::DistanceConfig &distance = {},
+                             Device device = Device::CPU,
+                             int device_index = 0,
+                             GpuPrecision gpu_precision = GpuPrecision::Auto,
+                             double gpu_share = -1.0,
+                             bool fallback = false);
+
+/**
+ * @brief Float32 cross-collection DTW distance matrix reading distance and device settings from `config`.
+ */
+std::vector<float> cdist_f32(const Data &X, const Data &Y, const Config &config);
 
 } // namespace dtwc

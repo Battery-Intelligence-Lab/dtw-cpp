@@ -150,10 +150,11 @@ namespace detail {
 #ifdef DTWC_HAS_CUDA
   /// assign_on_gpu on `count` points, point(i) the series of point first + i; `team` false: its blocks padded and assigned
   /// on the calling thread alone (cpu+gpu's driving thread, whose team runs the CPU's share).
-  static void assign_on_gpu(
+  template <typename LabelT>
+  static void assign_on_gpu_typed(
     const Problem &prob, std::size_t count, const std::function<std::span<const double>(std::size_t)> &point,
     index_t first, const std::vector<std::span<const double>> &medoids, std::span<const index_t> medoid_indices,
-    std::vector<std::vector<index_t>> &labels, std::vector<core::detail::OrderedMedoidObjective> &costs,
+    std::vector<std::vector<LabelT>> &labels, std::vector<core::detail::OrderedMedoidObjective> &costs,
     std::size_t staging_bytes, bool team)
   {
     const auto distance = prob.distance();
@@ -164,24 +165,23 @@ namespace detail {
     opts.use_squared_l2 = distance.metric == core::MetricType::SquaredL2;
     opts.verbose = prob.verbose();
     opts.host_staging_bytes = staging_bytes;
-    const std::size_t slots = medoids.size();
+    const std::size_t samples = labels.size();
+    const std::size_t k = samples == 0 ? 0 : medoid_indices.size() / samples;
     // Each padded row is one thread's (disjoint writes); a block's rows go to the team only where they are many.
     const auto parallel = [team](std::size_t rows, const std::function<void(std::size_t)> &task) {
       run_openmp(task, rows, team && rows > 64);
     };
-    (void)cuda::compute_medoid_distances_cuda(
-      count, point, medoids, opts, parallel,
-      [&](std::size_t block_first, std::size_t block_count, std::span<const double> distances) {
-        const index_t block_point = first + static_cast<index_t>(block_first);
-        assign_in_blocks(block_point, block_count, costs, [&](index_t sub_first, std::size_t n, std::span<double> best) {
-          assign_points(
-            sub_first, n, best, medoid_indices, labels,
-            [&](index_t p) {
-              const double *row = distances.data() + static_cast<std::size_t>(p - block_point) * slots;
-              return [row](index_t j) { return row[j]; };
-            },
-            team);
-        });
+    (void)cuda::compute_medoid_argmin_cuda(
+      count, point, medoids, medoid_indices, first, samples, k, opts, parallel,
+      [&](std::size_t block_first, std::size_t block_count,
+          std::span<const index_t> gpu_labels, std::span<const double> gpu_dists) {
+        const std::size_t pt_base = static_cast<std::size_t>(first) + block_first;
+        for (std::size_t s = 0; s < samples; ++s) {
+          const index_t *const src = gpu_labels.data() + s * block_count;
+          LabelT *const dst = labels[s].data() + pt_base;
+          for (std::size_t i = 0; i < block_count; ++i) dst[i] = static_cast<LabelT>(src[i]);
+          costs[s].add(gpu_dists.subspan(s * block_count, block_count));
+        }
       });
   }
 
@@ -190,7 +190,7 @@ namespace detail {
     std::span<const index_t> medoid_indices, std::vector<std::vector<index_t>> &labels,
     std::vector<core::detail::OrderedMedoidObjective> &costs, std::size_t staging_bytes)
   {
-    assign_on_gpu(
+    assign_on_gpu_typed(
       prob, static_cast<std::size_t>(points.size()), [&points](std::size_t i) { return points.series(i); }, first,
       medoids, medoid_indices, labels, costs, staging_bytes, true);
   }
@@ -209,19 +209,12 @@ namespace detail {
 
   /**
    * FastCLARA's pass on cpu+gpu, as assign_on_gpu and the CPU pass give it (each sample's labels, and its nearest
-   * distances into costs[s] in point order): the GPU takes points 0 .. n_gpu - 1, the CPU's team the rest. n_gpu is
-   * opts.gpu_share of the points, rounded. With -1 it is measured where the points hold both calibration blocks (fewer
-   * take recorded_gpu_share): the GPU assigns the first clara_block_points points, its blocks padded and assigned by
-   * this thread alone as in the pass, then the CPU's team the last calibration_cpu_points; both blocks stand, so n_gpu
-   * lies between them, and the CPU's rate is scaled to the team less the GPU's driving thread. The GPU's share is
-   * always assigned as its first clara_block_points points and then the rest, measured or forced, and each point's
-   * distance is its device's whatever the split (the CPU's lanes are its per-pair function's bits), so a forced share
-   * repeats a run exactly. The two shares run at once, in one parallel region (below).
+   * distances into costs[s] in point order): the GPU takes points 0 .. n_gpu - 1, the CPU's team the rest.
    */
-  template <typename Pair>
+  template <typename Pair, typename LabelT>
   core::HybridSplit assign_hybrid(
     const Problem &prob, const Data &data, const std::vector<std::span<const double>> &medoid_series,
-    std::span<const index_t> medoids, std::vector<std::vector<index_t>> &labels,
+    std::span<const index_t> medoids, std::vector<std::vector<LabelT>> &labels,
     std::vector<core::detail::OrderedMedoidObjective> &costs, const CLARAOptions &opts, const Pair &pair)
   {
     const auto n = static_cast<std::size_t>(data.size());
@@ -234,16 +227,16 @@ namespace detail {
     };
     // The GPU's points first .. last - 1, their distances into costs.
     const auto on_gpu = [&](std::size_t first, std::size_t last) {
-      assign_on_gpu(
+      assign_on_gpu_typed(
         prob, last - first, [&data, first](std::size_t i) { return data.series(first + i); },
         static_cast<index_t>(first), medoid_series, medoids, labels, costs, opts.gpu_staging_bytes, false);
     };
-    const int threads = get_max_threads();
+    const int threads = std::max(1, get_max_threads());
 
     core::HybridSplit split;
     split.gpu_share = opts.gpu_share;
     const std::size_t lead = std::min(clara_block_points, n); // the GPU's first block: its calibration block
-    const bool calibrate = opts.gpu_share < 0 && n >= clara_block_points + calibration_cpu_points;
+    const bool calibrate = opts.gpu_share < 0 && n >= clara_block_points + calibration_cpu_points && threads > 1;
     const std::size_t tail = calibrate ? n - calibration_cpu_points : n; // the CPU's calibration block: tail .. n - 1
     std::vector<double> calibrated; // its nearest distances, [s * (n - tail) + i]
     std::size_t n_gpu = 0;
@@ -255,28 +248,24 @@ namespace detail {
       calibrated.resize(samples * (n - tail));
       on_cpu(static_cast<index_t>(tail), n - tail, calibrated, true);
       const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
-      split.gpu_rate = static_cast<double>(lead) / gpu_time.count();
-      split.cpu_rate = static_cast<double>(n - tail) / team_time.count() * (threads - 1) / threads;
+      split.gpu_rate = gpu_time.count() > 0.0 ? static_cast<double>(lead) / gpu_time.count() : 0.0;
+      split.cpu_rate = team_time.count() > 0.0
+                         ? static_cast<double>(n - tail) / team_time.count() * (threads - 1) / threads
+                         : 0.0;
       split.source = "calibrated";
-      n_gpu = std::clamp(static_cast<std::size_t>(std::llround(split.gpu_rate / (split.gpu_rate + split.cpu_rate)
-                                                               * static_cast<double>(n))),
-                         lead, tail);
+      const double denom = split.gpu_rate + split.cpu_rate;
+      const double frac = denom > 0.0 ? (split.gpu_rate / denom) : recorded_gpu_share;
+      n_gpu = std::clamp(static_cast<std::size_t>(std::llround(frac * static_cast<double>(n))), lead, tail);
     } else {
       if (opts.gpu_share < 0) {
-        split.gpu_share = recorded_gpu_share;
+        split.gpu_share = threads <= 1 ? 1.0 : recorded_gpu_share;
         split.source = "recorded";
       }
       n_gpu = static_cast<std::size_t>(std::llround(split.gpu_share * static_cast<double>(n)));
     }
     split.gpu_share = static_cast<double>(n_gpu) / static_cast<double>(n);
 
-    // One parallel region, nothing nested in it. Thread 0, whose CUDA workspace the samples' fills and the calibration
-    // made, drives the GPU's share: its blocks padded and assigned by it alone, their distances added into costs as
-    // they come (they lead the point order, and no other thread adds). The team runs the CPU's share in items of at
-    // most clara_block_points points, about four a thread, so that the threads finish together whatever the share;
-    // each item writes its own label slots and its own nearest distances, added into costs in point order after the
-    // region, the CPU's calibration block last. Thread 0 takes items too once its share is done. An error is its
-    // thread's slot's, the lowest point's rethrown after the region, as run_openmp does.
+    // One parallel region, nothing nested in it. Thread 0 drives the GPU's share while CPU threads run the rest.
     const std::size_t cpu_points = tail - n_gpu;
     const auto team = static_cast<std::size_t>(threads);
     const std::size_t item = std::clamp<std::size_t>((cpu_points + 4 * team - 1) / (4 * team), 256, clara_block_points);
@@ -437,59 +426,71 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     throw;
   }
 
-  // One pass: every point against the medoids of every sample.
-  std::vector<std::vector<index_t>> labels(samples.size(), std::vector<index_t>(n_points));
+  // One pass: every point against the medoids of every sample. Use compact labels (uint8_t/uint16_t) when k fits.
   std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
   std::optional<core::HybridSplit> split;
   const auto &data = prob.data();
-  const auto in_blocks = [&](const auto &assign) {
-    detail::assign_in_blocks(0, n_points, costs, [&](index_t first, std::size_t n, std::span<double> best) {
-      const std::size_t next = static_cast<std::size_t>(first) + n;
-      if (check) {
-        check->check(static_cast<std::size_t>(first), n);
-        if (check->marked()) check_rest(next);
-      }
-      try {
-        assign(first, n, best);
-      } catch (...) {
-        check_rest(next);
-        throw;
-      }
-    });
-  };
-  if (pair_f32) {
-    in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
-      detail::assign_points_cpu<float>(
-        first, n, best, medoids, labels, prob.distance(), *pair_f32,
-        [&](index_t p) { return data.series_f32(static_cast<std::size_t>(p)); },
-        [&](index_t j) { return data.series_f32(static_cast<std::size_t>(medoids[static_cast<std::size_t>(j)])); });
-    });
-  } else {
-#ifdef DTWC_HAS_CUDA
-    if (gpu) {
-      // The series and the medoids are read where they lie, a view's or owned: no copy of them is made.
-      std::vector<std::span<const double>> medoid_series;
-      medoid_series.reserve(medoids.size());
-      for (const index_t medoid : medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(medoid)));
-      if (device == Device::CPU_GPU) {
-        split = detail::assign_hybrid(prob, data, medoid_series, medoids, labels, costs, opts, *pair);
-        if (prob.verbose()) std::cout << "FastCLARA " << describe(*split, n_points) << '\n';
-      } else
-        detail::assign_on_gpu(prob, data, 0, medoid_series, medoids, labels, costs, opts.gpu_staging_bytes);
-    } else
-#else
-    detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
-#endif
-      in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
-        detail::assign_points_cpu<data_t>(
-          first, n, best, medoids, labels, prob.distance(), *pair,
-          [&](index_t p) { return data.series(static_cast<std::size_t>(p)); },
-          [&](index_t j) { return data.series(static_cast<std::size_t>(medoids[static_cast<std::size_t>(j)])); });
+  auto run_pass = [&]<typename LabelT>() -> core::ClusteringResult {
+    std::vector<std::vector<LabelT>> labels(samples.size(), std::vector<LabelT>(n_points));
+    const auto in_blocks = [&](const auto &assign) {
+      detail::assign_in_blocks(0, n_points, costs, [&](index_t first, std::size_t n, std::span<double> best) {
+        const std::size_t next = static_cast<std::size_t>(first) + n;
+        if (check) {
+          check->check(static_cast<std::size_t>(first), n);
+          if (check->marked()) check_rest(next);
+        }
+        try {
+          assign(first, n, best);
+        } catch (...) {
+          check_rest(next);
+          throw;
+        }
       });
-  }
+    };
+    if (pair_f32) {
+      in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
+        detail::assign_points_cpu<float>(
+          first, n, best, medoids, labels, prob.distance(), *pair_f32,
+          [&](index_t p) { return data.series_f32(static_cast<std::size_t>(p)); },
+          [&](index_t j) { return data.series_f32(static_cast<std::size_t>(medoids[static_cast<std::size_t>(j)])); });
+      });
+    } else {
+#ifdef DTWC_HAS_CUDA
+      if (gpu) {
+        // The series and the medoids are read where they lie, a view's or owned: no copy of them is made.
+        std::vector<std::span<const double>> medoid_series;
+        medoid_series.reserve(medoids.size());
+        for (const index_t medoid : medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(medoid)));
+        if (device == Device::CPU_GPU) {
+          split = detail::assign_hybrid(prob, data, medoid_series, medoids, labels, costs, opts, *pair);
+          if (prob.verbose()) std::cout << "FastCLARA " << describe(*split, n_points) << '\n';
+        } else {
+          detail::assign_on_gpu_typed(
+            prob, static_cast<std::size_t>(data.size()), [&data](std::size_t i) { return data.series(i); },
+            0, medoid_series, medoids, labels, costs, opts.gpu_staging_bytes, true);
+        }
+      } else
+#else
+      detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
+#endif
+        in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
+          detail::assign_points_cpu<data_t>(
+            first, n, best, medoids, labels, prob.distance(), *pair,
+            [&](index_t p) { return data.series(static_cast<std::size_t>(p)); },
+            [&](index_t j) { return data.series(static_cast<std::size_t>(medoids[static_cast<std::size_t>(j)])); });
+        });
+    }
 
-  if (check) check->finish();
-  auto result = detail::clara_winner(pams, medoids, labels, costs);
+    if (check) check->finish();
+    return detail::clara_winner(pams, medoids, labels, costs);
+  };
+
+  core::ClusteringResult result =
+    opts.n_clusters <= 256
+      ? run_pass.template operator()<std::uint8_t>()
+      : (opts.n_clusters <= 65536
+           ? run_pass.template operator()<std::uint16_t>()
+           : run_pass.template operator()<index_t>());
   result.hybrid = split;
   // The sample_size >= N branch above delegates to fast_pam, which publishes too.
   prob.set_result(result);
@@ -500,5 +501,7 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 
 std::size_t dtwc::core::detail::clara_assign_scratch(bool release) noexcept
 {
-  return held_bytes(release, dtwc::algorithms::detail::assign_table());
+  return held_bytes(release, dtwc::algorithms::detail::assign_table(),
+                    dtwc::algorithms::detail::assign_panel<float>().rows,
+                    dtwc::algorithms::detail::assign_panel<data_t>().rows);
 }

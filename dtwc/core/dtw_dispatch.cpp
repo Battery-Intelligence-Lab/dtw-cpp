@@ -306,7 +306,8 @@ void validate(const DistanceConfig &c, bool f32)
   case MVMode::Dependent: case MVMode::Independent: break;
   default: throw outside("MVMode", p.mv_mode);
   }
-  if (c.band < -1) throw InvalidInput("band must be >= -1");
+  if (c.band < -1)
+    throw InvalidInput("band must be -1 (full DTW) or at least 0; got " + std::to_string(c.band) + ".");
 
   // Each parameter, the variant that reads it, and whether 0 is in its domain:
   // WDTW's g = 0 (constant half weights) and ADTW's penalty = 0 (Standard DTW)

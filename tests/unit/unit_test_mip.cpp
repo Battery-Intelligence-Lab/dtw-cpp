@@ -176,7 +176,7 @@ TEST_CASE("decode_assignment with DistanceMatrix resolves fractional ties, non-n
   frac[2 * 4 + 1] = 0.5;
   frac[2 * 4 + 2] = 1.0;
   frac[2 * 4 + 3] = 1.0;
-  const auto res_frac = dtwc::mip::decode_assignment(frac, prob.distance_matrix(), 4, 2, "test");
+  const auto res_frac = dtwc::mip::decode_assignment_nearest(frac, prob.distance_matrix(), 4, 2, "test");
   CHECK(res_frac.medoid_indices == std::vector<dtwc::index_t>{ 0, 2 });
   CHECK(res_frac.labels == std::vector<dtwc::index_t>{ 0, 0, 1, 1 });
 
@@ -186,7 +186,7 @@ TEST_CASE("decode_assignment with DistanceMatrix resolves fractional ties, non-n
   non_nearest[2 * 4 + 1] = 1.0;
   non_nearest[2 * 4 + 2] = 1.0;
   non_nearest[2 * 4 + 3] = 1.0;
-  const auto res_corr = dtwc::mip::decode_assignment(non_nearest, prob.distance_matrix(), 4, 2, "test");
+  const auto res_corr = dtwc::mip::decode_assignment_nearest(non_nearest, prob.distance_matrix(), 4, 2, "test");
   CHECK(res_corr.medoid_indices == std::vector<dtwc::index_t>{ 0, 2 });
   CHECK(res_corr.labels == std::vector<dtwc::index_t>{ 0, 0, 1, 1 });
 
@@ -202,7 +202,7 @@ TEST_CASE("decode_assignment with DistanceMatrix resolves fractional ties, non-n
   dup_x[1 * 3 + 1] = 1.0; // wait: sum must be 1 for point 1 -> set [0,1]=0, [1,1]=1, [0,2]=1
   dup_x[0 * 3 + 1] = 0.0;
   dup_x[0 * 3 + 2] = 1.0;
-  const auto res_dup = dtwc::mip::decode_assignment(dup_x, dup_prob.distance_matrix(), 3, 2, "test");
+  const auto res_dup = dtwc::mip::decode_assignment_nearest(dup_x, dup_prob.distance_matrix(), 3, 2, "test");
   CHECK(res_dup.medoid_indices == std::vector<dtwc::index_t>{ 0, 1 });
   CHECK(res_dup.labels[0] == 0);
   CHECK(res_dup.labels[1] == 1);

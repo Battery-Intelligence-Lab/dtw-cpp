@@ -14,6 +14,7 @@ target_sources(dtwc_core
     dtw_kernel.hpp
     dtw_options.hpp
     gpu_dtw_common.hpp
+    gpu_policy.hpp
     lower_bound_impl.hpp
     machine.hpp
     matrix_io.hpp

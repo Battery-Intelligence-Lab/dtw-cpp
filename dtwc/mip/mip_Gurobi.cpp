@@ -69,7 +69,7 @@ void MIP_clustering_byGurobi(Problem &prob)
       for (std::size_t i = 0; i < pmedian.start.size(); ++i)
         start_obj += pmedian.col_cost[i] * pmedian.start[i];
       if (start_obj == 0.0) {
-        prob.set_result(mip::decode_assignment(pmedian.start, prob.distance_matrix(), n_uz, Nc, "Gurobi"));
+        prob.set_result(mip::decode_assignment_nearest(pmedian.start, prob.distance_matrix(), n_uz, Nc, "Gurobi"));
         return;
       }
     }
@@ -132,7 +132,7 @@ void MIP_clustering_byGurobi(Problem &prob)
         + std::to_string(opt_status) + "). No valid clustering produced.");
 
     std::unique_ptr<double[]> solution{ model.get(GRB_DoubleAttr_X, w.get(), num_col) };
-    prob.set_result(mip::decode_assignment(
+    prob.set_result(mip::decode_assignment_nearest(
       std::span<const double>(solution.get(), static_cast<std::size_t>(num_col)),
       prob.distance_matrix(), n_uz, Nc, "Gurobi"));
 

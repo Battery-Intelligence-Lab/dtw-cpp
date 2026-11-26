@@ -126,10 +126,10 @@ inline core::ClusteringResult decode_assignment(std::span<const double> x, std::
 
 /// Validate primal feasibility of facility-major `x` and assign every point `p`
 /// to its Voronoi-nearest open medoid in `dm` with self-tie break (`d == best && medoid == p`).
-inline core::ClusteringResult decode_assignment(std::span<const double> x,
-                                                const core::DistanceMatrix &dm,
-                                                std::size_t n, index_t k,
-                                                std::string_view backend)
+inline core::ClusteringResult decode_assignment_nearest(std::span<const double> x,
+                                                        const core::DistanceMatrix &dm,
+                                                        std::size_t n, index_t k,
+                                                        std::string_view backend)
 {
   core::ClusteringResult result;
   std::vector<index_t> slot_of;

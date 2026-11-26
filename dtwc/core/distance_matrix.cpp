@@ -90,7 +90,7 @@ struct Header
 static_assert(sizeof(Header) == 64 && std::is_trivially_copyable_v<Header>);
 /// The identity fields (magic, version, N, fingerprint): a file shorter than these holds no version to judge.
 constexpr size_t identity_bytes = offsetof(Header, value_bytes);
-constexpr size_t rows_written_at = 56; // the byte offset of rows_written
+[[maybe_unused]] constexpr size_t rows_written_at = 56; // the byte offset of rows_written
 
 constexpr char magic[4] = { 'D', 'T', 'W', 'M' };
 constexpr std::uint32_t version = 5;

@@ -12,6 +12,8 @@
 #include "config.hpp"
 #include "core/dtw_dispatch.hpp"
 #include "core/dtw_kernel.hpp"
+#include "core/gpu_policy.hpp"
+#include "core/storage.hpp"
 #include "warping.hpp"
 
 #ifdef DTWC_HAS_CUDA
@@ -26,10 +28,12 @@
 #include <cmath>
 #include <cstddef>
 #include <exception>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace dtwc {
@@ -37,42 +41,9 @@ namespace {
 
 // The refusals of a GPU cdist, which validate_cdist_device below reaches only in a build with a GPU backend.
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-const char *variant_label(core::DTWVariant v)
-{
-  switch (v) {
-  case core::DTWVariant::Standard: return "Standard";
-  case core::DTWVariant::DDTW: return "DDTW";
-  case core::DTWVariant::WDTW: return "WDTW";
-  case core::DTWVariant::ADTW: return "ADTW";
-  case core::DTWVariant::SoftDTW: return "SoftDTW";
-  case core::DTWVariant::MSM: return "MSM";
-  case core::DTWVariant::TWE: return "TWE";
-  }
-  return "?";
-}
-
-const char *missing_label(core::MissingStrategy m)
-{
-  switch (m) {
-  case core::MissingStrategy::Error: return "Error";
-  case core::MissingStrategy::ZeroCost: return "ZeroCost";
-  case core::MissingStrategy::AROW: return "AROW";
-  case core::MissingStrategy::Interpolate: return "Interpolate";
-  }
-  return "?";
-}
-
-#ifdef DTWC_HAS_CUDA
-constexpr std::string_view kGpuBackend = "CUDA";
-#else
-constexpr std::string_view kGpuBackend = "Metal";
-#endif
-
 [[noreturn]] void reject_cdist_gpu(const std::string &reason, const std::string &fix)
 {
-  throw GpuRefusal("cdist: " + std::string(kGpuBackend) + " " + reason
-                     + "; no backend call or CPU fallback was attempted. " + fix,
-                   std::string(kGpuBackend) + " " + reason);
+  core::detail::reject_gpu("cdist", reason, fix);
 }
 #endif
 
@@ -95,20 +66,7 @@ void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
     if (!reason.empty())
       throw detail::hybrid_refusal("cdist", reason);
   }
-  if (f32)
-    reject_cdist_gpu("computes from Float64 series, but precision = Float32 was requested",
-                     "Load the series as Float64, or use device cpu.");
-  if (cfg.ndim > 1)
-    reject_cdist_gpu("is univariate only, but ndim = " + std::to_string(cfg.ndim) + " was requested",
-                     "Use device cpu for multivariate series.");
-  if (cfg.variant.variant != core::DTWVariant::Standard)
-    reject_cdist_gpu(std::string("implements Standard DTW only, but variant = ")
-                       + variant_label(cfg.variant.variant) + " was requested",
-                     "Use device cpu for this variant.");
-  if (cfg.missing != core::MissingStrategy::Error)
-    reject_cdist_gpu(std::string("has no missing-data strategy, but missing_strategy = ")
-                       + missing_label(cfg.missing) + " was requested",
-                     "Use device cpu, or missing_strategy Error for data without NaN.");
+  core::detail::validate_gpu_distance_config("cdist", f32, cfg.ndim, cfg.variant.variant, cfg.missing);
 #if !defined(DTWC_HAS_CUDA) && defined(DTWC_HAS_METAL)
   (void)device_index; // Metal runs on the system default GPU, and has no cross-collection kernel for any index
   metal::validate_metal_precision(gpu_precision);
@@ -230,12 +188,25 @@ bool can_prepack_panels(const Data &Y, const auto &y_at) noexcept
   return true;
 }
 
-template <typename T>
+template <typename OutT>
+inline void store_cdist_value(OutT *dst, std::size_t row, std::size_t col, double v)
+{
+  if constexpr (std::is_same_v<OutT, float>) {
+    const float vf = static_cast<float>(v);
+    if (!std::isfinite(vf) && std::isfinite(v))
+      core::refuse_float32_range("cdist", row, col, v);
+    *dst = vf;
+  } else {
+    *dst = v;
+  }
+}
+
+template <typename T, typename OutT>
 void compute_cdist_cpu_rows(const Data &X, const Data &Y,
                             std::size_t x_begin, std::size_t x_end,
                             const core::DistanceConfig &cfg,
                             const auto &x_at, const auto &y_at,
-                            double *out)
+                            OutT *out)
 {
   const std::size_t n_rows = x_end - x_begin;
   const auto n_y = static_cast<std::size_t>(Y.size());
@@ -260,13 +231,13 @@ void compute_cdist_cpu_rows(const Data &X, const Data &Y,
       auto row_task = [&](std::size_t r) {
         const std::size_t i = x_begin + r;
         const auto x_prep = core::prepare_dtw_query<T>(cfg, x_at(i));
-        double *row_out = out + i * n_y;
+        OutT *row_out = out + i * n_y;
         std::array<double, W> d;
         for (std::size_t p = 0; p < n_panels; ++p) {
           const std::size_t b0 = p * W;
           const std::size_t cnt = std::min(W, n_y - b0);
           packed_fn(x_prep, panels[p].view(), d);
-          for (std::size_t w = 0; w < cnt; ++w) row_out[b0 + w] = d[w];
+          for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
         }
       };
       run_openmp(row_task, n_rows, (n_rows * n_panels) > 4);
@@ -280,8 +251,8 @@ void compute_cdist_cpu_rows(const Data &X, const Data &Y,
         const auto x_prep = core::prepare_dtw_query<T>(cfg, x_at(i));
         std::array<double, W> d;
         packed_fn(x_prep, panels[p].view(), d);
-        double *row_out = out + i * n_y + b0;
-        for (std::size_t w = 0; w < cnt; ++w) row_out[w] = d[w];
+        OutT *row_out = out + i * n_y + b0;
+        for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + w, i, b0 + w, d[w]);
       };
       run_openmp(tile_task, total_tiles, total_tiles > 4);
     }
@@ -302,8 +273,8 @@ void compute_cdist_cpu_rows(const Data &X, const Data &Y,
       for (std::size_t w = 0; w < W; ++w) ys[w] = y_at(b0 + std::min(w, cnt - 1));
       std::array<double, W> d;
       block_fn(x_at(i), ys, d);
-      double *row_out = out + i * n_y + b0;
-      for (std::size_t w = 0; w < cnt; ++w) row_out[w] = d[w];
+      OutT *row_out = out + i * n_y + b0;
+      for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + w, i, b0 + w, d[w]);
     };
     run_openmp(stream_tile, total_tiles, total_tiles > 4);
     return;
@@ -314,19 +285,19 @@ void compute_cdist_cpu_rows(const Data &X, const Data &Y,
   auto pair_task = [&](std::size_t idx) {
     const std::size_t i = x_begin + (idx / n_y);
     const std::size_t j = idx % n_y;
-    out[i * n_y + j] = pair_fn(x_at(i), y_at(j));
+    store_cdist_value(out + i * n_y + j, i, j, pair_fn(x_at(i), y_at(j)));
   };
   run_openmp(pair_task, total_pairs, total_pairs > 8);
 }
 
 #ifdef DTWC_HAS_CUDA
-template <typename CpuT>
+template <typename CpuT, typename OutT>
 void run_hybrid_cdist_split(
   const Data &X_gpu, const std::vector<std::span<const double>> &y_gpu_spans,
   const Data &X_cpu, const Data &Y_cpu,
-  std::size_t gpu_rows, std::size_t n_x, std::size_t n_y,
+  double gpu_share, std::size_t n_x, std::size_t n_y,
   const core::DistanceConfig &cfg, const cuda::CUDADistMatOptions &opts,
-  int threads, const auto &x_cpu_at, const auto &y_cpu_at, double *out)
+  int threads, const auto &x_cpu_at, const auto &y_cpu_at, OutT *out)
 {
   constexpr std::size_t W = core::dtw_lanes<CpuT>;
   const std::size_t n_panels = (n_y + W - 1) / W;
@@ -349,88 +320,152 @@ void run_hybrid_cdist_split(
     pair_fn = core::resolve_dtw_fn<CpuT>(cfg, X_cpu, &Y_cpu);
   }
 
+  auto run_cpu_row = [&](std::size_t i) {
+    OutT *row_out = out + i * n_y;
+    if (use_panels) {
+      const auto x_prep = core::prepare_dtw_query<CpuT>(cfg, x_cpu_at(i));
+      std::array<double, W> d;
+      for (std::size_t p = 0; p < n_panels; ++p) {
+        const std::size_t b0 = p * W;
+        const std::size_t cnt = std::min(W, n_y - b0);
+        packed_fn(x_prep, panels[p].view(), d);
+        for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
+      }
+    } else if (block_fn) {
+      std::array<std::span<const CpuT>, W> ys;
+      std::array<double, W> d;
+      for (std::size_t p = 0; p < n_panels; ++p) {
+        const std::size_t b0 = p * W;
+        const std::size_t cnt = std::min(W, n_y - b0);
+        for (std::size_t w = 0; w < W; ++w) ys[w] = y_cpu_at(b0 + std::min(w, cnt - 1));
+        block_fn(x_cpu_at(i), ys, d);
+        for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
+      }
+    } else {
+      for (std::size_t j = 0; j < n_y; ++j) store_cdist_value(row_out + j, i, j, pair_fn(x_cpu_at(i), y_cpu_at(j)));
+    }
+  };
+
+  auto run_gpu_range = [&](std::size_t begin, std::size_t count) {
+    const auto serial_pad = [](std::size_t rows, const std::function<void(std::size_t)> &task) {
+      for (std::size_t k = 0; k < rows; ++k) task(k);
+    };
+    (void)cuda::compute_medoid_distances_cuda(
+      count, [&](std::size_t i) { return X_gpu.series(begin + i); }, y_gpu_spans, opts, serial_pad,
+      [&](std::size_t first, std::size_t blk_count, std::span<const double> block) {
+        for (std::size_t r = 0; r < blk_count; ++r) {
+          const std::size_t row = begin + first + r;
+          const double *src = block.data() + r * n_y;
+          OutT *dst = out + row * n_y;
+          for (std::size_t j = 0; j < n_y; ++j) store_cdist_value(dst + j, row, j, src[j]);
+        }
+      });
+  };
+
   std::exception_ptr gpu_exc;
   std::exception_ptr cpu_exc;
-#ifdef _OPENMP
-#pragma omp parallel num_threads(threads)
-  {
-    const int tid = omp_get_thread_num();
-    if (tid == 0) {
-      try {
-        const auto serial_pad = [](std::size_t count, const std::function<void(std::size_t)> &task) {
-          for (std::size_t k = 0; k < count; ++k) task(k);
-        };
-        (void)cuda::compute_medoid_distances_cuda(
-          gpu_rows, [&](std::size_t i) { return X_gpu.series(i); }, y_gpu_spans, opts, serial_pad,
-          [&](std::size_t first, [[maybe_unused]] std::size_t count, std::span<const double> block) {
-            std::copy(block.begin(), block.end(), out + first * n_y);
-          });
-      } catch (...) {
-        gpu_exc = std::current_exception();
+
+  if (gpu_share >= 0.0) {
+    const auto gpu_rows = std::clamp<std::size_t>(
+      static_cast<std::size_t>(static_cast<double>(n_x) * gpu_share + 0.5), 1, n_x - 1);
+#  ifdef _OPENMP
+#  pragma omp parallel num_threads(threads)
+    {
+      const int tid = omp_get_thread_num();
+      if (tid == 0) {
+        try {
+          run_gpu_range(0, gpu_rows);
+        } catch (...) {
+          gpu_exc = std::current_exception();
+        }
+      }
+#  pragma omp for schedule(dynamic, 1) nowait
+      for (std::ptrdiff_t r = static_cast<std::ptrdiff_t>(gpu_rows);
+           r < static_cast<std::ptrdiff_t>(n_x); ++r) {
+        try {
+          run_cpu_row(static_cast<std::size_t>(r));
+        } catch (...) {
+#  pragma omp critical(dtwc_cdist_cpu_exc)
+          {
+            if (!cpu_exc) cpu_exc = std::current_exception();
+          }
+        }
       }
     }
-#pragma omp for schedule(dynamic, 1) nowait
-    for (std::ptrdiff_t r = static_cast<std::ptrdiff_t>(gpu_rows);
-         r < static_cast<std::ptrdiff_t>(n_x); ++r) {
-      const auto i = static_cast<std::size_t>(r);
+#  else
+    (void)threads;
+    run_gpu_range(0, gpu_rows);
+    compute_cdist_cpu_rows<CpuT, OutT>(X_cpu, Y_cpu, gpu_rows, n_x, cfg, x_cpu_at, y_cpu_at, out);
+#  endif
+  } else {
+    // Dynamic 2-ended work queue: GPU claims coarse batches from head, CPU threads claim fine batches from tail.
+    std::mutex q_mtx;
+    std::size_t head = 0;
+    std::size_t tail = n_x;
+    const std::size_t gpu_batch = std::clamp<std::size_t>(n_x / 4, 64, 512);
+    const std::size_t cpu_batch = std::clamp<std::size_t>(n_x / (4 * static_cast<std::size_t>(threads)), 1, 16);
+    auto claim_head = [&](std::size_t &b, std::size_t &e) {
+      std::lock_guard<std::mutex> lk(q_mtx);
+      if (head >= tail) return false;
+      b = head;
+      e = std::min(tail, head + gpu_batch);
+      head = e;
+      return true;
+    };
+    auto claim_tail = [&](std::size_t &b, std::size_t &e) {
+      std::lock_guard<std::mutex> lk(q_mtx);
+      if (head >= tail) return false;
+      e = tail;
+      b = (tail - head > cpu_batch) ? (tail - cpu_batch) : head;
+      tail = b;
+      return true;
+    };
+#  ifdef _OPENMP
+#  pragma omp parallel num_threads(threads)
+    {
+      const int tid = omp_get_thread_num();
+      if (tid == 0) {
+        try {
+          std::size_t b = 0, e = 0;
+          while (claim_head(b, e)) run_gpu_range(b, e - b);
+        } catch (...) {
+          gpu_exc = std::current_exception();
+        }
+      }
       try {
-        double *row_out = out + i * n_y;
-        if (use_panels) {
-          const auto x_prep = core::prepare_dtw_query<CpuT>(cfg, x_cpu_at(i));
-          std::array<double, W> d;
-          for (std::size_t p = 0; p < n_panels; ++p) {
-            const std::size_t b0 = p * W;
-            const std::size_t cnt = std::min(W, n_y - b0);
-            packed_fn(x_prep, panels[p].view(), d);
-            for (std::size_t w = 0; w < cnt; ++w) row_out[b0 + w] = d[w];
-          }
-        } else if (block_fn) {
-          std::array<std::span<const CpuT>, W> ys;
-          std::array<double, W> d;
-          for (std::size_t p = 0; p < n_panels; ++p) {
-            const std::size_t b0 = p * W;
-            const std::size_t cnt = std::min(W, n_y - b0);
-            for (std::size_t w = 0; w < W; ++w) ys[w] = y_cpu_at(b0 + std::min(w, cnt - 1));
-            block_fn(x_cpu_at(i), ys, d);
-            for (std::size_t w = 0; w < cnt; ++w) row_out[b0 + w] = d[w];
-          }
-        } else {
-          for (std::size_t j = 0; j < n_y; ++j) row_out[j] = pair_fn(x_cpu_at(i), y_cpu_at(j));
+        std::size_t b = 0, e = 0;
+        while (claim_tail(b, e)) {
+          for (std::size_t r = b; r < e; ++r) run_cpu_row(r);
         }
       } catch (...) {
-#pragma omp critical(dtwc_cdist_cpu_exc)
+#  pragma omp critical(dtwc_cdist_cpu_exc)
         {
           if (!cpu_exc) cpu_exc = std::current_exception();
         }
       }
     }
+#  else
+    (void)threads;
+    (void)claim_tail;
+    (void)cpu_batch;
+    (void)claim_head;
+    run_gpu_range(0, n_x);
+#  endif
   }
-#else
-  (void)threads;
-  const auto serial_pad = [](std::size_t count, const std::function<void(std::size_t)> &task) {
-    for (std::size_t k = 0; k < count; ++k) task(k);
-  };
-  (void)cuda::compute_medoid_distances_cuda(
-    gpu_rows, [&](std::size_t i) { return X_gpu.series(i); }, y_gpu_spans, opts, serial_pad,
-    [&](std::size_t first, [[maybe_unused]] std::size_t count, std::span<const double> block) {
-      std::copy(block.begin(), block.end(), out + first * n_y);
-    });
-  compute_cdist_cpu_rows<CpuT>(X_cpu, Y_cpu, gpu_rows, n_x, cfg, x_cpu_at, y_cpu_at, out);
-#endif
+
   if (gpu_exc) std::rethrow_exception(gpu_exc);
   if (cpu_exc) std::rethrow_exception(cpu_exc);
 }
 #endif
 
-} // namespace
-
-std::vector<double> cdist(const Data &X_in, const Data &Y_in,
-                          const core::DistanceConfig &distance,
-                          Device device,
-                          int device_index,
-                          GpuPrecision gpu_precision,
-                          double gpu_share,
-                          bool fallback)
+template <typename OutT>
+std::vector<OutT> cdist_impl(const Data &X_in, const Data &Y_in,
+                             const core::DistanceConfig &distance,
+                             Device device,
+                             int device_index,
+                             GpuPrecision gpu_precision,
+                             double gpu_share,
+                             bool fallback)
 {
   // The settings no device can honour, refused before the device is asked and whatever `fallback` says, as
   // Problem::set_device and Problem::set_distance refuse them.
@@ -483,7 +518,7 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
   const Data &X = X_widened ? *X_widened : X_in;
   const Data &Y = Y_widened ? *Y_widened : Y_in;
 
-  std::vector<double> out(n_x * n_y);
+  std::vector<OutT> out(n_x * n_y);
 
 #ifdef DTWC_HAS_CUDA
   if (device == Device::GPU || device == Device::CPU_GPU) {
@@ -496,13 +531,13 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
       if (eff_gpu_precision == GpuPrecision::FP32) {
         const Data X32 = detail::owned_copy(X, core::Precision::Float32);
         const Data Y32 = detail::owned_copy(Y, core::Precision::Float32);
-        compute_cdist_cpu_rows<float>(
+        compute_cdist_cpu_rows<float, OutT>(
           X32, Y32, 0, n_x, cfg,
           [&](std::size_t i) { return X32.series_f32(i); },
           [&](std::size_t j) { return Y32.series_f32(j); },
           out.data());
       } else {
-        compute_cdist_cpu_rows<data_t>(
+        compute_cdist_cpu_rows<data_t, OutT>(
           X, Y, 0, n_x, cfg,
           [&](std::size_t i) { return X.series(i); },
           [&](std::size_t j) { return Y.series(j); },
@@ -529,30 +564,29 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
       };
       (void)cuda::compute_medoid_distances_cuda(
         n_x, [&](std::size_t i) { return X.series(i); }, y_spans, opts, parallel,
-        [&](std::size_t first, [[maybe_unused]] std::size_t count, std::span<const double> block) {
-          std::copy(block.begin(), block.end(), out.data() + first * n_y);
+        [&](std::size_t first, std::size_t count, std::span<const double> block) {
+          for (std::size_t r = 0; r < count; ++r) {
+            const std::size_t row = first + r;
+            const double *src = block.data() + r * n_y;
+            OutT *dst = out.data() + row * n_y;
+            for (std::size_t j = 0; j < n_y; ++j) store_cdist_value(dst + j, row, j, src[j]);
+          }
         });
       return out;
     }
 
-    // Device::CPU_GPU: split X's rows concurrently between CUDA (thread 0) and CPU SIMD lanes (threads 1..P-1).
     const bool use_fp32 = cuda::cuda_uses_fp32(eff_gpu_precision, device_index);
-    const double default_share = use_fp32 ? (13.0 * 28.5 / (13.0 * 28.5 + 55.0)) : (28.5 / (28.5 + 55.0));
-    const double share = (gpu_share >= 0.0) ? gpu_share : default_share;
-    const auto gpu_rows = std::clamp<std::size_t>(
-      static_cast<std::size_t>(static_cast<double>(n_x) * share + 0.5), 1, n_x - 1);
-
     if (use_fp32) {
       const Data X32 = detail::owned_copy(X, core::Precision::Float32);
       const Data Y32 = detail::owned_copy(Y, core::Precision::Float32);
-      run_hybrid_cdist_split<float>(
-        X, y_spans, X32, Y32, gpu_rows, n_x, n_y, cfg, opts, threads,
+      run_hybrid_cdist_split<float, OutT>(
+        X, y_spans, X32, Y32, gpu_share, n_x, n_y, cfg, opts, threads,
         [&](std::size_t i) { return X32.series_f32(i); },
         [&](std::size_t j) { return Y32.series_f32(j); },
         out.data());
     } else {
-      run_hybrid_cdist_split<data_t>(
-        X, y_spans, X, Y, gpu_rows, n_x, n_y, cfg, opts, threads,
+      run_hybrid_cdist_split<data_t, OutT>(
+        X, y_spans, X, Y, gpu_share, n_x, n_y, cfg, opts, threads,
         [&](std::size_t i) { return X.series(i); },
         [&](std::size_t j) { return Y.series(j); },
         out.data());
@@ -562,13 +596,13 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
 #endif
 
   if (both_f32) {
-    compute_cdist_cpu_rows<float>(
+    compute_cdist_cpu_rows<float, OutT>(
       X, Y, 0, n_x, cfg,
       [&](std::size_t i) { return X.series_f32(i); },
       [&](std::size_t j) { return Y.series_f32(j); },
       out.data());
   } else {
-    compute_cdist_cpu_rows<data_t>(
+    compute_cdist_cpu_rows<data_t, OutT>(
       X, Y, 0, n_x, cfg,
       [&](std::size_t i) { return X.series(i); },
       [&](std::size_t j) { return Y.series(j); },
@@ -577,11 +611,45 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
   return out;
 }
 
+} // namespace
+
+std::vector<double> cdist(const Data &X_in, const Data &Y_in,
+                          const core::DistanceConfig &distance,
+                          Device device,
+                          int device_index,
+                          GpuPrecision gpu_precision,
+                          double gpu_share,
+                          bool fallback)
+{
+  return cdist_impl<double>(X_in, Y_in, distance, device, device_index, gpu_precision, gpu_share, fallback);
+}
+
 std::vector<double> cdist(const Data &X, const Data &Y, const Config &config)
 {
+  if (config.matrix_dtype == core::Precision::Float32) {
+    throw InvalidInput("cdist(Data, Data, Config) returns double; call cdist_f32(...) for matrix_dtype = float32.");
+  }
   return cdist(X, Y,
                { .variant = config.variant, .metric = config.metric, .missing = config.missing, .band = config.band },
                config.device, config.device_index, config.gpu_precision, config.gpu_share, config.fallback);
+}
+
+std::vector<float> cdist_f32(const Data &X_in, const Data &Y_in,
+                             const core::DistanceConfig &distance,
+                             Device device,
+                             int device_index,
+                             GpuPrecision gpu_precision,
+                             double gpu_share,
+                             bool fallback)
+{
+  return cdist_impl<float>(X_in, Y_in, distance, device, device_index, gpu_precision, gpu_share, fallback);
+}
+
+std::vector<float> cdist_f32(const Data &X, const Data &Y, const Config &config)
+{
+  return cdist_f32(X, Y,
+                   { .variant = config.variant, .metric = config.metric, .missing = config.missing, .band = config.band },
+                   config.device, config.device_index, config.gpu_precision, config.gpu_share, config.fallback);
 }
 
 } // namespace dtwc

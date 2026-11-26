@@ -274,7 +274,7 @@ TEMPLATE_TEST_CASE("distance::* rejects band < -1 with InvalidInput and returns 
   const std::vector<T> y{ T(1), T(2), T(3), T(4), T(5) };
 
   CHECK(message_of([&] { dtwc::core::validate({ .band = -2 }, std::is_same_v<T, float>); })
-        == "band must be >= -1");
+        == "band must be -1 (full DTW) or at least 0; got -2.");
   CHECK_THROWS_AS(dtwc::distance::dtw(x, y, -2), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::distance::ddtw(x, y, -2), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::distance::wdtw(x, y, -2), dtwc::InvalidInput);

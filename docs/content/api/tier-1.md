@@ -119,7 +119,7 @@ clusters as multivariate from its path and as univariate series from `as_series(
   `cluster()` runs; float32 data in memory alone (NumPy `float32`, MATLAB `single`)
   does not choose it. The dataset says which: `Dataset::dtype()`, Python
   `Dataset.dtype`, MATLAB `Dataset.Dtype`.
-- `ndim` (Python and MATLAB; for a path, C++ and `dtwc_cl` take it from an Arrow IPC file's metadata only,
+- `ndim` (in C++, `dtwc::load(..., ndim)`; for a path, `dtwc_cl` takes it from an Arrow IPC file's metadata only,
   and a C++ `Data` carries its own) is the number of values per time step of a multivariate series,
   `1`, the default, being univariate: each series holds its steps interleaved,
   `[t0f0 t0f1 t1f0 ...]`, so its length is a multiple of `ndim`,
@@ -144,7 +144,7 @@ A negative `skip_cols` or `skip_rows` is `InvalidInput`. In C++,
 `load(path, 0, 0, ',')`.
 
 A `Dataset` is read with the reader options it was made with (`skip_cols`, `skip_rows`,
-`delimiter`, `dtype` and, in Python and MATLAB, `ndim`), so a call that gives another value for one is
+`delimiter`, `dtype` and `ndim`), so a call that gives another value for one is
 `InvalidInput` (MATLAB `dtwc:invalidArgument`), naming the option and both values: pass it to `load`
 when the `Dataset` is made, or leave it out. One equal to the `Dataset`'s own runs, and one not given
 is never refused. In C++, `cluster(dataset, config)` and `cdist(X, Y, config)` read the options from
@@ -154,13 +154,13 @@ no `column`: a path's read takes the `Config`'s). In Python and MATLAB, `load(da
 each option and `cluster(dataset, k, dtype=...)` only `dtype`, and each refuses an option that was
 given and differs, its default value included: Python's reader options are `None` unless given,
 `None` being an option's default for a new source (`0`, `0`, the extension's delimiter, `float64`,
-`1`), a `Data`'s own `ndim`, or a `Dataset`'s own option. A `name` given to `load` beside a `Dataset`
+`1`), a `Data`'s own `dtype` and `ndim`, or a `Dataset`'s own option. A `name` given to `load` beside a `Dataset`
 is refused. Once a `Dataset` has read an Arrow IPC file, its `ndim` is the file's.
 `cdist` checks each `Dataset` by the same rule in Python and MATLAB for `dtype` (MATLAB `'Dtype'`),
 which is not given unless passed (Python `None`, MATLAB `''`): a `Dataset`, or in Python a `Data`,
 refuses one other than its own, and other series are stored as `float64` unless it says otherwise.
-Its `ndim` (MATLAB `'Ndim'`) defaults to `1`, which it cannot tell from one given: only a value other
-than `1` is checked against the `Dataset`'s own (in Python, the `Data`'s too).
+Its `ndim` (MATLAB `'Ndim'`) is `None` (MATLAB `[]`) unless given, so an explicit `1` on a multivariate
+`Dataset` or `Data` is refused alongside every other conflicting value.
 
 ## Cluster
 
@@ -275,19 +275,19 @@ a name given twice takes its last value).
 C++ `cluster(data, k, ...)` takes `k` and four settings. Any other goes through
 `dtwc::Config`, the struct that `dtwc_cl`'s flags and its `--config` TOML file
 fill: its fields follow the long options (`k` is `--n-clusters`, `tadpole_dc` is
-`--dc`), and each starts at `dtwc_cl`'s default. `dtwc::cluster(data, config)` clusters a `Dataset` with
+`--dc`), and each starts at `dtwc_cl`'s default (except `config.output`, which
+defaults to empty in C++ while `dtwc_cl` defaults to `./results`). `dtwc::cluster(data, config)` clusters a `Dataset` with
 it; `dtwc::run(config)` reads `config.input`, and `dtwc::run(config, data)` clusters series already in
-memory. All three write the result files into
-`config.output` (`./results` unless cleared), and the run report last
+memory. When `config.output` is non-empty, all three write the result files into
+that directory, and the run report last
 (`<name>_report.txt`; `config.report = false`, `dtwc_cl --no-report`, makes none).
 From `examples/cpp/tier1.cpp`:
 
 ```cpp
-dtwc::Config config;   // every setting starts at dtwc_cl's default
+dtwc::Config config;   // defaults match dtwc_cl (except output == "" so no files are written)
 config.k = 2;          // --n-clusters, the one setting a run needs
 config.method = dtwc::Method::PAM;
 config.band = 1;       // --band: a Sakoe-Chiba window of one step
-config.output.clear(); // write no files; Result::save(dir) writes them on request
 
 const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std::move(names) });
 ```
@@ -303,9 +303,9 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 | a quality score | `score(name)` | `score(name)` | `score(name)` |
 | the N×N distances | `distance_matrix()`, row-major | `distance_matrix` | `distance_matrix()` |
 | write the result files | `save(dir)` | `save(dir)` | `save(dir)` |
-| the run report | `report()`: the text of `<name>_report.txt` | `report` (`None` for an `hpc` run that wrote none) | `Report` |
+| the run report | `report()`: the text of `<name>_report.txt` | `report` (`None` for an `hpc` run that wrote none) | `report` |
 | plot | (plot the files `save` writes) | `plot(png="clusters_2d.png", show=True)` | `plot()` |
-| run details | `method()` (`auto` resolved), `iterations()`, `converged()` | `summary()`, `elapsed_s`, `k`, `n_series`, `name` | |
+| run details | `method()` (`auto` resolved), `iterations()`, `converged()` | `method`, `iterations`, `converged`, `summary()`, `elapsed_s`, `k`, `n_series`, `name` | `method`, `iterations`, `converged` |
 
 `score(name)` takes `silhouette` (the mean over the series), `davies_bouldin`,
 `dunn`, `calinski_harabasz` or `inertia`, in any case; another name is
@@ -350,8 +350,8 @@ two collections `X` (`M` series) and `Y` (`N` series) without clustering:
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, dtype=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'Dtype', '', 'MatrixDtype', 'float64', ...)` |
-| returns | `std::vector<double>` of `M × N` values, row-major: element `i * N + j` is the distance from `X[i]` to `Y[j]` | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
+| call | `dtwc::cdist(X, Y, opts)` / `dtwc::cdist_f32(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, dtype=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'Dtype', '', 'MatrixDtype', 'float64', ...)` |
+| returns | `std::vector<double>` (`std::vector<float>` from `cdist_f32`) of `M × N` values, row-major | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
 
 Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes on
 `cpu`, CUDA wavefront/regtile kernels on `gpu`, and row-partitioned concurrent
@@ -389,7 +389,7 @@ disp(est.predict(X(1:2, :) + 0.1));
 ```
 
 The parameters are `n_clusters` (3), `method` (`"pam"`), `variant`, `band`,
-`max_iter`, `n_init`, `wdtw_g`, `adtw_penalty`, `msm_c`, `twe_nu`, `twe_lambda`,
+`max_iter`, `n_init`, `wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`, `twe_lambda`,
 `mv_mode`, `missing_strategy`, `metric`, `batch_size`, `random_state`, `device` and
 `fallback`, with `cluster()`'s defaults; MATLAB's properties are the same words in
 CamelCase (`NClusters`, `Method`, ..., `RandomState`, `Device`, `Fallback`) and its fitted
@@ -419,7 +419,7 @@ type.
 | C++ | Python | MATLAB identifier | raised for |
 |---|---|---|---|
 | `dtwc::InvalidInput` | `dtwcpp.InvalidInput` (a `ValueError`) | `dtwc:invalidArgument` | an argument or input the call cannot take: an unknown name, a value out of range, empty data, a NaN or ±inf a distance does not accept, a matrix or cache made for other data; also a `dtwc::run` whose memory the system refuses, naming its stage, its memory plan and the process's peak |
-| `dtwc::UndefinedScore` | `dtwcpp.UndefinedScore` (an `InvalidInput`) | `dtwc:invalidArgument` | a silhouette, Dunn, Davies–Bouldin or Calinski–Harabasz score of a labelling with fewer than two non-empty clusters |
+| `dtwc::UndefinedScore` | `dtwcpp.UndefinedScore` (an `InvalidInput`) | `dtwc:undefinedScore` | a silhouette, Dunn, Davies–Bouldin or Calinski–Harabasz score of a labelling with fewer than two non-empty clusters |
 | `dtwc::SolverError` | `dtwcpp.SolverError` (a `RuntimeError`) | `dtwc:solverError` | a solver this build lacks, or a MIP or LR-core run that ends without a proven optimum |
 | `dtwc::DeviceError` | `dtwcpp.DeviceError` (a `RuntimeError`) | `dtwc:deviceError` | a device name, a GPU the build or machine lacks, or a setting the device cannot compute |
 | `dtwc::IOError` | `dtwcpp.IOError` (an `OSError`) | `dtwc:ioError` | a file that cannot be read, parsed or written, or a format this build cannot read |

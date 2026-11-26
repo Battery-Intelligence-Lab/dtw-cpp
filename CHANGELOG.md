@@ -64,9 +64,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   failed write; v1.0.0 went on.
 - `dtwc_cl` writes `<name>_labels.csv` and `<name>_medoids.csv`, and `<name>_distance_matrix.csv` and
   `<name>_silhouettes.csv` when its method filled the matrix; v1.0.0 wrote `<name>_Nc_<k>.csv` and per-repetition files.
-- `set_n_clusters` (v1.0.0's `set_numberOfClusters`) below 1 is `InvalidInput`, and so is a band below -1 (v1.0.0 ran
-  full DTW), in a `Problem` and in `cdist`, and a `set_clusters` medoid outside [0, N), which v1.0.0 took. A ±inf in a
-  series is refused, a NaN unless a missing-data strategy applies.
+- A band below -1 (`set_n_clusters` below 1, `set_clusters` medoid outside [0, N)) is `InvalidInput` across `Problem`,
+  `cdist`, and the `distance::` facade (`dtwBanded` still runs negative bands as full DTW). A ±inf in a series is
+  refused, a NaN unless a missing-data strategy applies.
 - A series with no values is `InvalidInput`, and a blank line in a file of one series per row is no longer an empty
   series. Every `Problem` fill and `dtw_function()` refuses one, for a series emptied through `Data::p_vec` after
   `set_data` too.
@@ -91,7 +91,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `'Output'`, `'Checkpoint'` and `'CheckpointInterval'`, C++ `cluster(data, config)` with a `dtwc::Config`); Python's
   `upload_input=True` sends a local input with an `hpc` job. `dtwcpp.load(..., ndim=)` and `dtwc.load(..., 'Ndim',
   n)` take the values per time step of a multivariate series.
-- Cross-collection pairwise DTW distance matrices (`M × N`) in C++ (`dtwc::cdist` and `dtwc::distance::cdist`), Python
+- Cross-collection pairwise DTW distance matrices (`M × N`) in C++ (`dtwc::cdist`, `dtwc::cdist_f32`, and `dtwc::distance::cdist`), Python
   (`dtwcpp.cdist` and `dtwcpp.distance.cdist`) and MATLAB (`dtwc.cdist` and `dtwc.distance.cdist`), dispatched across
   CPU OpenMP + SIMD panels, CUDA (`device="gpu"`), and heterogeneous `device="cpu+gpu"` work-sharing in both `float64`
   and `float32` (`matrix_dtype`).
@@ -279,7 +279,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `storage`, `fill`, `cluster`, `write`, the silhouettes), the algorithm's iterations and stopping criterion, the
   result and notes. A run that fails past its first checks writes it up to the failing stage, with the error, and
   throws that error unchanged; `--no-report` (TOML/YAML key `no-report`, C++ `Config::report = false`, Python
-  `no_report=True`, MATLAB `'NoReport', true`) writes none. Python's `Result.report` and MATLAB's `Result.Report` give
+  `no_report=True`, MATLAB `'NoReport', true`) writes none. Python's `Result.report` and MATLAB's `Result.report` give
   its text and their `save` writes it last.
 - On Windows, `dtwc_cl.exe` states its name, version and copyright in its file properties.
 - WebAssembly (`Emscripten` `wasm-simd128`) and MinGW toolchain support (`dtwc_core`, aligned allocations, and portable

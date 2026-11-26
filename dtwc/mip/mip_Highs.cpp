@@ -168,7 +168,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
     for (std::size_t i = 0; i < model.start.size(); ++i)
       start_obj += model.col_cost[i] * model.start[i];
     if (start_obj == 0.0) {
-      prob.set_result(mip::decode_assignment(model.start, prob.distance_matrix(), n, k, "HiGHS"));
+      prob.set_result(mip::decode_assignment_nearest(model.start, prob.distance_matrix(), n, k, "HiGHS"));
       return;
     }
   }
@@ -234,8 +234,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
               << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
   }
 
-  prob.set_result(mip::decode_assignment(highs.getSolution().col_value, prob.distance_matrix(),
-                                         n, k, "HiGHS"));
+  prob.set_result(mip::decode_assignment_nearest(highs.getSolution().col_value, prob.distance_matrix(),
+                                                 n, k, "HiGHS"));
 #else
   throw SolverError(
       "HiGHS solver is unavailable; rebuild with -DDTWC_ENABLE_HIGHS=ON");

@@ -1475,30 +1475,24 @@ static void cmd_cdist(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
   };
   const auto n_x = static_cast<std::size_t>(X_data.size());
   const auto n_y = static_cast<std::size_t>(Y_data.size());
-  const std::vector<double> dists =
-    dtwc::cdist(X_data, Y_data, dist_cfg, cfg.device, cfg.device_index, cfg.gpu_precision, cfg.gpu_share, cfg.fallback);
-
   if (cfg.matrix_dtype == dtwc::core::Precision::Float32) {
+    const std::vector<float> dists =
+      dtwc::cdist_f32(X_data, Y_data, dist_cfg, cfg.device, cfg.device_index, cfg.gpu_precision, cfg.gpu_share,
+                      cfg.fallback);
     mxArray *out = mxCreateNumericMatrix(n_x, n_y, mxSINGLE_CLASS, mxREAL);
     float *dst = mxGetSingles(out);
-    for (std::size_t i = 0; i < n_x; ++i) {
-      for (std::size_t j = 0; j < n_y; ++j) {
-        const double v = dists[i * n_y + j];
-        const float vf = static_cast<float>(v);
-        if (!std::isfinite(vf) && std::isfinite(v))
-          dtwc::core::refuse_float32_range("cdist", i, j, v);
-        dst[i + j * n_x] = vf; // column-major
-      }
-    }
+    for (std::size_t i = 0; i < n_x; ++i)
+      for (std::size_t j = 0; j < n_y; ++j)
+        dst[i + j * n_x] = dists[i * n_y + j]; // column-major
     plhs[0] = out;
   } else {
+    const std::vector<double> dists =
+      dtwc::cdist(X_data, Y_data, dist_cfg, cfg.device, cfg.device_index, cfg.gpu_precision, cfg.gpu_share, cfg.fallback);
     mxArray *out = mxCreateDoubleMatrix(n_x, n_y, mxREAL);
     double *dst = mxGetDoubles(out);
-    for (std::size_t i = 0; i < n_x; ++i) {
-      for (std::size_t j = 0; j < n_y; ++j) {
+    for (std::size_t i = 0; i < n_x; ++i)
+      for (std::size_t j = 0; j < n_y; ++j)
         dst[i + j * n_x] = dists[i * n_y + j]; // column-major
-      }
-    }
     plhs[0] = out;
   }
 }
