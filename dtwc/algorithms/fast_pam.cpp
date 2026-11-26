@@ -50,6 +50,10 @@ namespace dtwc {
 
 namespace {
 
+// Below this many points the sweep evaluates one candidate at a time on the calling thread, the sequential sweep
+// itself: there a parallel region, or a group's evaluations dropped after each swap, cost more than they save.
+constexpr index_t parallel_from = 2000;
+
 /**
  * @brief For each point, find its nearest and second-nearest medoid.
  *
@@ -104,7 +108,9 @@ void compute_nearest_and_second(
     nearest_dist[p] = best;
     second_dist[p] = second_best;
   };
-  run_openmp(assign_point, static_cast<std::size_t>(N));
+  const bool parallel = N >= parallel_from
+                        || static_cast<std::size_t>(N) * static_cast<std::size_t>(k) >= 32768;
+  run_openmp(assign_point, static_cast<std::size_t>(N), parallel);
 }
 
 /**
@@ -224,7 +230,6 @@ void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std:
 
 // Below this many points the sweep evaluates one candidate at a time on the calling thread, the sequential sweep
 // itself: there a parallel region, or a group's evaluations dropped after each swap, cost more than they save.
-constexpr index_t parallel_from = 2000;
 
 // ---------------------------------------------------------------------------
 // FasterPAM SWAP (Schubert & Rousseeuw 2021, Algorithm 3). Eager: cycle through
@@ -371,7 +376,8 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
         for (index_t g = 0; g < std::min(G, N - a); ++g)
           candidate_cost[static_cast<std::size_t>(a + g)] = cost[g].value();
       };
-      run_openmp(total_distance, static_cast<std::size_t>((N + G - 1) / G));
+      const auto n_groups = static_cast<std::size_t>((N + G - 1) / G);
+      run_openmp(total_distance, n_groups, N >= parallel_from && n_groups > 1);
       medoids[0] = std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin();
       compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
       converged = true;

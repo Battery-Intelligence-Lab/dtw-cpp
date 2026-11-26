@@ -43,11 +43,30 @@ def cluster(prob):
         raise SolverError(f"method 'mip' solves with highspy, which dtwcpp requires and which cannot be "
                           f"imported ({error}): reinstall dtwcpp. Method 'lrcore' is exact without it.") from None
 
-    model = _dtwcpp_core._mip_model(prob)  # checks k, N and the settings; fills the matrix
+    n = int(prob.size)
+    k = int(prob.n_clusters())
     settings = prob.mip_settings
+    if not (settings.mip_gap >= 0.0) or settings.lr_max_nodes < 1:
+        _dtwcpp_core._mip_model(prob)  # triggers C++ validate_mip_settings / require_clusterable
+
+    if n >= 1 and k == 1:
+        return _dtwcpp_core.fast_pam(prob, 1, 0, prob.random_seed)
+    if n >= 1 and k == n:
+        res = _dtwcpp_core.ClusteringResult()
+        res.medoid_indices = list(range(n))
+        res.labels = list(range(n))
+        res.converged = True
+        prob.set_result(res)
+        res.total_cost = prob.find_total_cost()
+        return res
+
+    model = _dtwcpp_core._mip_model(prob)  # checks k, N and the settings; fills the matrix
+    if settings.warm_start and model.start.size == model.col_cost.size and float(np.dot(model.col_cost, model.start)) == 0.0:
+        return _dtwcpp_core._mip_set_solution(prob, model.start)
+
     highs = highspy.Highs()
     options = {"output_flag": settings.verbose_solver, "mip_rel_gap": settings.mip_gap,
-               "threads": 1, "parallel": "off"}
+               "mip_abs_gap": 0.0, "threads": 1, "parallel": "off"}
     if settings.time_limit_sec > 0:
         options["time_limit"] = float(settings.time_limit_sec)
     for name, value in options.items():  # a rejected option must not leave HiGHS's default
@@ -55,7 +74,7 @@ def cluster(prob):
             raise SolverError(f"highspy rejected option '{name}' = {value!r}; continuing would "
                               "silently run a different solver configuration.")
     status = highs.passModel(
-        model.num_col, model.num_row, model.a_value.size, int(highspy.MatrixFormat.kRowwise),
+        model.num_col, model.num_row, model.a_value.size, int(highspy.MatrixFormat.kColwise),
         int(highspy.ObjSense.kMinimize), 0.0, model.col_cost, model.col_lower, model.col_upper,
         model.row_lower, model.row_upper, model.a_start, model.a_index, model.a_value,
         model.integrality)

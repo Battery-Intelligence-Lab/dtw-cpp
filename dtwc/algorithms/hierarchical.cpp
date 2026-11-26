@@ -53,8 +53,9 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
     return work[core::tri_index(static_cast<std::size_t>(a), static_cast<std::size_t>(b))];
   };
 
-  // active[i] != 0  →  cluster i is still alive.
-  std::vector<char> active(static_cast<std::size_t>(N), 1);
+  // Compact sorted list of currently active cluster IDs (`0 .. N-1` initially).
+  std::vector<index_t> active_list(static_cast<std::size_t>(N));
+  std::iota(active_list.begin(), active_list.end(), index_t{ 0 });
 
   // sz[i] = current number of original points in cluster i.
   std::vector<index_t> sz(static_cast<std::size_t>(N), 1);
@@ -66,11 +67,24 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   std::vector<double> nn_dist(static_cast<std::size_t>(N), kInf);
   std::vector<index_t> nn_idx(static_cast<std::size_t>(N), -1);
 
-  auto recompute_row_nn = [&](index_t i) {
+  // Initial NN scan over lower triangle row-major (j ascending, i < j):
+  // sequential reads, and strict `<` preserves smallest j on ties.
+  for (index_t j = 1; j < N; ++j) {
+    const double *const row_j = work.data() + static_cast<std::size_t>(j) * static_cast<std::size_t>(j + 1) / 2;
+    for (index_t i = 0; i < j; ++i) {
+      const double d = row_j[static_cast<std::size_t>(i)];
+      if (d < nn_dist[static_cast<std::size_t>(i)]) {
+        nn_dist[static_cast<std::size_t>(i)] = d;
+        nn_idx[static_cast<std::size_t>(i)] = j;
+      }
+    }
+  }
+
+  auto recompute_row_nn = [&](index_t i, std::size_t pos_i) {
     double best_d = kInf;
     index_t best_j = -1;
-    for (index_t j = i + 1; j < N; ++j) {
-      if (!active[static_cast<std::size_t>(j)]) continue;
+    for (std::size_t pos = pos_i + 1; pos < active_list.size(); ++pos) {
+      const index_t j = active_list[pos];
       const double d = work[static_cast<std::size_t>(j) * static_cast<std::size_t>(j + 1) / 2
                             + static_cast<std::size_t>(i)];
       if (d < best_d) {
@@ -82,17 +96,15 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
     nn_idx[static_cast<std::size_t>(i)] = best_j;
   };
 
-  for (index_t i = 0; i < N - 1; ++i)
-    recompute_row_nn(i);
-
   for (index_t step = 0; step < N - 1; ++step) {
     double best_dist = kInf;
     index_t best_a = -1, best_b = -1;
+    std::size_t pos_a = 0;
 
     // Strict `<` with i ascending, and nn_idx[i] the smallest j at its distance: a tie
     // keeps the first pair met, the lexicographically smallest (a, b).
-    for (index_t i = 0; i < N - 1; ++i) {
-      if (!active[static_cast<std::size_t>(i)]) continue;
+    for (std::size_t pos = 0; pos + 1 < active_list.size(); ++pos) {
+      const index_t i = active_list[pos];
       const index_t j = nn_idx[static_cast<std::size_t>(i)];
       if (j < 0) continue;
       const double d = nn_dist[static_cast<std::size_t>(i)];
@@ -100,25 +112,33 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
         best_dist = d;
         best_a = i;
         best_b = j;
+        pos_a = pos;
       }
     }
     if (best_a < 0)
       throw InvalidInput("build_dendrogram: no finite linkage distance remains (a distance or an average-linkage "
                          "update overflowed); rescale the series.");
 
-    // Record the merge (best_a < best_b is guaranteed by construction).
-    dend.merges.push_back({ best_a, best_b, best_dist, sz[static_cast<std::size_t>(best_a)] + sz[static_cast<std::size_t>(best_b)] });
-
     const index_t sz_a = sz[static_cast<std::size_t>(best_a)];
     const index_t sz_b = sz[static_cast<std::size_t>(best_b)];
+    const index_t sz_ab = sz_a + sz_b;
+
+    // Record the merge (best_a < best_b is guaranteed by construction).
+    dend.merges.push_back({ best_a, best_b, best_dist, sz_ab });
 
     // Deactivate best_b first so row rescans never select it.
-    sz[static_cast<std::size_t>(best_a)] = sz_a + sz_b;
-    active[static_cast<std::size_t>(best_b)] = 0;
+    sz[static_cast<std::size_t>(best_a)] = sz_ab;
+    active_list.erase(std::lower_bound(active_list.begin() + static_cast<std::ptrdiff_t>(pos_a + 1),
+                                       active_list.end(), best_b));
+
+    const double wa = (opts.linkage == Linkage::Average)
+                        ? static_cast<double>(sz_a) / static_cast<double>(sz_ab)
+                        : 0.0;
 
     // Lance-Williams update on D(best_a, c) for all other active clusters c.
-    for (index_t c = 0; c < N; ++c) {
-      if (!active[static_cast<std::size_t>(c)] || c == best_a) continue;
+    for (std::size_t pos = 0; pos < active_list.size(); ++pos) {
+      const index_t c = active_list[pos];
+      if (c == best_a) continue;
 
       const double d_ac = at(best_a, c);
       const double d_bc = at(best_b, c);
@@ -132,7 +152,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
         d_new = std::max(d_ac, d_bc);
         break;
       case Linkage::Average:
-        d_new = (static_cast<double>(sz_a) * d_ac + static_cast<double>(sz_b) * d_bc) / static_cast<double>(sz_a + sz_b);
+        d_new = wa * d_ac + (1.0 - wa) * d_bc;
         break;
       }
 
@@ -145,16 +165,15 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
           nn_dist[cz] = d_new;
           nn_idx[cz] = best_a;
         } else if (nn_idx[cz] == best_a || nn_idx[cz] == best_b) {
-          recompute_row_nn(c);
+          recompute_row_nn(c, pos);
         }
       } else if (c < best_b && nn_idx[static_cast<std::size_t>(c)] == best_b) {
         // For best_a < c < best_b, best_a is below c so only best_b's removal can invalidate c's NN.
-        recompute_row_nn(c);
+        recompute_row_nn(c, pos);
       }
     }
 
-    if (best_a < N - 1)
-      recompute_row_nn(best_a);
+    recompute_row_nn(best_a, pos_a);
   }
 
   return dend;
@@ -218,11 +237,7 @@ namespace {
       }
 
       medoid_indices[cl] = best_idx;
-
-      // Total cost = sum of distances of each point to its medoid.
-      for (std::size_t q = 0; q < size; ++q)
-        total_cost += static_cast<double>(
-          matrix[core::tri_index(static_cast<std::size_t>(mem[q]), static_cast<std::size_t>(best_idx))]);
+      total_cost += best_cost;
     }
     return total_cost;
   }

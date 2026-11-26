@@ -8,12 +8,20 @@
 
 #include "../Problem.hpp"
 #include "../core/distance_sampling_weights.hpp" // kmedoids_pp
+#include "../core/dtw_dispatch.hpp"
+#include "../core/dtw_kernel.hpp"
 #include "../core/portable_random.hpp"
 #include "../core/thread_scratch.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
+#include "../warping.hpp"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -38,15 +46,24 @@ struct Alignment {
 /// Upper bound on total parallel 2D DP scratch across active worker threads (~64 MiB).
 constexpr std::size_t kMaxParallelDpDoubles = std::size_t{ 8 } << 20;
 
+inline bool in_parallel_region() noexcept
+{
+#ifdef _OPENMP
+  return omp_in_parallel() != 0;
+#else
+  return false;
+#endif
+}
+
 std::vector<double>& scratch_row() noexcept
 {
   thread_local std::vector<double> buffer;
   return buffer;
 }
 
-std::vector<double>& scratch_matrix() noexcept
+std::vector<std::uint8_t>& scratch_dir() noexcept
 {
-  thread_local std::vector<double> buffer;
+  thread_local std::vector<std::uint8_t> buffer;
   return buffer;
 }
 
@@ -194,21 +211,21 @@ Series resample_linear(SeriesView input, std::size_t length)
 
 /// Squared-cost DTW of x against y and, if asked, its optimal warping path.
 /// Cost-only calls use a single rolling row (`O(ny)` doubles); path-extracting
-/// calls use the thread's DP matrix and path scratch (`core::release_thread_scratch`
-/// empties all thread scratch). The returned path span stays valid until the
-/// thread's next path-extracting call.
+/// calls use a rolling `double[ny]` row plus a compact `uint8_t[nx*ny]` direction
+/// table (8x less DP RAM) and path scratch.
 Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
 {
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
   constexpr double inf = std::numeric_limits<double>::infinity();
+  auto& row_buffer = scratch_row();
+  if (row_buffer.size() < ny) {
+    row_buffer.reserve(ny);
+    row_buffer.resize(ny);
+  }
+  double *const row = row_buffer.data();
+
   if (!need_path) {
-    auto& row_buffer = scratch_row();
-    if (row_buffer.size() < ny) {
-      row_buffer.reserve(ny);
-      row_buffer.resize(ny);
-    }
-    double *const row = row_buffer.data();
     for (std::size_t i = 0; i < nx; ++i) {
       double left = inf;
       double diagonal = inf;
@@ -225,48 +242,60 @@ Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
     return { row[ny - 1], {} };
   }
 
-  auto& matrix_buffer = scratch_matrix();
+  auto& dir_buffer = scratch_dir();
   auto& path = scratch_path();
-  if (matrix_buffer.size() < nx * ny) {
-    matrix_buffer.reserve(nx * ny); // exact: resize alone may overshoot
-    matrix_buffer.resize(nx * ny);
+  if (dir_buffer.size() < nx * ny) {
+    dir_buffer.reserve(nx * ny);
+    dir_buffer.resize(nx * ny);
   }
   path.clear();
   path.reserve(nx + ny - 1);
-  // Hoist matrix pointer and carry at(i, j - 1) in a register across stores.
-  double *const matrix = matrix_buffer.data();
-  auto at = [matrix, ny](std::size_t i, std::size_t j) -> double& {
-    return matrix[i * ny + j];
-  };
+  std::uint8_t *const dir = dir_buffer.data();
+
   for (std::size_t i = 0; i < nx; ++i) {
-    double left = inf; // at(i, j - 1)
+    std::uint8_t *const dir_row = dir + i * ny;
+    double left = inf;
+    double diagonal = inf;
     for (std::size_t j = 0; j < ny; ++j) {
       const double diff = x[i] - y[j];
       const double local = diff * diff;
-      if (i == 0 && j == 0) left = local;
-      else {
-        const double up = i > 0 ? at(i - 1, j) : inf;
-        const double diagonal = (i > 0 && j > 0) ? at(i - 1, j - 1) : inf;
-        left = local + std::min(std::min(diagonal, up), left);
+      const double up = i > 0 ? row[j] : inf;
+      if (i == 0 && j == 0) {
+        left = local;
+        dir_row[0] = 0;
+      } else {
+        double best;
+        std::uint8_t d;
+        // Deterministic tie order: diagonal (0), vertical/up (1), horizontal/left (2).
+        if (diagonal <= up && diagonal <= left) {
+          best = diagonal;
+          d = 0;
+        } else if (up <= left) {
+          best = up;
+          d = 1;
+        } else {
+          best = left;
+          d = 2;
+        }
+        left = local + best;
+        dir_row[j] = d;
       }
-      at(i, j) = left;
+      diagonal = up;
+      row[j] = left;
     }
   }
-  const double cost = at(nx - 1, ny - 1);
-  // An overflowed cost has +inf cells on its edges, where the walk below would step past row or column 0. Every
-  // caller refuses a non-finite cost before it reads the path.
+  const double cost = row[ny - 1];
+  // An overflowed cost has +inf cells on its edges, where a direction walk cannot match.
+  // Every caller refuses a non-finite cost before reading the path.
   if (!std::isfinite(cost)) return { cost, {} };
 
   std::size_t i = nx - 1;
   std::size_t j = ny - 1;
   path.emplace_back(i, j);
   while (i > 0 || j > 0) {
-    const double diagonal = (i > 0 && j > 0) ? at(i - 1, j - 1) : inf;
-    const double up = i > 0 ? at(i - 1, j) : inf;
-    const double left = j > 0 ? at(i, j - 1) : inf;
-    // Deterministic tie order: diagonal, vertical, horizontal.
-    if (diagonal <= up && diagonal <= left) { --i; --j; }
-    else if (up <= left) { --i; }
+    const std::uint8_t d = dir[i * ny + j];
+    if (d == 0) { --i; --j; }
+    else if (d == 1) { --i; }
     else { --j; }
     path.emplace_back(i, j);
   }
@@ -277,6 +306,22 @@ Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
 double hard_objective(const Series& center, std::span<const SeriesView> series,
                       const char* entry_point)
 {
+  const std::size_t m = series.size();
+  if (!in_parallel_region() && m >= 8) {
+    std::vector<double> costs(m, 0.0);
+    auto worker = [&](std::size_t s) {
+      costs[s] = align_squared(center, series[s], false).cost;
+    };
+    run_openmp(worker, m);
+    double objective = 0.0;
+    for (std::size_t s = 0; s < m; ++s) {
+      require_finite(costs[s], entry_point, "squared-DTW cost");
+      objective += costs[s];
+      require_finite(objective, entry_point, "squared-DTW cost");
+    }
+    return objective;
+  }
+
   double objective = 0.0;
   for (const auto values : series) {
     const double cost = align_squared(center, values, false).cost;
@@ -311,7 +356,8 @@ double dba_align_and_accumulate(const Series& center, std::span<const SeriesView
   sums.assign(L, 0.0);
   counts.assign(L, 0);
 
-  if (M >= 8 && M * L <= 262144 && parallel_dp_fits(M, L, max_series_length(series))) {
+  if (!in_parallel_region() && M >= 8 && M * L <= 262144
+      && parallel_dp_fits(M, L, max_series_length(series))) {
     std::vector<double> all_sums(M * L, 0.0);
     std::vector<std::size_t> all_counts(M * L, 0);
     std::vector<double> costs(M, 0.0);
@@ -435,14 +481,43 @@ Series ssg(std::span<const SeriesView> series, Series center,
   return center;
 }
 
-double softmin3(double a, double b, double c, double gamma)
+inline double softmin3(double a, double b, double c, const core::detail::SoftGammaScale<double>& scale)
 {
   double u = b, v = c;
   double minimum = a;
   if (b < minimum) { u = minimum; minimum = b; }
   if (c < minimum) { v = minimum; minimum = c; }
-  return minimum - gamma * std::log1p(std::exp((minimum - u) / gamma)
-                                      + std::exp((minimum - v) / gamma));
+  return minimum - scale.gamma * std::log1p(std::exp(-scale.scaled(u - minimum))
+                                            + std::exp(-scale.scaled(v - minimum)));
+}
+
+double soft_dtw_squared_value(std::span<const data_t> x, std::span<const data_t> y,
+                              const core::detail::SoftGammaScale<double>& scale)
+{
+  const std::size_t nx = x.size();
+  const std::size_t ny = y.size();
+  auto& row_buf = scratch_row();
+  if (row_buf.size() < ny) {
+    row_buf.reserve(ny);
+    row_buf.resize(ny);
+  }
+  double *const row = row_buf.data();
+  for (std::size_t i = 0; i < nx; ++i) {
+    double left = 0.0;
+    double diagonal = 0.0;
+    for (std::size_t j = 0; j < ny; ++j) {
+      const double diff = x[i] - y[j];
+      const double local = diff * diff;
+      const double up = row[j];
+      if (i == 0 && j == 0) left = local;
+      else if (i == 0) left = left + local;
+      else if (j == 0) left = up + local;
+      else left = local + softmin3(up, left, diagonal, scale);
+      diagonal = up;
+      row[j] = left;
+    }
+  }
+  return row[ny - 1];
 }
 
 } // namespace
@@ -452,6 +527,7 @@ namespace detail {
 SoftDtwValueGradient soft_dtw_squared_value_gradient(
   std::span<const data_t> x, std::span<const data_t> y, double gamma)
 {
+  const core::detail::SoftGammaScale<double> scale(gamma);
   auto& accumulated_buf = scratch_soft_accum();
   auto& adjoint_buf = scratch_soft_adjoint();
   const std::size_t nx = x.size();
@@ -477,13 +553,16 @@ SoftDtwValueGradient soft_dtw_squared_value_gradient(
       else if (i == 0) cell(i, j) = cell(i, j - 1) + local;
       else if (j == 0) cell(i, j) = cell(i - 1, j) + local;
       else cell(i, j) = local + softmin3(cell(i - 1, j), cell(i, j - 1),
-                                         cell(i - 1, j - 1), gamma);
+                                         cell(i - 1, j - 1), scale);
     }
   }
 
-  // The adjoint, in reverse order: a finished cell is pushed to its predecessors with the softmin's Jacobian, the
-  // softmax of their stored values (weights in [0, 1] summing to 1; no local cost is subtracted from a cumulative
-  // one); a first-row or first-column cell has one predecessor, weight 1.
+  SoftDtwValueGradient result;
+  result.value = cell(nx - 1, ny - 1);
+  result.gradient.assign(nx, 0.0);
+
+  // The adjoint, in reverse order, with gradient accumulation fused into the same pass:
+  // when cell (i, j) is visited, all successors have already pushed into adjoint[i, j].
   double *const adjoint = adjoint_buf.data();
   auto gradient_cell = [adjoint, ny](std::size_t i, std::size_t j) -> double& {
     return adjoint[i * ny + j];
@@ -491,29 +570,27 @@ SoftDtwValueGradient soft_dtw_squared_value_gradient(
   std::fill_n(adjoint, cells, 0.0);
   gradient_cell(nx - 1, ny - 1) = 1.0;
   for (std::size_t i = nx; i-- > 0;) {
+    const double xi = x[i];
+    double grad_i = 0.0;
     for (std::size_t j = ny; j-- > 0;) {
       const double adjoint_ij = gradient_cell(i, j);
+      grad_i += adjoint_ij * 2.0 * (xi - y[j]);
       if (i == 0 && j == 0) continue;
       if (i == 0) { gradient_cell(0, j - 1) += adjoint_ij; continue; }
       if (j == 0) { gradient_cell(i - 1, 0) += adjoint_ij; continue; }
       const double up = cell(i - 1, j), left = cell(i, j - 1), diag = cell(i - 1, j - 1);
       const double minimum = std::min(up, std::min(left, diag)); // its weight is exp(-0) == 1
-      const double w_up = up == minimum ? 1.0 : std::exp((minimum - up) / gamma);
-      const double w_left = left == minimum ? 1.0 : std::exp((minimum - left) / gamma);
-      const double w_diag = diag == minimum ? 1.0 : std::exp((minimum - diag) / gamma);
+      const double w_up = up == minimum ? 1.0 : std::exp(-scale.scaled(up - minimum));
+      const double w_left = left == minimum ? 1.0 : std::exp(-scale.scaled(left - minimum));
+      const double w_diag = diag == minimum ? 1.0 : std::exp(-scale.scaled(diag - minimum));
       const double share = adjoint_ij / (w_up + w_left + w_diag);
       gradient_cell(i - 1, j) += share * w_up;
       gradient_cell(i, j - 1) += share * w_left;
       gradient_cell(i - 1, j - 1) += share * w_diag;
     }
+    result.gradient[i] = grad_i;
   }
 
-  SoftDtwValueGradient result;
-  result.value = cell(nx - 1, ny - 1);
-  result.gradient.assign(nx, 0.0);
-  for (std::size_t i = 0; i < nx; ++i)
-    for (std::size_t j = 0; j < ny; ++j)
-      result.gradient[i] += gradient_cell(i, j) * 2.0 * (x[i] - y[j]);
   return result;
 }
 
@@ -521,13 +598,32 @@ SoftDtwValueGradient soft_dtw_squared_value_gradient(
 
 namespace {
 
+double soft_value_objective(const Series& center, std::span<const SeriesView> series, double gamma)
+{
+  const core::detail::SoftGammaScale<double> scale(gamma);
+  const std::size_t m = series.size();
+  double total = 0.0;
+  if (!in_parallel_region() && m >= 4) {
+    std::vector<double> vals(m, 0.0);
+    auto worker = [&](std::size_t s) {
+      vals[s] = soft_dtw_squared_value(center, series[s], scale);
+    };
+    run_openmp(worker, m);
+    for (double v : vals) total += v;
+  } else {
+    for (const auto values : series)
+      total += soft_dtw_squared_value(center, values, scale);
+  }
+  return total / static_cast<double>(m);
+}
+
 detail::SoftDtwValueGradient soft_objective(const Series& center,
                                             std::span<const SeriesView> series,
                                             double gamma)
 {
   detail::SoftDtwValueGradient total;
   total.gradient.assign(center.size(), 0.0);
-  if (series.size() >= 4
+  if (!in_parallel_region() && series.size() >= 4
       && parallel_dp_fits(series.size(), center.size(), max_series_length(series), 2)) {
     std::vector<detail::SoftDtwValueGradient> parts(series.size());
     auto worker = [&](std::size_t s) {
@@ -575,8 +671,8 @@ Series soft_barycenter(std::span<const SeriesView> series, Series center,
 
     bool accepted = false;
     bool saw_finite_trial = false;
+    int accepted_backtrack = 0;
     Series candidate(center.size());
-    detail::SoftDtwValueGradient trial;
     double step = learning_rate;
     for (int backtrack = 0; backtrack < 16; ++backtrack) {
       for (std::size_t i = 0; i < center.size(); ++i)
@@ -586,14 +682,17 @@ Series soft_barycenter(std::span<const SeriesView> series, Series center,
         step *= 0.5;
         continue;
       }
-      trial = soft_objective(candidate, series, options.gamma);
-      if (!soft_state_is_finite(trial)) {
+      // Forward-only value check for backtracking trials; only compute the backward
+      // gradient once a step is accepted.
+      const double trial_val = soft_value_objective(candidate, series, options.gamma);
+      if (!std::isfinite(trial_val)) {
         step *= 0.5;
         continue;
       }
       saw_finite_trial = true;
-      if (trial.value < current.value) {
+      if (trial_val < current.value) {
         accepted = true;
+        accepted_backtrack = backtrack;
         break;
       }
       step *= 0.5;
@@ -603,11 +702,17 @@ Series soft_barycenter(std::span<const SeriesView> series, Series center,
         throw_nonfinite(entry_point, "soft-DTW value or gradient");
       break;
     }
+    auto trial = soft_objective(candidate, series, options.gamma);
+    if (!soft_state_is_finite(trial))
+      throw_nonfinite(entry_point, "soft-DTW value or gradient");
     const double change = relative_change(center, candidate);
     require_finite(change, entry_point, "convergence measure");
     center = std::move(candidate);
     current = std::move(trial);
-    learning_rate = step / (1.0 + options.learning_rate_decay);
+    const double recovered = (accepted_backtrack == 0)
+      ? std::min(options.learning_rate, step * 1.25)
+      : step;
+    learning_rate = recovered / (1.0 + options.learning_rate_decay);
     if (change <= options.tolerance) break;
   }
   return center;
@@ -633,20 +738,87 @@ Series compute_barycenter(std::span<const SeriesView> series, std::size_t target
 double assign(std::span<const SeriesView> data, const std::vector<Series>& centers,
               std::vector<index_t>& labels, std::vector<double>* costs = nullptr)
 {
-  labels.resize(data.size());
-  std::vector<double> local_costs(data.size(), 0.0);
-  auto nearest_center = [&](std::size_t i) {
-    double best = std::numeric_limits<double>::infinity();
-    index_t label = 0;
-    for (std::size_t c = 0; c < centers.size(); ++c) {
-      const double distance = align_squared(data[i], centers[c], false).cost;
-      if (distance < best) { best = distance; label = static_cast<index_t>(c); }
+  const std::size_t n = data.size();
+  const std::size_t k = centers.size();
+  labels.resize(n);
+  std::vector<double> local_costs(n, 0.0);
+
+  core::DistanceConfig sq_cfg;
+  sq_cfg.metric = core::MetricType::SquaredL2;
+  sq_cfg.band = -1;
+  const auto packed_block = core::dtw_lanes_packed
+    ? core::resolve_dtw_packed_block_fn<data_t>(sq_cfg)
+    : decltype(core::resolve_dtw_packed_block_fn<data_t>(sq_cfg)){};
+
+  if (packed_block) {
+    constexpr std::size_t W = core::dtw_lanes<data_t>;
+    if (k >= W) {
+      const std::size_t n_panels = (k + W - 1) / W;
+      std::vector<core::PackedLanesPanel<data_t>> center_panels(n_panels);
+      for (std::size_t b = 0; b < n_panels; ++b) {
+        const std::size_t c0 = b * W, count = std::min(W, k - c0);
+        std::array<SeriesView, W> ys;
+        for (std::size_t w = 0; w < W; ++w)
+          ys[w] = SeriesView(centers[c0 + std::min(w, count - 1)]);
+        core::pack_dtw_panel<data_t>(sq_cfg, ys.data(), center_panels[b]);
+      }
+      auto nearest_center = [&](std::size_t i) {
+        thread_local std::vector<double> dists;
+        if (dists.size() < n_panels * W) dists.resize(n_panels * W);
+        const auto x_prep = core::prepare_dtw_query<data_t>(sq_cfg, data[i]);
+        for (std::size_t b = 0; b < n_panels; ++b)
+          packed_block(x_prep, center_panels[b].view(), std::span<double>(dists.data() + b * W, W));
+        double best = std::numeric_limits<double>::infinity();
+        index_t label = 0;
+        for (std::size_t c = 0; c < k; ++c) {
+          const double d = dists[c];
+          if (d < best) { best = d; label = static_cast<index_t>(c); }
+        }
+        labels[i] = label;
+        local_costs[i] = best;
+      };
+      run_openmp(nearest_center, n);
+    } else {
+      const std::size_t n_blocks = (n + W - 1) / W;
+      auto assign_block = [&](std::size_t b) {
+        const std::size_t i0 = b * W, count = std::min(W, n - i0);
+        std::array<SeriesView, W> ys;
+        for (std::size_t w = 0; w < W; ++w)
+          ys[w] = data[i0 + std::min(w, count - 1)];
+        thread_local core::PackedLanesPanel<data_t> panel;
+        core::pack_dtw_panel<data_t>(sq_cfg, ys.data(), panel);
+        const auto panel_view = panel.view();
+        thread_local std::vector<double> table;
+        if (table.size() < k * W) table.resize(k * W);
+        for (std::size_t c = 0; c < k; ++c)
+          packed_block(SeriesView(centers[c]), panel_view, std::span<double>(table.data() + c * W, W));
+        for (std::size_t w = 0; w < count; ++w) {
+          double best = std::numeric_limits<double>::infinity();
+          index_t label = 0;
+          for (std::size_t c = 0; c < k; ++c) {
+            const double d = table[c * W + w];
+            if (d < best) { best = d; label = static_cast<index_t>(c); }
+          }
+          labels[i0 + w] = label;
+          local_costs[i0 + w] = best;
+        }
+      };
+      run_openmp(assign_block, n_blocks);
     }
-    labels[i] = label;
-    local_costs[i] = best;
-  };
-  // run_openmp carries a failure out of the region, a scratch bad_alloc included.
-  run_openmp(nearest_center, data.size());
+  } else {
+    auto nearest_center = [&](std::size_t i) {
+      double best = std::numeric_limits<double>::infinity();
+      index_t label = 0;
+      for (std::size_t c = 0; c < k; ++c) {
+        const double distance = dtwBanded(data[i], SeriesView(centers[c]), -1, -1.0, core::MetricType::SquaredL2);
+        if (distance < best) { best = distance; label = static_cast<index_t>(c); }
+      }
+      labels[i] = label;
+      local_costs[i] = best;
+    };
+    run_openmp(nearest_center, n);
+  }
+
   for (double cost : local_costs)
     require_finite(cost, "barycenter_kmeans", "assignment cost");
   const double total = std::accumulate(local_costs.begin(), local_costs.end(), 0.0);
@@ -769,9 +941,11 @@ BarycenterClusteringResult barycenter_kmeans(
     for (const auto& c : centers) max_center_len = std::max(max_center_len, c.size());
     const std::size_t matrices_per_thread =
       options.barycenter.method == BarycenterMethod::SoftDTW ? 2 : 1;
-    const bool parallel_centers = parallel_dp_fits(
-      static_cast<std::size_t>(options.n_clusters), max_center_len,
-      max_series_length(data), matrices_per_thread);
+    const int max_t = get_max_threads();
+    const bool parallel_centers =
+      (static_cast<int>(options.n_clusters) >= std::max(2, max_t / 2))
+      && parallel_dp_fits(static_cast<std::size_t>(options.n_clusters), max_center_len,
+                          max_series_length(data), matrices_per_thread);
     run_openmp(update_center, static_cast<std::size_t>(options.n_clusters), parallel_centers);
     centers = std::move(next_centers);
     result.iterations = iteration + 1;
@@ -792,7 +966,7 @@ std::size_t barycenter_scratch(bool release) noexcept
 {
   return held_bytes(release,
                     dtwc::algorithms::scratch_row(),
-                    dtwc::algorithms::scratch_matrix(),
+                    dtwc::algorithms::scratch_dir(),
                     dtwc::algorithms::scratch_path(),
                     dtwc::algorithms::scratch_soft_accum(),
                     dtwc::algorithms::scratch_soft_adjoint());

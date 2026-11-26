@@ -8,6 +8,7 @@
 
 #include "mip.hpp"
 #include "decode_assignment.hpp"
+#include "../algorithms/fast_pam.hpp"
 #include "../Problem.hpp"
 #include "../base/error.hpp"
 
@@ -17,6 +18,8 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <numeric>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -33,37 +36,73 @@ void MIP_clustering_byGurobi(Problem &prob)
 
   const auto Nb = prob.size();
   const auto Nc = prob.n_clusters();
+  const auto n_uz = static_cast<std::size_t>(Nb);
 
   try {
+    if (Nc == 1 && Nb >= 1) {
+      prob.set_result(fast_pam_solve(prob, 1, 0, prob.random_seed()));
+      return;
+    }
+    if (Nc == Nb && Nb >= 1) {
+      core::ClusteringResult result;
+      result.medoid_indices.resize(n_uz);
+      result.labels.resize(n_uz);
+      std::iota(result.medoid_indices.begin(), result.medoid_indices.end(), index_t{ 0 });
+      std::iota(result.labels.begin(), result.labels.end(), index_t{ 0 });
+      result.converged = true;
+      prob.set_result(result);
+      return;
+    }
+
     GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);
 
     // GRBModel::addVars takes an `int` count: an N*N above INT_MAX would narrow
     // into a wrong-sized (or negative) model.
-    const auto n_uz = static_cast<std::size_t>(Nb);
     if (n_uz > static_cast<std::size_t>(std::numeric_limits<int>::max()) / std::max<std::size_t>(n_uz, 1))
       throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
 
-    // The model the HiGHS backend solves: N*N binaries, x[f, p] at f*N + p, the diagonal x[f, f] opening f.
+    // The model the HiGHS backend solves: N diagonal binaries y_f = x[f, f] and N*(N-1) continuous assignment variables.
     auto pmedian = mip::build_p_median_model(prob);
-    std::unique_ptr<GRBVar[]> w{ model.addVars(pmedian.num_col, GRB_BINARY) };
-    model.set(GRB_DoubleAttr_Obj, w.get(), pmedian.col_cost.data(), pmedian.num_col);
+    if (!pmedian.start.empty()) {
+      double start_obj = 0.0;
+      for (std::size_t i = 0; i < pmedian.start.size(); ++i)
+        start_obj += pmedian.col_cost[i] * pmedian.start[i];
+      if (start_obj == 0.0) {
+        prob.set_result(mip::decode_assignment(pmedian.start, prob.distance_matrix(), n_uz, Nc, "Gurobi"));
+        return;
+      }
+    }
 
-    // Branch on medoid selection first — once A[i,i] is fixed,
-    // assignment is a transportation problem (TU) and LP-integral.
-    for (std::size_t i = 0; i < n_uz; ++i)
-      w[i * (n_uz + 1)].set(GRB_IntAttr_BranchPriority, 100);
+    const int num_col = pmedian.num_col;
+    std::vector<char> vtype(static_cast<std::size_t>(num_col), GRB_CONTINUOUS);
+    for (std::size_t c = 0; c < static_cast<std::size_t>(num_col); ++c)
+      if (pmedian.integrality[c] != 0) vtype[c] = GRB_BINARY;
 
-    // The k medoids and the one medoid of each point are equalities; the others are x[f, p] - x[f, f] <= 0 (their
-    // lower bound of -1 holds for any binaries).
-    for (std::size_t row = 0; row < pmedian.row_upper.size(); ++row) {
+    std::unique_ptr<GRBVar[]> w{
+      model.addVars(pmedian.col_lower.data(), pmedian.col_upper.data(), pmedian.col_cost.data(),
+                    vtype.data(), nullptr, num_col)
+    };
+
+    // Row 0: Σ_f x[f, f] = k.
+    {
       GRBLinExpr lhs = 0;
-      for (auto term = static_cast<std::size_t>(pmedian.a_start[row]);
-           term < static_cast<std::size_t>(pmedian.a_start[row + 1]); ++term)
-        lhs += pmedian.a_value[term] * w[static_cast<std::size_t>(pmedian.a_index[term])];
-
-      model.addConstr(lhs, pmedian.row_lower[row] == pmedian.row_upper[row] ? GRB_EQUAL : GRB_LESS_EQUAL,
-                      pmedian.row_upper[row]);
+      for (std::size_t f = 0; f < n_uz; ++f)
+        lhs += w[f * (n_uz + 1)];
+      model.addConstr(lhs, GRB_EQUAL, pmedian.row_upper[0]);
+    }
+    // Rows 1..N: Σ_f x[f, p] = 1 for each point p.
+    for (std::size_t p = 0; p < n_uz; ++p) {
+      GRBLinExpr lhs = 0;
+      for (std::size_t f = 0; f < n_uz; ++f)
+        lhs += w[f * n_uz + p];
+      model.addConstr(lhs, GRB_EQUAL, 1.0);
+    }
+    // Linking rows: x[f, p] - x[f, f] <= 0 for p != f.
+    for (std::size_t f = 0; f < n_uz; ++f) {
+      const GRBVar &yf = w[f * (n_uz + 1)];
+      for (std::size_t p = 0; p < n_uz; ++p)
+        if (p != f) model.addConstr(w[f * n_uz + p] - yf, GRB_LESS_EQUAL, 0.0);
     }
 
     // Solver tuning from MIPSettings
@@ -77,7 +116,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // Warm start: FastPAM's clustering, which the model carries when MIPSettings::warm_start is set
     if (!pmedian.start.empty())
-      model.set(GRB_DoubleAttr_Start, w.get(), pmedian.start.data(), pmedian.num_col);
+      model.set(GRB_DoubleAttr_Start, w.get(), pmedian.start.data(), num_col);
     pmedian = {}; // Gurobi holds its own copy now: the model's N²-sized arrays go before the solve
 
     if (prob.mip_settings.verbose_solver || prob.verbose())
@@ -92,11 +131,10 @@ void MIP_clustering_byGurobi(Problem &prob)
         "Gurobi MIP did not solve to optimality (status code "
         + std::to_string(opt_status) + "). No valid clustering produced.");
 
-    std::vector<double> solution(n_uz * n_uz);
-    for (std::size_t index = 0; index < solution.size(); ++index)
-      solution[index] = w[index].get(GRB_DoubleAttr_X);
-
-    prob.set_result(mip::decode_assignment(solution, Nb, Nc, false, "Gurobi"));
+    std::unique_ptr<double[]> solution{ model.get(GRB_DoubleAttr_X, w.get(), num_col) };
+    prob.set_result(mip::decode_assignment(
+      std::span<const double>(solution.get(), static_cast<std::size_t>(num_col)),
+      prob.distance_matrix(), n_uz, Nc, "Gurobi"));
 
   } catch (GRBException &e) {
     // Must precede std::runtime_error (which GRBException derives from).
