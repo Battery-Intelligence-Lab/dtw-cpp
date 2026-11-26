@@ -102,6 +102,13 @@ jobs:
             OpenMP_ROOT=$RUNNER_TEMP/libomp
           CIBW_BEFORE_ALL_MACOS: bash scripts/build_libomp_macos.sh "$OpenMP_ROOT"
 
+          # Linux: clang and LLVM's OpenMP runtime (libomp), as on macOS and Windows, from the
+          # manylinux_2_28 image's AlmaLinux 8 AppStream. clang-libs brings gcc-toolset-15, whose
+          # libstdc++ its /etc/clang/*.cfg selects; llvm brings llvm-ar, without which CMake's IPO
+          # check fails the configure; auditwheel copies libomp into dtwcpp.libs/.
+          CIBW_BEFORE_ALL_LINUX: dnf install -y clang llvm libomp-devel
+          CIBW_ENVIRONMENT_LINUX: CC=clang CXX=clang++
+
           # Windows: clang-cl and its resource compiler from the LLVM fetched above, through
           # Ninja (CMake takes lld-link, llvm-lib and llvm-mt from the compiler's directory).
           # clang-cl and lld-link find Visual Studio's headers and libraries and the Windows

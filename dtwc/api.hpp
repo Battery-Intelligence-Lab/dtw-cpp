@@ -58,17 +58,20 @@ public:
   char delimiter() const noexcept { return delimiter_; }
   /// The precision cluster() stores the series in, as `--dtype` does.
   core::Precision dtype() const noexcept { return dtype_; }
+  /// Features per time step (1 = univariate; >1 = interleaved multivariate).
+  std::size_t ndim() const noexcept { return ndim_; }
 
 private:
-  friend Dataset load(const std::filesystem::path &, index_t, index_t, char, std::string_view, core::Precision);
-  friend Dataset load(series_type, index_t, index_t, char, std::string_view, core::Precision);
+  friend Dataset load(const std::filesystem::path &, index_t, index_t, char, std::string_view, core::Precision,
+                      std::size_t);
+  friend Dataset load(series_type, index_t, index_t, char, std::string_view, core::Precision, std::size_t);
   friend Result cluster(Dataset &&, const Config &);
   friend std::vector<double> cdist(const Dataset &, const Dataset &, const Config &);
 
   explicit Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
-                   char delimiter, std::string name, core::Precision dtype);
+                   char delimiter, std::string name, core::Precision dtype, std::size_t ndim);
   explicit Dataset(series_type source, index_t skip_cols, index_t skip_rows,
-                   char delimiter, std::string name, core::Precision dtype);
+                   char delimiter, std::string name, core::Precision dtype, std::size_t ndim);
 
   /// The in-memory series, moved out, with skip_rows / skip_cols applied (a path
   /// is run()'s to read).
@@ -80,22 +83,25 @@ private:
   char delimiter_ = 0;
   std::string name_ = "dataset";
   core::Precision dtype_ = core::Precision::Float64;
+  std::size_t ndim_ = 1;
 };
 
 /** Wrap a path lazily.  No file is opened until cluster() is called.
  *  `skip_rows` drops that many leading LINES of the file, as `--skip-rows` does.
  *  `dtype` Float32 stores the series as float, half the memory: the reader rounds
- *  each value, never holding a double copy. */
+ *  each value, never holding a double copy.  `ndim` is the number of features per
+ *  time step (>= 1; interleaved layout). */
 Dataset load(const std::filesystem::path &source, index_t skip_cols = 0,
              index_t skip_rows = 0, char delimiter = 0, std::string_view name = "",
-             core::Precision dtype = core::Precision::Float64);
+             core::Precision dtype = core::Precision::Float64, std::size_t ndim = 1);
 
 /** Wrap an in-memory row-per-series array.  `skip_rows` drops that many leading
  *  SERIES — one memory row is one file line. `dtype` Float32 rounds each value to
- *  float when cluster() runs. */
+ *  float when cluster() runs.  `ndim` is the number of features per time step (>= 1;
+ *  each series' flat length must be divisible by `ndim`). */
 Dataset load(Dataset::series_type source, index_t skip_cols = 0, index_t skip_rows = 0,
              char delimiter = 0, std::string_view name = "",
-             core::Precision dtype = core::Precision::Float64);
+             core::Precision dtype = core::Precision::Float64, std::size_t ndim = 1);
 
 /** `load(src, skip_cols, delimiter)` does not compile: without these,
  *  `load(p, 0, ',')` would bind the char to `skip_rows` (',' == 44). Only a
@@ -174,8 +180,8 @@ Result cluster(Dataset &&data, index_t k, std::string_view method = "auto",
 
 /**
  * Cluster `data` with every setting of `cfg`, as run() does for `cfg.input`: `cfg.output` is the directory the run
- * writes its result files into, the run report last ("" writes none; Config's own default is dtwc_cl's `./results`,
- * so clear it to cluster in memory), `cfg.checkpoint` and `cfg.checkpoint_interval` save and resume the distance
+ * writes its result files into, the run report last ("" writes none, which is Config's own default; dtwc_cl defaults
+ * it to `./results`), `cfg.checkpoint` and `cfg.checkpoint_interval` save and resume the distance
  * matrix, `cfg.device` runs it (a GPU request that cannot be honoured is a DeviceError, or, with `cfg.fallback`, a CPU
  * run that says so on stderr and in the report), and `cfg.name` names the run (the Dataset's name where it is empty).
  * `cfg.input` is not read: `data` is the input, read with the reader options it was made with. A reader option of

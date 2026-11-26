@@ -85,6 +85,7 @@ int main(int argc, char *argv[])
     CLI::App app{ "DTWC++ -- Dynamic Time Warping Clustering" };
     app.set_version_flag("--version", DTWC_VERSION_STRING, "Print the DTWC++ version and exit");
     dtwc::Config config;
+    config.output = "./results";
     dtwc::cli::bind(app, config);
     bool print_config = false;
     app.add_flag("--print-config", print_config, "Print the settings as a TOML config file and exit")

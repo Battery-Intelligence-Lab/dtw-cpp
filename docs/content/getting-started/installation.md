@@ -106,7 +106,7 @@ pip install dtwcpp
 
 The wheel links no HiGHS: exact MIP clustering (`method="mip"`) solves with highspy, which `pip install dtwcpp` installs with it.
 
-The macOS and Windows wheels carry LLVM's OpenMP runtime (`libomp`). A process that also loads Intel's OpenMP runtime (`libiomp5`, as PyTorch and MKL builds do) can abort with "OMP: Error #15"; keep such work in a separate process.
+The wheels carry LLVM's OpenMP runtime (`libomp`) on every platform. A process that also loads Intel's OpenMP runtime (`libiomp5`, as PyTorch and MKL builds do) can abort with "OMP: Error #15"; keep such work in a separate process.
 
 To build from source with GPU support:
 
