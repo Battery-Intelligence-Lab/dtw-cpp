@@ -118,10 +118,11 @@ struct EventDeleter {
 using CudaEvent = std::unique_ptr<CUevent_st, EventDeleter>;
 
 /// Create a CUDA event and return an owning CudaEvent.
-inline CudaEvent make_cuda_event()
+/// Synchronization-only events disable timing for lower overhead.
+inline CudaEvent make_cuda_event(bool disable_timing = true)
 {
   cudaEvent_t e = nullptr;
-  CUDA_CHECK(cudaEventCreate(&e));
+  CUDA_CHECK(cudaEventCreateWithFlags(&e, disable_timing ? cudaEventDisableTiming : cudaEventDefault));
   return CudaEvent(e);
 }
 

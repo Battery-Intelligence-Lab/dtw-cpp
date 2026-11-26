@@ -9,8 +9,7 @@
 
 #pragma once
 
-#include "launch_prep.hpp"
-
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <string_view>
@@ -18,43 +17,51 @@
 namespace dtwc::cuda::detail {
 
 enum class KernelPath {
-  Warp,
-  RegTileW4,
-  RegTileW8,
-  Wavefront,
-  WavefrontGlobal ///< the wavefront with its anti-diagonals in global memory
+  WarpTileW1,      ///< register-tiled warp kernel, TILE_W=1 (1-pass L<=32)
+  WarpTileW4,      ///< register-tiled warp kernel, TILE_W=4 (1-pass 32<L<=128, multi-pass L>128)
+  WarpTileW8,      ///< register-tiled warp kernel, TILE_W=8 (FP32: 1-pass 128<L<=256, multi-pass L>256)
+  Wavefront,       ///< anti-diagonal wavefront fallback in shared memory
+  WavefrontGlobal  ///< anti-diagonal wavefront fallback in global memory
 };
 
-/// The kernel for a batch whose longest series has @p max_length samples of
-/// @p sample_bytes each, on a device whose SM has @p sm_shared_bytes of shared
-/// memory, of which every wavefront block also takes @p block_overhead_bytes
-/// (the kernel's static and the runtime's reserved bytes). Each path up to the
-/// wavefront is the fastest one that accepts its range, by more than 5 % on the
-/// RTX 4000 Ada (measured 2026-09-29). Up to
-/// L = 2048 a wavefront block's anti-diagonals (32 KB at most) fit any supported
-/// GPU; above it they stay in shared memory only where three blocks fit an SM,
-/// and go to global memory otherwise, which is faster there: 0.64-0.68 of the
-/// time at FP32 L 6000-8446 and 0.76-0.84 at FP64 L 2049-4223 on an RTX 4000
-/// Ada (measured 2026-09-30).
+/// The kernel for a batch of @p num_pairs pairs whose longest series has
+/// @p max_length samples of @p sample_bytes each, on a device with @p sm_count
+/// SMs and @p max_shared_per_block opt-in shared memory per block (minus
+/// @p block_overhead_bytes).
+///
+/// The unified multi-pass warp register-tiled kernel (`warptile_w1` for
+/// L <= 32, `warptile_w4` for 32 < L <= 128 or FP64 L > 32, `warptile_w8`
+/// for FP32 L > 128) handles all batches except when pair parallelism is too
+/// low for warps on long series (`num_pairs < 8 * sm_count && max_length > 1024`)
+/// or when the persistent warp border buffer does not fit available VRAM
+/// (`!warptile_border_fits`), in which case it falls back to the 3-buffer
+/// anti-diagonal wavefront (`wavefront` in shared memory if
+/// `3 * max_length * sample_bytes` fits a block, otherwise `wavefront_global`).
 inline KernelPath select_kernel(std::size_t max_length, std::size_t sample_bytes,
-                                std::size_t sm_shared_bytes,
+                                std::size_t num_pairs, int sm_count,
+                                bool warptile_border_fits,
+                                std::size_t max_shared_per_block,
                                 std::size_t block_overhead_bytes) noexcept
 {
-  if (max_length <= 32) return KernelPath::Warp;
-  if (max_length <= 128) return KernelPath::RegTileW4;
-  if (max_length <= 256) return KernelPath::RegTileW8;
-  const std::size_t block_bytes =
-      wavefront_buffer_count(max_length) * max_length * sample_bytes + block_overhead_bytes;
-  if (max_length <= 2048 || 3 * block_bytes <= sm_shared_bytes) return KernelPath::Wavefront;
+  const bool fp32 = (sample_bytes == 4);
+  const std::size_t min_pairs = static_cast<std::size_t>(8) * static_cast<std::size_t>(std::max(sm_count, 1));
+  const bool use_wavefront_fallback =
+      (num_pairs < min_pairs && max_length > 1024) || !warptile_border_fits;
+  if (!use_wavefront_fallback) {
+    if (max_length <= 32) return KernelPath::WarpTileW1;
+    return (fp32 && max_length > 128) ? KernelPath::WarpTileW8 : KernelPath::WarpTileW4;
+  }
+  const std::size_t needed_shared = 3 * max_length * sample_bytes + block_overhead_bytes;
+  if (needed_shared <= max_shared_per_block) return KernelPath::Wavefront;
   return KernelPath::WavefrontGlobal;
 }
 
 inline std::string_view kernel_path_name(KernelPath path)
 {
   switch (path) {
-  case KernelPath::Warp: return "warp";
-  case KernelPath::RegTileW4: return "regtile_w4";
-  case KernelPath::RegTileW8: return "regtile_w8";
+  case KernelPath::WarpTileW1: return "warptile_w1";
+  case KernelPath::WarpTileW4: return "warptile_w4";
+  case KernelPath::WarpTileW8: return "warptile_w8";
   case KernelPath::Wavefront: return "wavefront";
   case KernelPath::WavefrontGlobal: return "wavefront_global";
   }

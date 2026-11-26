@@ -145,11 +145,12 @@ struct F12CUDARoute {
   size_t filler_length; // 0: no filler
 };
 
-constexpr std::array<F12CUDARoute, 4> f12_cuda_routes{{
-    {"warp", 0},
-    {"regtile_w4", 64},
-    {"regtile_w8", 129},
-    {"wavefront", 257}
+constexpr std::array<F12CUDARoute, 5> f12_cuda_routes{{
+    {"warptile_w1", 0},
+    {"warptile_w4", 64},
+    {"warptile_w4", 129},
+    {"warptile_w4", 257},
+    {"wavefront", 1025}
 }};
 
 std::vector<std::vector<double>> f12_pairwise_inventory(
@@ -186,21 +187,19 @@ dtwc::cuda::CUDADistMatOptions f12_cuda_options(
   return opts;
 }
 
-/// The first length that takes the global-memory wavefront on device 0. Up to
-/// L = 2048 the wavefront keeps its anti-diagonals in shared memory; above it,
-/// only while three blocks fit an SM's shared memory, each three anti-diagonals
-/// of L values, the kernel's 16 static bytes and the runtime's reserved bytes:
-/// on the RTX 4000 Ada (100 KB per SM, 1 KB reserved) FP32 2758 and FP64 2049.
+/// The first length that takes the global-memory wavefront fallback on device 0
+/// when pair parallelism is low (num_pairs < 8 * sm_count): 3 anti-diagonals
+/// of L values exceed max_shared_per_block_optin - static_overhead - reserved.
 size_t first_global_length(bool fp32)
 {
-  int sm_shared = 0;
+  int block_shared = 0;
   int reserved = 0;
-  REQUIRE(cudaDeviceGetAttribute(&sm_shared, cudaDevAttrMaxSharedMemoryPerMultiprocessor, 0)
+  REQUIRE(cudaDeviceGetAttribute(&block_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, 0)
           == cudaSuccess);
   REQUIRE(cudaDeviceGetAttribute(&reserved, cudaDevAttrReservedSharedMemoryPerBlock, 0)
           == cudaSuccess);
-  const size_t block_room = static_cast<size_t>(sm_shared) / 3 - 16 - static_cast<size_t>(reserved);
-  return std::max<size_t>(2049, block_room / (3 * (fp32 ? 4 : 8)) + 1);
+  const size_t block_room = static_cast<size_t>(block_shared) - 32 - static_cast<size_t>(reserved);
+  return std::max<size_t>(1025, block_room / (3 * (fp32 ? 4 : 8)) + 1);
 }
 
 } // anonymous namespace
@@ -319,7 +318,7 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
           gpu_fill(pairwise_series, opts);
       REQUIRE(pairwise.n == 2);
       REQUIRE(pairwise.matrix.size() == 4);
-      REQUIRE(pairwise.kernel_used == "warp");
+      REQUIRE(pairwise.kernel_used == "warptile_w1");
       REQUIRE(pairwise.matrix[1] == expected);
       REQUIRE(pairwise.matrix[2] == expected);
     }
@@ -339,40 +338,38 @@ TEST_CASE("F12 CUDA FP32 results translate no-path to the public double sentinel
 
   const auto pairwise = gpu_fill(
       f12_pairwise_inventory(route), opts);
-  REQUIRE(pairwise.kernel_used == "warp");
+  REQUIRE(pairwise.kernel_used == "warptile_w1");
   REQUIRE(pairwise.matrix[1] == oracle::public_no_path_sentinel);
   REQUIRE(pairwise.matrix[2] == oracle::public_no_path_sentinel);
 }
 
 // Every range of the automatic kernel choice, at its edges, in both precisions:
-// warp (L <= 32), regtile<4> (<= 128), regtile<8> (<= 256), and the wavefront's
-// preload (<= 512), three-buffer (<= 1024), double-buffer (<= 2048) and long
-// three-buffer modes, the last in global memory where three shared blocks do not
-// fit an SM. The oracle is the host kernel in the fill's precision.
+// warptile_w1 (L <= 32), warptile_w4 (32 < L <= 128 or FP64, up to L = 1024 for
+// small N), warptile_w8 (FP32 128 < L <= 1024 for small N), and the wavefront
+// fallback above L = 1024 for low pair counts (shared or global memory).
 TEST_CASE("CUDA fill matches the host kernel in every automatic kernel range",
           "[cuda][regime]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  struct Regime {
-    size_t L;
-    const char *kernel;
-  };
-  const auto regime = GENERATE(values<Regime>({
-      {16, "warp"}, {32, "warp"}, {128, "regtile_w4"}, {256, "regtile_w8"},
-      {257, "wavefront"}, {512, "wavefront"}, {1024, "wavefront"},
-      {1025, "wavefront"}, {2048, "wavefront"}, {2049, "wavefront"}}));
+  const size_t L = GENERATE(size_t{16}, size_t{32}, size_t{128}, size_t{256},
+                            size_t{257}, size_t{512}, size_t{1024},
+                            size_t{1025}, size_t{2048}, size_t{2049});
   const bool fp32 = GENERATE(true, false);
-  CAPTURE(regime.L, fp32);
+  CAPTURE(L, fp32);
 
-  const auto series = generate_random_series(6, regime.L, /*seed=*/7);
+  const auto series = generate_random_series(6, L, /*seed=*/7);
   dtwc::cuda::CUDADistMatOptions opts;
   opts.precision = fp32 ? dtwc::GpuPrecision::FP32
                         : dtwc::GpuPrecision::FP64;
   const auto gpu_result = gpu_fill(series, opts);
 
-  REQUIRE(gpu_result.kernel_used
-          == (regime.L < first_global_length(fp32) ? regime.kernel : "wavefront_global"));
+  const std::string expected_kernel = (L <= 32)
+      ? "warptile_w1"
+      : ((L <= 1024)
+             ? ((fp32 && L > 128) ? "warptile_w8" : "warptile_w4")
+             : (L < first_global_length(fp32) ? "wavefront" : "wavefront_global"));
+  REQUIRE(gpu_result.kernel_used == expected_kernel);
   REQUIRE(gpu_result.matrix == (fp32 ? cpu_fp32_distance_matrix(series)
                                      : cpu_distance_matrix(series)));
 }
@@ -585,7 +582,7 @@ TEST_CASE("CUDA wavefront keeps its anti-diagonals in global memory where three 
   const auto host = [fp32](const auto &series) {
     return fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series);
   };
-  for (const size_t L : { first_global - 1, first_global }) {
+  for (const size_t L : { first_global - 16, first_global }) {
     CAPTURE(L);
     const auto series = generate_random_walks(2, L, /*seed=*/41);
     const auto gpu_result = gpu_fill(series, opts);
@@ -626,19 +623,16 @@ TEST_CASE("CUDA fill of series beyond the shared-memory limit matches the host k
           == (c.fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
 }
 
-// More pairs than the grid has blocks, so each block runs several pairs in its
-// own slice of the global scratch: one long series and 63 of 1 to 300 samples,
-// which keeps the host oracle cheap. At FP64 L = 8448 the slices of the resident
-// blocks pass the L2 (40 MB on the RTX 4000 Ada), so the grid is cut to the
-// slices the L2 holds.
-TEST_CASE("CUDA global-memory wavefront runs many pairs per block",
+// High pair-count long-series batches run on the persistent multi-pass warptile
+// kernel, matching the host kernel bit for bit on ragged series. Also verify
+// global-memory wavefront when pair count < 8 * sm_count at long L.
+TEST_CASE("CUDA multi-pass warptile runs many ragged long-series pairs",
           "[cuda][long]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
   const bool fp32 = GENERATE(true, false);
-  const size_t L = fp32 ? first_global_length(true)
-                         : std::max<size_t>(8448, first_global_length(false));
+  const size_t L = fp32 ? 2758 : 2049;
   CAPTURE(fp32, L);
   auto series = generate_random_walks(64, L, /*seed=*/20261002);
   for (size_t k = 1; k < series.size(); ++k) series[k].resize(1 + (k * 37) % 300);
@@ -646,9 +640,17 @@ TEST_CASE("CUDA global-memory wavefront runs many pairs per block",
   dtwc::cuda::CUDADistMatOptions opts;
   opts.precision = fp32 ? dtwc::GpuPrecision::FP32 : dtwc::GpuPrecision::FP64;
   const auto gpu_result = gpu_fill(series, opts);
-  CHECK(gpu_result.kernel_used == "wavefront_global");
+  CHECK(gpu_result.kernel_used == (fp32 ? "warptile_w8" : "warptile_w4"));
   REQUIRE(gpu_result.matrix
           == (fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
+
+  // Banded multi-pass warptile on high pair count.
+  opts.band = 40;
+  auto banded_series = generate_random_walks(40, 600, /*seed=*/20261004);
+  for (size_t k = 0; k < banded_series.size(); ++k) banded_series[k].resize(570 + (k * 7) % 31);
+  const auto banded_gpu = gpu_fill(banded_series, opts);
+  CHECK(banded_gpu.kernel_used == (fp32 ? "warptile_w8" : "warptile_w4"));
+  if (!fp32) REQUIRE(banded_gpu.matrix == cpu_banded_distance_matrix(banded_series, 40));
 }
 
 // The global-memory wavefront runs the shared kernel's band and squared-L2 cost
@@ -1367,6 +1369,24 @@ TEST_CASE("CUDA Auto precision follows the device's FP32:FP64 throughput",
           == (fp32_per_fp64 > 2 ? fp32 : fp64));
 }
 
+TEST_CASE("Problem GPU Auto precision equals explicit FP32 or FP64 value-for-value",
+          "[cuda][precision][problem]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  const auto series = generate_random_series(6, 40, /*seed=*/17);
+  const auto fill_prob = [&](dtwc::GpuPrecision p) {
+    dtwc::Problem prob("auto_eq");
+    prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series), { "0", "1", "2", "3", "4", "5" } });
+    prob.set_device(dtwc::Device::GPU);
+    prob.set_gpu_precision(p);
+    prob.fill_distance_matrix();
+    return dtwc::io::to_full_matrix(prob.distance_matrix());
+  };
+  const auto want = fill_prob(dtwc::cuda::cuda_uses_fp32(dtwc::GpuPrecision::Auto)
+                                  ? dtwc::GpuPrecision::FP32 : dtwc::GpuPrecision::FP64);
+  REQUIRE(fill_prob(dtwc::GpuPrecision::Auto) == want);
+}
+
 // ---------------------------------------------------------------------------
 // Squared-L2 metric: GPU vs CPU
 // ---------------------------------------------------------------------------
@@ -1802,7 +1822,7 @@ TEST_CASE("CUDA fills over two launches match the host kernel in the regtile and
     size_t long_length;
     const char *kernel;
   };
-  const auto family = GENERATE(values<Family>({ { 33, "regtile_w4" }, { 257, "wavefront" } }));
+  const auto family = GENERATE(values<Family>({ { 33, "warptile_w4" }, { 257, "warptile_w4" } }));
   CAPTURE(family.kernel);
 
   constexpr size_t N = 16385;
@@ -1950,23 +1970,18 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  struct Regime {
-    size_t L;
-    const char *kernel;
-  };
-  const auto regime = GENERATE(values<Regime>({
-      {16, "warp"}, {128, "regtile_w4"}, {256, "regtile_w8"}, {512, "wavefront"},
-      {1024, "wavefront"}, {2048, "wavefront"}, {2049, "wavefront"}, {2758, "wavefront"}}));
+  const size_t L = GENERATE(size_t{16}, size_t{128}, size_t{256}, size_t{512},
+                            size_t{1024}, size_t{2048}, size_t{2049}, size_t{2758});
   const bool fp32 = GENERATE(true, false);
-  const int band = GENERATE_COPY(-1, static_cast<int>(regime.L / 4));
-  CAPTURE(regime.L, fp32, band);
+  const int band = GENERATE_COPY(-1, static_cast<int>(L / 4));
+  CAPTURE(L, fp32, band);
 
   // Lengths L - L/4 .. L, series 0 the longest: every band here has a path.
-  std::mt19937 rng(static_cast<unsigned>(regime.L));
+  std::mt19937 rng(static_cast<unsigned>(L));
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   std::vector<std::vector<double>> series(13);
   for (size_t i = 0; i < series.size(); ++i) {
-    series[i].resize(regime.L - (i * 7919) % (regime.L / 4 + 1));
+    series[i].resize(L - (i * 7919) % (L / 4 + 1));
     for (auto &v : series[i]) v = value(rng);
   }
   const std::vector<std::vector<double>> medoids{ series[4], series[9], series[9] };
@@ -1985,8 +2000,12 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
         next = first + count;
       });
   REQUIRE(next == series.size());
-  REQUIRE(result.kernel_used
-          == (regime.L < first_global_length(fp32) ? regime.kernel : "wavefront_global"));
+  const std::string expected_kernel = (L <= 32)
+      ? "warptile_w1"
+      : ((L <= 1024)
+             ? ((fp32 && L > 128) ? "warptile_w8" : "warptile_w4")
+             : (L < first_global_length(fp32) ? "wavefront" : "wavefront_global"));
+  REQUIRE(result.kernel_used == expected_kernel);
   REQUIRE(result.pairs_computed == series.size() * k);
 
   for (size_t i = 0; i < series.size(); ++i)
@@ -2009,6 +2028,65 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
   for (size_t i = 0; i < series.size(); ++i) {
     CAPTURE(i);
     CHECK(d[i * k + 1] == d[i * k + 2]);
+  }
+}
+
+TEST_CASE("CUDA compute_medoid_argmin_cuda deduplicates medoids and matches CPU tie-breaking",
+          "[cuda][medoids][argmin]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  // 20 series with exact duplicates at index 15 (same as 0) and 16 (same as 5).
+  auto series = generate_random_series(18, 64, /*seed=*/777);
+  series[15] = series[0];
+  series[16] = series[5];
+  // 2 samples x 3 medoids each, with duplicate medoids across samples and self-ties.
+  const std::vector<dtwc::index_t> medoid_indices{ 0, 5, 10, 5, 15, 17 };
+  std::vector<std::span<const double>> medoids;
+  for (const dtwc::index_t idx : medoid_indices) medoids.push_back(series[static_cast<size_t>(idx)]);
+
+  for (const bool fp32 : { false, true }) {
+    for (const int band : { -1, 8 }) {
+      CAPTURE(fp32, band);
+      dtwc::cuda::CUDADistMatOptions opts;
+      opts.precision = fp32 ? dtwc::GpuPrecision::FP32 : dtwc::GpuPrecision::FP64;
+      opts.band = band;
+
+      std::vector<std::vector<dtwc::index_t>> gpu_labels(2, std::vector<dtwc::index_t>(series.size()));
+      std::vector<double> gpu_best(2 * series.size());
+      const auto res = dtwc::cuda::compute_medoid_argmin_cuda(
+          series.size(), [&series](size_t i) { return std::span<const double>(series[i]); },
+          medoids, medoid_indices, 0, 2, 3, opts,
+          [](size_t count, const std::function<void(size_t)> &task) { dtwc::run_openmp(task, count); },
+          [&](size_t first, size_t count, std::span<const dtwc::index_t> labels, std::span<const double> best) {
+            for (size_t s = 0; s < 2; ++s) {
+              std::copy_n(labels.data() + s * count, count, gpu_labels[s].data() + first);
+              std::copy_n(best.data() + s * count, count, gpu_best.data() + s * series.size() + first);
+            }
+          });
+      REQUIRE(res.pairs_computed == series.size() * 5); // 6 slots -> 5 unique medoids
+
+      if (!fp32) {
+        // Exact bit-for-bit parity with CPU assign_point on FP64 L1.
+        for (size_t s = 0; s < 2; ++s) {
+          for (size_t p = 0; p < series.size(); ++p) {
+            dtwc::index_t cpu_lbl = 0;
+            double cpu_best = 0.0;
+            dtwc::algorithms::detail::assign_point(
+                static_cast<dtwc::index_t>(p),
+                std::span<const dtwc::index_t>(medoid_indices).subspan(s * 3, 3),
+                cpu_lbl, cpu_best, [&](dtwc::index_t m) {
+                  return dtwc::dtwBanded(series[p], series[static_cast<size_t>(medoid_indices[s * 3 + m])], band);
+                });
+            REQUIRE(gpu_labels[s][p] == cpu_lbl);
+            REQUIRE(gpu_best[s * series.size() + p] == cpu_best);
+          }
+        }
+      }
+      // Sample 1 has medoid slot 1 = index 15 (duplicate of index 0); point 15 must serve itself (label 1).
+      CHECK(gpu_labels[1][15] == 1);
+      CHECK(gpu_best[1 * series.size() + 15] == 0.0);
+    }
   }
 }
 
@@ -2306,8 +2384,8 @@ TEST_CASE("HG0: the GPU's FP64 L1 assignment and fill equal the CPU's bit for bi
     const char *kernel;
     std::size_t max_L;
   };
-  const auto shape = GENERATE(values<Shape>({ { false, -1, "regtile_w8", 211 }, { true, 2, "regtile_w4", 128 },
-                                              { true, -1, "regtile_w4", 128 } }));
+  const auto shape = GENERATE(values<Shape>({ { false, -1, "warptile_w4", 211 }, { true, 2, "warptile_w4", 128 },
+                                              { true, -1, "warptile_w4", 128 } }));
   const int threads = GENERATE(1, 0); // 0: the default team
   const std::size_t block = GENERATE(std::size_t{ 307 }, std::size_t{ 50 }, std::size_t{ 1 });
   CAPTURE(shape.narrow, shape.band, threads, block);
@@ -2597,7 +2675,7 @@ TEST_CASE("HG4: a CUDA fill session's row ranges write the matrix its whole fill
   auto whole = matrix();
   dtwc::cuda::DistanceFill fill(N, at, opts, team, whole);
   fill.rows(0, N, whole);
-  REQUIRE(fill.result().kernel_used == "regtile_w8");
+  REQUIRE(fill.result().kernel_used == (precision == dtwc::GpuPrecision::FP32 ? "warptile_w8" : "warptile_w4"));
   REQUIRE(fill.result().pairs_computed == N * (N - 1) / 2);
   REQUIRE(fill.fp32() == (precision == dtwc::GpuPrecision::FP32));
   const auto want = packed_bytes(whole);

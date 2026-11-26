@@ -110,22 +110,4 @@ inline void require_cuda_device(bool available, const char *entry)
     throw dtwc::DeviceError(std::string(entry) + ": " + no_cuda_device_reason() + ". No CPU fallback was attempted.");
 }
 
-/// The wavefront stages both series in shared memory up to this length.
-inline constexpr std::size_t kPreloadMaxLength = 512;
-
-/// @brief Shared-memory buffer count for the anti-diagonal wavefront kernels.
-///
-/// L<=512   : preload mode (2 series + 3 anti-diagonal buffers).
-/// 512<L<=1024 : 3 anti-diagonal buffers.
-/// 1024<L<=2048: double-buffer mode (2 buffers, better occupancy).
-/// L>2048   : back to 3 buffers — the double-buffer register cache holds
-///            blockDim.x(256) * MAX_SI(8) = 2048 cells and would drop
-///            anti-diagonal cells beyond that.
-inline constexpr std::size_t wavefront_buffer_count(std::size_t max_L) noexcept
-{
-  if (max_L <= kPreloadMaxLength) return 5;
-  if (max_L > 1024 && max_L <= 2048) return 2;
-  return 3;
-}
-
 } // namespace dtwc::cuda::detail

@@ -363,7 +363,7 @@ kernel void dtw_banded_row(
 // CUDA-Enabled GPUs" (Euro-Par 2020, LNCS 12247), translated from the CUDA
 // reference in dtwc/cuda/cuda_dtw.cu (`dtw_regtile_kernel`).
 //
-// One SIMD-group (32 threads) per pair, PAIRS_PER_TG warps per threadgroup.
+// One SIMD-group (32 threads) per pair, `pairs_per_tg` warps per threadgroup.
 // Each thread holds TILE_W columns in registers; 32 threads cover 32*TILE_W
 // columns total. Left-neighbor values are fetched via simd_shuffle_up (MSL's
 // analogue of CUDA `__shfl_sync(..., lane - 1)` from the cuDTW++ regtile
@@ -375,7 +375,6 @@ kernel void dtw_banded_row(
 //
 // Unbanded-only for this pass — banded regtile adds register pressure that
 // is deferred.
-constant int PAIRS_PER_TG = 8;
 
 template <int TILE_W>
 static float dtw_regtile_compute(
@@ -469,6 +468,7 @@ static void dtw_regtile_kernel_body(
     int  max_L,
     int  use_sq_l2,
     long pair_offset,
+    int  pairs_per_tg,
     threadgroup float  *smem,
     uint simd_lane,
     uint simd_id,
@@ -476,7 +476,7 @@ static void dtw_regtile_kernel_body(
 {
   // 64-bit num_pairs/index math.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
-  const long pair_idx  = (long)tg_idx * PAIRS_PER_TG + (long)simd_id + pair_offset;
+  const long pair_idx  = (long)tg_idx * (long)pairs_per_tg + (long)simd_id + pair_offset;
   if (pair_idx >= num_pairs) return;
 
   long si0 = 0, sj0 = 0;
@@ -518,38 +518,40 @@ static void dtw_regtile_kernel_body(
 }
 
 kernel void dtw_regtile_w4(
-    device const float*   all_series [[buffer(0)]],
-    device const int*     lengths    [[buffer(1)]],
-    device float*         out_matrix [[buffer(2)]],
-    constant int&         N_series   [[buffer(3)]],
-    constant int&         max_L      [[buffer(4)]],
-    constant int&         use_sq_l2  [[buffer(6)]],
-    constant long&        pair_offset [[buffer(8)]],
-    threadgroup float*    smem       [[threadgroup(0)]],
+    device const float*   all_series   [[buffer(0)]],
+    device const int*     lengths      [[buffer(1)]],
+    device float*         out_matrix   [[buffer(2)]],
+    constant int&         N_series     [[buffer(3)]],
+    constant int&         max_L        [[buffer(4)]],
+    constant int&         use_sq_l2    [[buffer(6)]],
+    constant long&        pair_offset  [[buffer(8)]],
+    constant int&         pairs_per_tg [[buffer(9)]],
+    threadgroup float*    smem         [[threadgroup(0)]],
     uint simd_lane [[thread_index_in_simdgroup]],
     uint simd_id   [[simdgroup_index_in_threadgroup]],
     uint tg_idx    [[threadgroup_position_in_grid]])
 {
   dtw_regtile_kernel_body<4>(all_series, lengths, out_matrix, N_series, max_L,
-                             use_sq_l2, pair_offset, smem,
+                             use_sq_l2, pair_offset, pairs_per_tg, smem,
                              simd_lane, simd_id, tg_idx);
 }
 
 kernel void dtw_regtile_w8(
-    device const float*   all_series [[buffer(0)]],
-    device const int*     lengths    [[buffer(1)]],
-    device float*         out_matrix [[buffer(2)]],
-    constant int&         N_series   [[buffer(3)]],
-    constant int&         max_L      [[buffer(4)]],
-    constant int&         use_sq_l2  [[buffer(6)]],
-    constant long&        pair_offset [[buffer(8)]],
-    threadgroup float*    smem       [[threadgroup(0)]],
+    device const float*   all_series   [[buffer(0)]],
+    device const int*     lengths      [[buffer(1)]],
+    device float*         out_matrix   [[buffer(2)]],
+    constant int&         N_series     [[buffer(3)]],
+    constant int&         max_L        [[buffer(4)]],
+    constant int&         use_sq_l2    [[buffer(6)]],
+    constant long&        pair_offset  [[buffer(8)]],
+    constant int&         pairs_per_tg [[buffer(9)]],
+    threadgroup float*    smem         [[threadgroup(0)]],
     uint simd_lane [[thread_index_in_simdgroup]],
     uint simd_id   [[simdgroup_index_in_threadgroup]],
     uint tg_idx    [[threadgroup_position_in_grid]])
 {
   dtw_regtile_kernel_body<8>(all_series, lengths, out_matrix, N_series, max_L,
-                             use_sq_l2, pair_offset, smem,
+                             use_sq_l2, pair_offset, pairs_per_tg, smem,
                              simd_lane, simd_id, tg_idx);
 }
 
@@ -715,6 +717,21 @@ MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
     const MetalDistMatOptions &opts, core::DistanceMatrix &out)
 {
+  return compute_distance_matrix_metal(
+      series.size(),
+      [&series](std::size_t i) { return std::span<const double>(series[i]); },
+      opts,
+      [](std::size_t count, const std::function<void(std::size_t)> &task) {
+        for (std::size_t i = 0; i < count; ++i) task(i);
+      },
+      out);
+}
+
+MetalDistMatResult compute_distance_matrix_metal(
+    std::size_t n_series, const SeriesAt &series,
+    const MetalDistMatOptions &opts, const ParallelFor &parallel,
+    core::DistanceMatrix &out)
+{
   validate_metal_precision(opts.precision);
   auto &ctx = context();
   // As on CUDA: an unavailable backend is a typed DeviceError, for
@@ -728,7 +745,7 @@ MetalDistMatResult compute_distance_matrix_metal(
                               "fallback was attempted.");
 
   MetalDistMatResult result;
-  const size_t N = series.size();
+  const size_t N = n_series;
   result.n = N;
   if (N <= 1) {
     if (out.size() != N) out.resize(N);
@@ -736,11 +753,11 @@ MetalDistMatResult compute_distance_matrix_metal(
     return result;
   }
 
-  // Find max length and build padded FP32 input buffer.
+  // Find max length and build padded FP32 input buffer in parallel.
   int max_L = 0;
   std::vector<int> lengths(N);
   for (size_t s = 0; s < N; ++s) {
-    lengths[s] = static_cast<int>(series[s].size());
+    lengths[s] = static_cast<int>(series(s).size());
     if (lengths[s] > max_L) max_L = lengths[s];
   }
   // An all-zero matrix would read as N identical series.
@@ -755,23 +772,24 @@ MetalDistMatResult compute_distance_matrix_metal(
     CallObjects owned;
     auto t0 = std::chrono::steady_clock::now();
 
-    // Upload series (FP32, padded)
+    // Upload series (FP32, padded) via caller's parallel loop.
     const size_t series_bytes = N * max_L * sizeof(float);
     owned.series = [ctx.device
         newBufferWithLength:series_bytes
                     options:MTLResourceStorageModeShared];
     if (!owned.series) throw dtwc::DeviceError("Metal: series buffer allocation failed");
     float *series_ptr = static_cast<float *>([owned.series contents]);
-    for (size_t s = 0; s < N; ++s) {
+    parallel(N, [&](size_t s) {
       float *dst_row = series_ptr + s * static_cast<size_t>(max_L);
+      const auto src = series(s);
       const int len = lengths[s];
       for (int k = 0; k < len; ++k) {
-        dst_row[k] = static_cast<float>(series[s][static_cast<size_t>(k)]);
+        dst_row[k] = static_cast<float>(src[static_cast<size_t>(k)]);
       }
       if (len < max_L) {
         std::memset(dst_row + len, 0, static_cast<size_t>(max_L - len) * sizeof(float));
       }
-    }
+    });
 
     // Upload lengths
     owned.lengths = [ctx.device
@@ -815,31 +833,33 @@ MetalDistMatResult compute_distance_matrix_metal(
         (requested_band > 0) && (requested_band <= 512)
         && (static_cast<std::int64_t>(requested_band) * 20
             < static_cast<std::int64_t>(max_L));
-    // Register-tile path: unbanded only for this pass. TILE_W=4 covers
-    // max_L in [1, 128] (32 lanes * 4 cols = 128), TILE_W=8 covers (128, 256].
-    const bool use_regtile =
-        !use_banded_row && (requested_band == -1)
-        && (max_L > 0) && (max_L <= 256);
-    const int regtile_tile_w = (max_L <= 128) ? 4 : 8;
-    const bool use_global =
-        !use_banded_row && !use_regtile && (tg_mem_len > tg_mem_cap);
-
     // A non-negative band covering the largest possible |i-j| in the batch is
-    // exactly unbounded. Normalize wavefront dispatches before device
-    // arithmetic (making INT_MAX safe), but preserve banded_row's positive
-    // strip width and the requested-band kernel routing semantics.
+    // exactly unbounded. Normalize before regtile routing so full-coverage
+    // bands (e.g. INT_MAX) also benefit from register-tiling, while preserving
+    // banded_row's positive strip width.
     const int band =
         (!use_banded_row && requested_band >= 0
          && requested_band >= max_L - 1)
           ? -1 : requested_band;
+    // Register-tile path: unbanded (or normalized-unbanded) with SIMD width 32.
+    // TILE_W=4 covers max_L in [1, 128], TILE_W=8 covers (128, 256].
+    const int regtile_tile_w = (max_L <= 128) ? 4 : 8;
+    id<MTLComputePipelineState> regtile_pipe =
+        (regtile_tile_w == 4) ? ctx.pipeline_regtile_w4 : ctx.pipeline_regtile_w8;
+    const bool use_regtile =
+        !use_banded_row && (band == -1)
+        && (max_L > 0) && (max_L <= 256)
+        && (regtile_pipe.threadExecutionWidth == 32)
+        && (regtile_pipe.maxTotalThreadsPerThreadgroup >= 32);
+    const bool use_global =
+        !use_banded_row && !use_regtile && (tg_mem_len > tg_mem_cap);
 
     id<MTLComputePipelineState> pipeline;
     if (use_banded_row) {
       pipeline = ctx.pipeline_banded_row;
       result.kernel_used = "banded_row";
     } else if (use_regtile) {
-      pipeline = (regtile_tile_w == 4) ? ctx.pipeline_regtile_w4
-                                       : ctx.pipeline_regtile_w8;
+      pipeline = regtile_pipe;
       result.kernel_used = (regtile_tile_w == 4) ? "regtile_w4" : "regtile_w8";
     } else if (use_global) {
       pipeline = ctx.pipeline_global;
@@ -894,28 +914,32 @@ MetalDistMatResult compute_distance_matrix_metal(
     // Pick threads-per-threadgroup.
     //  - banded-row: one thread per pair, so tg_size = simd width (32) for
     //    cheap dispatch without intra-threadgroup cooperation.
-    //  - regtile:    PAIRS_PER_TG (8) warps per threadgroup, 1 warp per pair.
-    //                tg_size = 8 * simd = 256 threads. Threadgroup memory holds
-    //                8 * 2 * max_L floats of series data (16 KB at max_L=256).
+    //  - regtile:    up to 8 warps per threadgroup, 1 warp per pair.
+    //                Actual pairs_per_tg = tg_size / simd is passed to the MSL
+    //                kernel so any hardware maxTotalThreadsPerThreadgroup clamp
+    //                never skips pairs.
     //  - wavefront kernels: cooperate within a pair, use up to max_L threads
     //    rounded to a multiple of the simd width.
     const NSUInteger max_threads = pipeline.maxTotalThreadsPerThreadgroup;
     const NSUInteger simd = pipeline.threadExecutionWidth;
-    const NSUInteger kPairsPerTG = 8; // must match PAIRS_PER_TG in MSL
+    NSUInteger pairs_per_tg = 1;
     NSUInteger tg_size;
     if (use_banded_row) {
       tg_size = simd;
       if (tg_size > max_threads) tg_size = max_threads;
     } else if (use_regtile) {
-      tg_size = simd * kPairsPerTG;
-      if (tg_size > max_threads) tg_size = (max_threads / simd) * simd;
+      const NSUInteger max_pairs_threads = std::max<NSUInteger>(1, max_threads / simd);
+      const NSUInteger max_pairs_smem =
+          std::max<NSUInteger>(1, tg_mem_cap / (2 * (NSUInteger)max_L * sizeof(float)));
+      pairs_per_tg = std::min<NSUInteger>(8, std::min(max_pairs_threads, max_pairs_smem));
+      tg_size = simd * pairs_per_tg;
     } else {
       tg_size = std::min((NSUInteger)max_L, max_threads);
       if (tg_size == 0) tg_size = 1;
       if (tg_size > simd) tg_size = (tg_size / simd) * simd;
     }
     const NSUInteger regtile_smem_len =
-        use_regtile ? (kPairsPerTG * 2 * (NSUInteger)max_L * sizeof(float)) : 0;
+        use_regtile ? (pairs_per_tg * 2 * (NSUInteger)max_L * sizeof(float)) : 0;
 
     // Banded-row: allocate coalesced scratch sized by total thread count.
     // Grid is 1D of (ceil(chunk/tg_size) * tg_size) threads.
@@ -984,11 +1008,14 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc setBytes:&pair_offset length:sizeof(pair_offset) atIndex:8];
       if (use_banded_row) {
         [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
+      } else if (use_regtile) {
+        const int pairs_per_tg_arg = static_cast<int>(pairs_per_tg);
+        [enc setBytes:&pairs_per_tg_arg length:sizeof(int) atIndex:9];
       }
 
       // Grid geometry:
       //  - banded-row: one thread per pair, dispatch ceil(chunk / tg_size) tgs.
-      //  - regtile:    kPairsPerTG warps per tg, dispatch ceil(chunk/kPairsPerTG) tgs.
+      //  - regtile:    pairs_per_tg warps per tg, dispatch ceil(chunk/pairs_per_tg) tgs.
       //  - wavefront:  one threadgroup per pair.
       MTLSize grid, tg;
       if (use_banded_row) {
@@ -996,7 +1023,7 @@ MetalDistMatResult compute_distance_matrix_metal(
         grid = MTLSizeMake(ntgs, 1, 1);
         tg   = MTLSizeMake(tg_size, 1, 1);
       } else if (use_regtile) {
-        const size_t ntgs = (this_chunk + kPairsPerTG - 1) / kPairsPerTG;
+        const size_t ntgs = (this_chunk + pairs_per_tg - 1) / pairs_per_tg;
         grid = MTLSizeMake(ntgs, 1, 1);
         tg   = MTLSizeMake(tg_size, 1, 1);
       } else {
@@ -1021,13 +1048,24 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     // Every refusal is behind us: size the caller's matrix (one already N x N,
     // as a mapped one is, keeps its storage) and copy the packed FP32 triangle
-    // into it, slot for slot: widened for a float64 matrix, as it is for a float32 one.
+    // into it, slot for slot: widened in parallel for a float64 matrix, as it
+    // is for a float32 one.
     if (out.size() != N) out.resize(N);
     const float *packed = static_cast<const float *>([owned.out contents]);
     out.visit([&](auto *dst) {
       using V = std::remove_pointer_t<decltype(dst)>;
-      for (size_t t = 0; t < slots; ++t)
-        dst[t] = static_cast<V>(dtwc::core::normalize_public_distance(packed[t]));
+      if (slots >= 4096) {
+        constexpr size_t kCopyChunks = 128;
+        parallel(kCopyChunks, [&](size_t c) {
+          const size_t t0 = slots * c / kCopyChunks;
+          const size_t t1 = slots * (c + 1) / kCopyChunks;
+          for (size_t t = t0; t < t1; ++t)
+            dst[t] = static_cast<V>(dtwc::core::normalize_public_distance(packed[t]));
+        });
+      } else {
+        for (size_t t = 0; t < slots; ++t)
+          dst[t] = static_cast<V>(dtwc::core::normalize_public_distance(packed[t]));
+      }
     });
 
     auto t1 = std::chrono::steady_clock::now();

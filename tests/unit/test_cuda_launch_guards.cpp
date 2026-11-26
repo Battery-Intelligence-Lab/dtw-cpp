@@ -116,7 +116,7 @@ TEST_CASE("CUDA refuses a GPU older than compute capability 8.0",
 #endif
 }
 
-TEST_CASE("CUDA kernel choice follows the longest series length and the shared memory",
+TEST_CASE("CUDA kernel choice follows the longest series length, pair count, and shared memory",
           "[cuda][launch_guard][host]")
 {
 #if !DTWC_HAS_CUDA_LAUNCH_PREP_SEAM
@@ -126,37 +126,46 @@ TEST_CASE("CUDA kernel choice follows the longest series length and the shared m
   using dtwc::cuda::detail::kernel_path_name;
   using dtwc::cuda::detail::select_kernel;
 
-  // Each range's kernel beats every other kernel that accepts the range by at
-  // least 15 % on the RTX 4000 Ada.
-  // Above L = 2048 the wavefront keeps its three anti-diagonals in shared memory
-  // only while three blocks fit an SM, each also taking the kernel's 16 static
-  // bytes and the runtime's 1,024 reserved ones. The RTX 4000 Ada's SM has
-  // 102,400 bytes: FP32 L = 2757 fits three blocks, 2758 does not, and FP64 none
-  // above 2048. An H100's has 233,472: FP32 up to 6398, FP64 up to 3199.
-  constexpr std::size_t ada = 102400;
-  constexpr std::size_t hopper = 233472;
-  constexpr std::size_t overhead = 16 + 1024;
-  for (const std::size_t sample : { std::size_t{ 4 }, std::size_t{ 8 } }) {
-    CHECK(select_kernel(1, sample, ada, overhead) == KernelPath::Warp);
-    CHECK(select_kernel(32, sample, ada, overhead) == KernelPath::Warp);
-    CHECK(select_kernel(33, sample, ada, overhead) == KernelPath::RegTileW4);
-    CHECK(select_kernel(128, sample, ada, overhead) == KernelPath::RegTileW4);
-    CHECK(select_kernel(129, sample, ada, overhead) == KernelPath::RegTileW8);
-    CHECK(select_kernel(256, sample, ada, overhead) == KernelPath::RegTileW8);
-    CHECK(select_kernel(257, sample, ada, overhead) == KernelPath::Wavefront);
-    CHECK(select_kernel(2048, sample, ada, overhead) == KernelPath::Wavefront);
-    CHECK(select_kernel(100000000, sample, ada, overhead) == KernelPath::WavefrontGlobal);
+  constexpr int ada_sm = 48;
+  constexpr std::size_t ada_block_shared = 101376;
+  constexpr std::size_t hopper_block_shared = 232448;
+  constexpr std::size_t overhead = 32 + 1024;
+  const std::size_t many_pairs = static_cast<std::size_t>(8 * ada_sm);
+  const std::size_t few_pairs = 10;
+
+  // High pair-count batches (and all batches with max_L <= 1024) take the unified warptile kernel:
+  // TILE_W=1 for L <= 32, TILE_W=4 for 32 < L <= 128 or FP64, TILE_W=8 for FP32 L > 128.
+  for (const std::size_t L : { std::size_t{ 1 }, std::size_t{ 32 } }) {
+    CHECK(select_kernel(L, 4, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW1);
+    CHECK(select_kernel(L, 8, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW1);
   }
-  CHECK(select_kernel(2757, 4, ada, overhead) == KernelPath::Wavefront);
-  CHECK(select_kernel(2758, 4, ada, overhead) == KernelPath::WavefrontGlobal);
-  CHECK(select_kernel(2049, 8, ada, overhead) == KernelPath::WavefrontGlobal);
-  CHECK(select_kernel(6398, 4, hopper, overhead) == KernelPath::Wavefront);
-  CHECK(select_kernel(6399, 4, hopper, overhead) == KernelPath::WavefrontGlobal);
-  CHECK(select_kernel(3199, 8, hopper, overhead) == KernelPath::Wavefront);
-  CHECK(select_kernel(3200, 8, hopper, overhead) == KernelPath::WavefrontGlobal);
-  CHECK(kernel_path_name(KernelPath::Warp) == "warp");
-  CHECK(kernel_path_name(KernelPath::RegTileW4) == "regtile_w4");
-  CHECK(kernel_path_name(KernelPath::RegTileW8) == "regtile_w8");
+  for (const std::size_t L : { std::size_t{ 33 }, std::size_t{ 128 } }) {
+    CHECK(select_kernel(L, 4, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW4);
+    CHECK(select_kernel(L, 8, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW4);
+  }
+  for (const std::size_t L : { std::size_t{ 129 }, std::size_t{ 256 }, std::size_t{ 257 }, std::size_t{ 1024 } }) {
+    CHECK(select_kernel(L, 4, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW8);
+    CHECK(select_kernel(L, 8, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW4);
+  }
+  CHECK(select_kernel(2048, 4, many_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW8);
+  CHECK(select_kernel(2048, 8, many_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WarpTileW4);
+
+  // Low pair-count batches with L > 1024 (or when border buffer exceeds VRAM) fall back to wavefront.
+  CHECK(select_kernel(1025, 4, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(4096, 4, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(4096, 8, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(8360, 4, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(8361, 4, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(4180, 8, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(4181, 8, few_pairs, ada_sm, true, ada_block_shared, overhead) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(100000000, 4, many_pairs, ada_sm, false, ada_block_shared, overhead)
+        == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(19280, 4, few_pairs, ada_sm, true, hopper_block_shared, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(19285, 4, few_pairs, ada_sm, true, hopper_block_shared, overhead) == KernelPath::WavefrontGlobal);
+
+  CHECK(kernel_path_name(KernelPath::WarpTileW1) == "warptile_w1");
+  CHECK(kernel_path_name(KernelPath::WarpTileW4) == "warptile_w4");
+  CHECK(kernel_path_name(KernelPath::WarpTileW8) == "warptile_w8");
   CHECK(kernel_path_name(KernelPath::Wavefront) == "wavefront");
   CHECK(kernel_path_name(KernelPath::WavefrontGlobal) == "wavefront_global");
 #endif
