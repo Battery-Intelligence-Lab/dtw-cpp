@@ -87,7 +87,7 @@ fi
 # Google Benchmark accepts --benchmark_perf_counters on a binary built without
 # libpfm4: PerfCounters::Create logs one line to the error log, returns no
 # counters, and the run still writes a well-formed JSON and exits 0. Its own
-# guard does not help — the BM_CHECK at v1.9.5 benchmark_runner.cc:323 is
+# guard does not help — the BM_CHECK at v1.10.0 benchmark_runner.cc:328 is
 # inverted (it aborts when the counters *were* set up) and only runs for
 # benchmarks that set an aggregation report mode. So the JSON is indistinguishable
 # from a wall-clock record except by the absence of the counter fields, which is

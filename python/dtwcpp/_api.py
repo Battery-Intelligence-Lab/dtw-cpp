@@ -182,17 +182,16 @@ class Dataset:
     never read locally, so it scales beyond what fits on the calling machine.
     A reader option left ``None`` is not given: its default (``skip_cols`` and
     ``skip_rows`` 0, ``delimiter`` the extension's, ``dtype`` ``"float64"``, ``ndim``
-    1), or a :class:`Data`'s own ``ndim``, which one given must equal.
+    1), or a :class:`Data`'s own ``ndim`` and ``dtype``, which ones given must equal.
     """
 
     def __init__(self, source, *, skip_cols=None, skip_rows=None, delimiter=None,
                  name=None, dtype=None, ndim=None):
         from dtwcpp import InvalidInput, _dtwcpp_core
         # None is an option not given: its default for a new source (0, 0, the
-        # extension's delimiter, float64, 1), and a Data's own ndim.
+        # extension's delimiter, float64, 1), and a Data's own ndim and dtype.
         skip_cols = 0 if skip_cols is None else skip_cols
         skip_rows = 0 if skip_rows is None else skip_rows
-        dtype = "float64" if dtype is None else dtype
         # Checked where the handle is made, as C++ dtwc::load does, so a bad
         # count fails before any file is read or job submitted.
         for key, value in (("skip_cols", skip_cols), ("skip_rows", skip_rows)):
@@ -205,14 +204,24 @@ class Dataset:
                 raise TypeError(f"load: ndim must be an integer, got {type(ndim).__name__}")
             if ndim < 1:
                 raise InvalidInput("load: ndim must be at least 1.")
-        if not isinstance(dtype, str):
+        if dtype is not None and not isinstance(dtype, str):
             raise TypeError(f"load: dtype must be a string such as 'float32', got {type(dtype).__name__}")
-        if isinstance(source, _dtwcpp_core.Data):  # a Data carries its own ndim, which one given must be
+        if isinstance(source, _dtwcpp_core.Data):  # a Data carries its own ndim and dtype, which ones given must equal
             if ndim is not None and ndim != source.ndim:
                 raise InvalidInput(f"load: Data already carries ndim={source.ndim}, which disagrees with ndim={ndim}.")
             ndim = source.ndim
-        elif ndim is None:
-            ndim = 1
+            own = "float32" if source.is_f32() else "float64"
+            if dtype is not None:
+                norm_dtype = _dtwcpp_core._dtype(dtype)
+                if norm_dtype != own:
+                    raise InvalidInput(
+                        f"load: Data already carries dtype={own!r}, which disagrees with dtype={norm_dtype!r}."
+                    )
+            dtype = own
+        else:
+            if ndim is None:
+                ndim = 1
+            dtype = "float64" if dtype is None else dtype
         self.source = source
         self.skip_cols = int(skip_cols)
         self.skip_rows = int(skip_rows)
@@ -340,8 +349,9 @@ def load(source, *, skip_cols=None, skip_rows=None, delimiter=None, name=None, d
 class Result:
     """Outcome of :func:`cluster` — the canonical 2.0 ``Result``.
 
-    ``labels``, ``medoids``, ``cost`` and ``report`` (the run report's text,
-    ``""`` under ``no_report=True``) are values; ``score(name)``, ``save(dir)``
+    ``labels``, ``medoids``, ``cost``, ``report`` (the run report's text,
+    ``""`` under ``no_report=True``), ``method``, ``iterations`` and
+    ``converged`` are values; ``score(name)``, ``save(dir)``
     and ``distance_matrix`` read the run's C++ ``dtwc::Result``, which the
     result keeps and which fills its matrix on demand after a matrix-free
     OneBatchPAM/CLARA/TADPole run. A run that streamed an Arrow IPC file under
@@ -353,7 +363,8 @@ class Result:
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
                  medoid_indices=None, cost=None, name="dataset", result=None,
-                 report_text=None, hpc_result_dir=None):
+                 report_text=None, hpc_result_dir=None,
+                 method=None, iterations=None, converged=None):
         self.labels = np.asarray(labels)
         self.device = device
         self.elapsed_s = elapsed_s
@@ -363,6 +374,9 @@ class Result:
         self.cost = cost
         self.name = name
         self.report = result.report if result is not None else report_text
+        self.method = result.method if result is not None else method
+        self.iterations = result.iterations if result is not None else iterations
+        self.converged = result.converged if result is not None else converged
         self._result = result
         self._hpc_result_dir = hpc_result_dir
         self._distance_matrix = None
@@ -560,8 +574,8 @@ def _run_local(dataset, config, device, *, output="", checkpoint="", checkpoint_
                                external=not dtwcpp.HIGHS_AVAILABLE, output=output,
                                checkpoint=checkpoint, checkpoint_interval=checkpoint_interval,
                                **reader)
-    # The device that ran, as the C++ result says it (a fallback is "cpu"), without the GPU's ordinal.
-    return Result(result.labels, device=result.device.partition(":")[0],
+    # The device that ran, as the C++ result says it (e.g. "cpu", "gpu", "gpu:1", "cpu+gpu:1").
+    return Result(result.labels, device=result.device,
                   elapsed_s=time.perf_counter() - t0, k=config.n_clusters,
                   n_series=len(result.labels), medoid_indices=result.medoids,
                   cost=result.cost, name=config.name, result=result)

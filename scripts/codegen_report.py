@@ -85,8 +85,6 @@ FAMILIES = {
     "nan_aware_l1": r"SpanNanAwareL1Cost",
     "nan_aware_squared_l2": r"SpanNanAwareSquaredL2Cost",
     "weighted_l1": r"SpanWeightedL1Cost",
-    "arow_l1": r"SpanAROWL1Cost",
-    "arow_squared_l2": r"SpanAROWSquaredL2Cost",
     "mv_l1": r"SpanMVL1Cost",
     "mv_l2": r"SpanMVL2Cost",
     "mv_squared_l2": r"SpanMVSquaredL2Cost",

@@ -80,7 +80,7 @@ jobs:
         env:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/.github/ubsan.supp
 
-  # Phase-8 finding F9: with DTWC_ENABLE_ARROW defaulting to OFF (CMakeLists.txt:49)
+  # Phase-8 finding F9: with DTWC_ENABLE_ARROW defaulting to OFF (CMakeLists.txt:46)
   # and no workflow ever turning it on, tests/unit/test_io_readers.cpp self-SKIPped in
   # every gate — the Arrow IPC + Parquet readers had zero CI coverage. This is a
   # separate job, not a matrix entry, so the Arrow apt install runs once rather than
@@ -107,7 +107,7 @@ jobs:
       #      with no upstream remedy other than un-pinning.
       #   2. The surface the F7 chunked-Parquet hardening depends on —
       #      parquet::arrow::FileReaderBuilder, parquet::arrow::FileReader and
-      #      FileReader::ReadRowGroups (dtwc/io/parquet_chunk_reader.hpp:230,369,394,539)
+      #      FileReader::ReadRowGroups (dtwc/io/parquet_chunk_reader.hpp:190,549,554,653)
       #      — is long-stable public Parquet C++ API.
       #   3. An upstream API break that reddens this job is information we want: it is
       #      precisely the skew signal that the frozen 26.0.1 CPM pin hides.

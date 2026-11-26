@@ -83,28 +83,44 @@ template <typename Distance>
   index_t N, index_t k, std::mt19937_64 &rng, Distance &&distance,
   const std::string &caller)
 {
+  const auto n = static_cast<std::size_t>(N);
   std::vector<index_t> chosen{ static_cast<index_t>(
     portable_bounded(rng, static_cast<std::uint64_t>(N))) };
   chosen.reserve(static_cast<std::size_t>(k));
-  const auto is_chosen = [&chosen](index_t i) {
-    return std::find(chosen.begin(), chosen.end(), i) != chosen.end();
-  };
-  std::vector<double> nearest(static_cast<std::size_t>(N),
-                              std::numeric_limits<double>::infinity());
+
+  std::vector<char> is_chosen(n, 0);
+  is_chosen[static_cast<std::size_t>(chosen[0])] = 1;
+
+  std::vector<double> nearest(n, std::numeric_limits<double>::infinity());
+  std::vector<double> weights(n, 0.0);
+
   while (static_cast<index_t>(chosen.size()) < k) {
-    for (index_t i = 0; i < N; ++i) {
-      auto &d = nearest[static_cast<std::size_t>(i)];
-      d = std::min(d, static_cast<double>(distance(chosen.back(), i)));
+    const index_t last = chosen.back();
+    double total = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+      const double d = std::min(nearest[i], static_cast<double>(distance(last, static_cast<index_t>(i))));
+      if (!std::isfinite(d))
+        throw InvalidInput(caller + ": initialization distance must be finite");
+      nearest[i] = d;
+      if (is_chosen[i]) {
+        weights[i] = 0.0;
+      } else {
+        weights[i] = d;
+        total += d;
+      }
     }
-    const auto weights = distance_sampling_weights(nearest, chosen, caller);
+    if (!std::isfinite(total))
+      throw InvalidInput(caller + ": initialization weight total is non-finite");
+
     index_t next = 0;
-    if (weights.total > 0.0)
+    if (total > 0.0)
       next = static_cast<index_t>(portable_weighted_index(
-        weights.values.begin(), weights.values.end(), weights.total, rng));
-    if (weights.total <= 0.0 || is_chosen(next)) {
+        weights.begin(), weights.end(), total, rng));
+    if (total <= 0.0 || is_chosen[static_cast<std::size_t>(next)]) {
       next = 0;
-      while (is_chosen(next)) ++next;
+      while (is_chosen[static_cast<std::size_t>(next)]) ++next;
     }
+    is_chosen[static_cast<std::size_t>(next)] = 1;
     chosen.push_back(next);
   }
   return chosen;

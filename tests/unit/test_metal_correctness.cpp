@@ -115,7 +115,9 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
     bool takes_int_max;        // the row with band = INT_MAX
   };
   constexpr std::array routes{
-      Route{"wavefront", 0, true, true},
+      Route{"wavefront", 0, true, false},
+      Route{"regtile_w4", 0, false, true},
+      Route{"wavefront", 257, false, true},
       Route{"banded_row", 64, true, false},
       Route{"wavefront_global", 8192, false, true},
   };

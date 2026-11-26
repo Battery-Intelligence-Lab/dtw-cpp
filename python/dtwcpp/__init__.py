@@ -90,21 +90,19 @@ def _resolve_device(device, fallback=False):
 
     ``backend`` is ``"cpu"``, ``"gpu"``, ``"cpu+gpu"`` or ``"hpc"``. The name is
     parsed by the C++ grammar, where ``cuda`` is a spelling of ``gpu``; ``gpu``
-    needs a GPU this build's backend finds, and raises ``DeviceError`` without
-    one, unless ``fallback`` leaves that to C++, which then runs the request on
-    the CPU. ``cpu+gpu`` is checked by C++ alone, in the same words in every
-    language: a build without CUDA refuses it where it is selected
-    (``dtwcpp.device``, ``Problem``), a CUDA build without a device at its
-    first use, as C++ and MATLAB do.
+    needs a GPU this build's backend finds, and ``cpu+gpu`` on a CUDA build
+    likewise, raising ``DeviceError`` without one unless ``fallback`` leaves
+    that to C++, which then runs the request on the CPU. On a build without
+    CUDA, ``cpu+gpu`` is refused by C++ in the same words in every language.
     """
     if not isinstance(device, str):
         raise InvalidInput(f"device must be a string, got {type(device).__name__}")
     if device.strip().lower() in _HPC_NAMES:
         return ("hpc", 0)
     backend, device_id = _parse_device(device)
-    if backend == "gpu" and not fallback and not gpu_available():
+    if (backend == "gpu" or (backend == "cpu+gpu" and gpu_info().startswith("CUDA:"))) and not fallback and not gpu_available():
         raise DeviceError(
-            f"[dtwc] device='gpu' requested but no GPU is available ({gpu_info()}). "
+            f"[dtwc] device='{backend}' requested but no GPU is available ({gpu_info()}). "
             "This request will not silently fall back to CPU."
         )
     return (backend, device_id)
@@ -233,20 +231,21 @@ from dtwcpp.io import (
 _set_data = Problem.set_data
 
 
-def _problem_set_data(self, series, names=None, ndim=1):
+def _problem_set_data(self, series, names=None, ndim=1, dtype="float64"):
     """Set the time series: a :class:`Data`, a 2-D array (one series per row), a
     3-D ``(n_series, n_steps, ndim)`` array when ``ndim > 1``, a list of 1-D
     arrays or lists (series of any lengths), a pandas DataFrame (one series per
     row, named by its index) or an Arrow array. ``names`` default to the series'
-    ordinals; ``ndim > 1`` reads each row as interleaved multivariate steps. A
-    Data carries its own names and ndim."""
+    ordinals; ``ndim > 1`` reads each row as interleaved multivariate steps;
+    ``dtype`` (``"float64"`` or ``"float32"``) sets the storage precision. A
+    Data carries its own names, ndim and dtype."""
     if isinstance(series, Data):
-        if names is not None or ndim != 1:
-            raise TypeError("Problem.set_data: a Data carries its own names and ndim; "
-                            "pass names and ndim with raw series only.")
+        if names is not None or ndim != 1 or dtype != "float64":
+            raise TypeError("Problem.set_data: a Data carries its own names, ndim and dtype; "
+                            "pass names, ndim and dtype with raw series only.")
         return _set_data(self, series)
     from dtwcpp._api import _to_data
-    return _set_data(self, _to_data(series, names=names, ndim=ndim))
+    return _set_data(self, _to_data(series, names=names, ndim=ndim, dtype=dtype))
 
 
 Problem.set_data = _problem_set_data

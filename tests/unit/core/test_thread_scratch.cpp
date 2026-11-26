@@ -171,7 +171,8 @@ TEST_CASE("dtwc::run gives every thread's scratch back as it starts and when it 
 #ifndef _OPENMP
   SKIP("two OpenMP workers unavailable: a sequential build has no team");
 #endif
-  REQUIRE(dtwc::get_max_threads() == 4); // OMP_NUM_THREADS=4: a team, not one thread
+  const dtwc::TeamCap team(4);
+  REQUIRE(dtwc::get_max_threads() == 4); // TeamCap(4): a team of 4, not one thread
   dtwc::Problem prob{ "sweep" };
   prob.set_data(data_of(walks(64, 50)));
   prob.set_method(dtwc::Method::PAM);
@@ -195,7 +196,8 @@ TEST_CASE("dtwc::run gives every thread's scratch back as it starts and when it 
   config.band = -1;
   const auto result = dtwc::run(config, data_of(walks(64, 50)));
   CHECK(result.labels().size() == 64);
-  CHECK(dtwc::core::thread_scratch_held() == std::vector<std::size_t>(4, 0));
+  CHECK(dtwc::core::thread_scratch_held()
+        == std::vector<std::size_t>(static_cast<std::size_t>(dtwc::full_team_threads()), 0));
 
   dtwc::Problem again{ "again" };
   again.set_data(data_of(walks(64, 50)));
@@ -203,7 +205,8 @@ TEST_CASE("dtwc::run gives every thread's scratch back as it starts and when it 
   REQUIRE(all_threads_bytes() > 0);
   config.k = 0; // refused before any series is read: the scratch held before is given back too
   CHECK_THROWS_AS(dtwc::run(config, data_of(walks(64, 50))), dtwc::InvalidInput);
-  CHECK(dtwc::core::thread_scratch_held() == std::vector<std::size_t>(4, 0));
+  CHECK(dtwc::core::thread_scratch_held()
+        == std::vector<std::size_t>(static_cast<std::size_t>(dtwc::full_team_threads()), 0));
 
   // WDTW's cached weights are emptied with the max_dev and g they were built for: the next call builds them again.
   const auto pair = walks(2, 40);
@@ -342,6 +345,7 @@ TEST_CASE("The clustering depends on neither the limit nor the threads: a stream
 #ifndef _OPENMP
   SKIP("two OpenMP workers unavailable: a sequential build has no team");
 #endif
+  const dtwc::TeamCap team(4);
   REQUIRE(dtwc::get_max_threads() == 4);
   constexpr std::size_t top = std::size_t{ 1 } << 30;
   // clara_ragged.arrow (512 walks of 6 to 10 time steps) under a band of 4 as Float32, a copy FastCLARA streams.
@@ -468,6 +472,7 @@ TEST_CASE("A stream's refusal names no least limit, and the stream's own refusal
           "cap",
           "[thread_scratch][run][ram_limit][plan]")
 {
+  const dtwc::TeamCap team(4);
   // clara_long_late.arrow, FastCLARA streamed on 4 threads: the plan's refusal states what the names and labels need
   // beside the working set, which the stream's own floor (the sampled rows, a sample's PAM, a record batch) exceeds.
   const dtwc::Config config = clara_on("clara_long_late.arrow");
@@ -537,7 +542,7 @@ TEST_CASE("The plan holds the method's own terms: TADPole's pair flags, cache an
     config.method = c.method;
     config.k = 3;
     config.batch_size = 32;
-    if (!c.written) config.output.clear();
+    if (c.written) config.output = "written";
     const Attempt one_byte = attempt(config, 1, memory);
     INFO(dtwc::name_of(dtwc::method_names, c.method) << ": " << one_byte.refusal);
     std::smatch m;

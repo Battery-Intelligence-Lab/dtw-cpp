@@ -160,6 +160,108 @@ TEST_CASE("decode_assignment refuses what is not a p-median solution", "[mip][de
   CHECK_THROWS_AS(dtwc::mip::decode_assignment(nan, 4, 2, true, "test"), dtwc::SolverError);
 }
 
+TEST_CASE("decode_assignment with DistanceMatrix resolves fractional ties, non-nearest assignments, and self-ties",
+          "[mip][decode]")
+{
+  dtwc::Data data(std::vector<std::vector<dtwc::data_t>>{ { 0.0 }, { 1.0 }, { 5.0 }, { 6.0 } },
+                  std::vector<std::string>{ "p0", "p1", "p2", "p3" });
+  dtwc::Problem prob("decode_dm");
+  prob.set_data(std::move(data));
+  prob.fill_distance_matrix();
+
+  // 1) Fractional x_{fp} tie (0.5 / 0.5) on point 1 between open medoids 0 and 2.
+  std::vector<double> frac(16, 0.0);
+  frac[0 * 4 + 0] = 1.0;
+  frac[0 * 4 + 1] = 0.5;
+  frac[2 * 4 + 1] = 0.5;
+  frac[2 * 4 + 2] = 1.0;
+  frac[2 * 4 + 3] = 1.0;
+  const auto res_frac = dtwc::mip::decode_assignment(frac, prob.distance_matrix(), 4, 2, "test");
+  CHECK(res_frac.medoid_indices == std::vector<dtwc::index_t>{ 0, 2 });
+  CHECK(res_frac.labels == std::vector<dtwc::index_t>{ 0, 0, 1, 1 });
+
+  // 2) Non-nearest x_{fp} assignment (point 1 assigned to 2 instead of nearer 0) corrected by dm decode.
+  std::vector<double> non_nearest(16, 0.0);
+  non_nearest[0 * 4 + 0] = 1.0;
+  non_nearest[2 * 4 + 1] = 1.0;
+  non_nearest[2 * 4 + 2] = 1.0;
+  non_nearest[2 * 4 + 3] = 1.0;
+  const auto res_corr = dtwc::mip::decode_assignment(non_nearest, prob.distance_matrix(), 4, 2, "test");
+  CHECK(res_corr.medoid_indices == std::vector<dtwc::index_t>{ 0, 2 });
+  CHECK(res_corr.labels == std::vector<dtwc::index_t>{ 0, 0, 1, 1 });
+
+  // 3) Duplicate series self-tie break: open medoids 0 and 1 are identical, medoid 1 must serve itself.
+  dtwc::Data dup_data(std::vector<std::vector<dtwc::data_t>>{ { 0.0 }, { 0.0 }, { 10.0 } },
+                      std::vector<std::string>{ "a", "b", "c" });
+  dtwc::Problem dup_prob("dup_dm");
+  dup_prob.set_data(std::move(dup_data));
+  dup_prob.fill_distance_matrix();
+  std::vector<double> dup_x(9, 0.0);
+  dup_x[0 * 3 + 0] = 1.0;
+  dup_x[0 * 3 + 1] = 1.0;
+  dup_x[1 * 3 + 1] = 1.0; // wait: sum must be 1 for point 1 -> set [0,1]=0, [1,1]=1, [0,2]=1
+  dup_x[0 * 3 + 1] = 0.0;
+  dup_x[0 * 3 + 2] = 1.0;
+  const auto res_dup = dtwc::mip::decode_assignment(dup_x, dup_prob.distance_matrix(), 3, 2, "test");
+  CHECK(res_dup.medoid_indices == std::vector<dtwc::index_t>{ 0, 1 });
+  CHECK(res_dup.labels[0] == 0);
+  CHECK(res_dup.labels[1] == 1);
+}
+
+TEST_CASE("MIP HiGHS: tight-cluster scaling with large outlier finds exact optimum (mip_abs_gap = 0)",
+          "[mip][highs][scaling]")
+{
+  require_highs_solver();
+  // Tight cluster around 0 (optimal 1-median = 0.002 at 0.001? Wait: 0, 0.001, 0.002, 0.003 + 1e6 outlier)
+  // For k = 3 on {0.0, 0.001, 0.002, 0.003, 10.0, 1e6}: outlier at 1e6 makes max_distance = 1e6,
+  // while the tight-cluster cost difference between optimal and suboptimal is ~1e-3 (scaled ~1e-9 without warm-start scaling).
+  dtwc::Data data(std::vector<std::vector<dtwc::data_t>>{
+                    { 0.0 }, { 0.001 }, { 0.002 }, { 0.003 }, { 10.0 }, { 1.0e6 } },
+                  std::vector<std::string>{ "a", "b", "c", "d", "e", "outlier" });
+  dtwc::Problem prob("outlier_scale");
+  prob.set_data(std::move(data));
+  prob.set_n_clusters(3);
+  prob.set_method(dtwc::Method::MIP);
+  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
+  prob.mip_settings.warm_start = true;
+  prob.mip_settings.verbose_solver = false;
+  const auto res = prob.cluster();
+  // Optimal medoids for k=3: one in {0, 0.001, 0.002, 0.003} (at 0.001 or 0.002, cost 0.004), 10.0, and 1e6.
+  //Wait: 4 points {0, 0.001, 0.002, 0.003} served by 0.001 have sum = 0.001 + 0 + 0.001 + 0.002 = 0.004.
+  CHECK(std::abs(res.total_cost - 0.004) <= 1e-12);
+}
+
+TEST_CASE("MIP HiGHS: k == N and zero-cost warm-start short-circuits", "[mip][highs]")
+{
+  require_highs_solver();
+
+  SECTION("k == N identity") {
+    auto prob = make_small_problem(5, 8);
+    prob.set_n_clusters(5);
+    REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
+    prob.set_method(dtwc::Method::MIP);
+    const auto res = prob.cluster();
+    CHECK(res.medoid_indices == std::vector<dtwc::index_t>{ 0, 1, 2, 3, 4 });
+    CHECK(res.labels == std::vector<dtwc::index_t>{ 0, 1, 2, 3, 4 });
+    CHECK(res.total_cost == 0.0);
+  }
+
+  SECTION("U == 0 zero-cost warm-start") {
+    dtwc::Data data(std::vector<std::vector<dtwc::data_t>>{
+                      { 0.0 }, { 0.0 }, { 0.0 }, { 10.0 }, { 10.0 }, { 10.0 } },
+                    std::vector<std::string>{ "a0", "a1", "a2", "b0", "b1", "b2" });
+    dtwc::Problem prob("zero_ub");
+    prob.set_data(std::move(data));
+    prob.set_n_clusters(2);
+    REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
+    prob.set_method(dtwc::Method::MIP);
+    prob.mip_settings.warm_start = true;
+    const auto res = prob.cluster();
+    require_valid_exact_clustering(prob, 2);
+    CHECK(res.total_cost == 0.0);
+  }
+}
+
 TEST_CASE("Problem::set_result publishes only a well-formed clustering", "[mip][state]")
 {
   auto problem = make_small_problem(4, 8);

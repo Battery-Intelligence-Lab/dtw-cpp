@@ -22,8 +22,8 @@
  * (NOT set to +inf, which would cascade and make the matrix unreachable).
  *
  * Implementation: these wrappers delegate to the unified DTW kernel
- * (`core::run_dtw`) parameterised on `SpanAROW*Cost` (NaN-propagating pointwise cost) +
- * `AROWCell` (diagonal-carry recurrence).
+ * (`core::run_dtw`) parameterised on `SpanL1Cost` / `SpanSquaredL2Cost`
+ * (IEEE-754 NaN propagation) + `AROWCell` (diagonal-carry recurrence).
  *
  * Reference: Yurtman, A., Soenen, J., Meert, W. & Blockeel, H. (2023).
  *            "Estimating DTW Distance Between Time Series with Missing Data."
@@ -40,7 +40,7 @@
 
 #include "base/settings.hpp"
 #include "core/dtw_kernel.hpp"   // run_dtw, AROWCell
-#include "core/dtw_cost.hpp"     // SpanAROWL1Cost / SpanAROWSquaredL2Cost
+#include "core/dtw_cost.hpp"     // SpanL1Cost / SpanSquaredL2Cost
 #include "core/dtw_options.hpp"  // core::MetricType
 #include "core/series.hpp"       // core::SeriesPair
 
@@ -86,10 +86,10 @@ core::series_value_t<X> dtwAROW_banded(const X &x, const Y &y, int band = settin
   const std::span<const value_t> xs{ x }, ys{ y };
   // A univariate L2 cost is L1: sqrt((a-b)^2) == |a-b|.
   if (metric == core::MetricType::SquaredL2)
-    return core::run_dtw<core::SpanAROWSquaredL2Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
-                                                      core::AROWCell{}, value_t(-1));
-  return core::run_dtw<core::SpanAROWL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band, core::AROWCell{},
-                                             value_t(-1));
+    return core::run_dtw<core::SpanSquaredL2Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band,
+                                                  core::AROWCell{}, value_t(-1));
+  return core::run_dtw<core::SpanL1Cost>(xs.data(), xs.size(), ys.data(), ys.size(), band, core::AROWCell{},
+                                         value_t(-1));
 }
 
 } // namespace dtwc

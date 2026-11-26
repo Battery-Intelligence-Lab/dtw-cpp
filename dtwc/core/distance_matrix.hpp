@@ -94,6 +94,34 @@ inline constexpr size_t group_rows = 8;
 template <size_t W = group_rows, typename T, typename F>
 inline void for_each_point(const T *packed, index_t n, index_t a, F &&f)
 {
+  if (n <= 0) return;
+  const size_t nu = static_cast<size_t>(n);
+  const size_t au = static_cast<size_t>(a);
+  if (au + W <= nu) {
+    const T *row_ptr[W];
+    for (size_t g = 0; g < W; ++g) row_ptr[g] = packed + packed_size(au + g);
+    for (index_t o = 0; o < a; ++o) {
+      double v[W];
+      for (size_t g = 0; g < W; ++g) v[g] = static_cast<double>(row_ptr[g][o]);
+      f(o, static_cast<const double *>(v));
+    }
+    const index_t o_mid_end = a + static_cast<index_t>(W);
+    for (index_t o = a; o < o_mid_end; ++o) {
+      double v[W];
+      for (size_t g = 0; g < W; ++g)
+        v[g] = static_cast<double>(packed[tri_index(au + g, static_cast<size_t>(o))]);
+      f(o, static_cast<const double *>(v));
+    }
+    size_t row_o = packed_size(au + W);
+    for (index_t o = o_mid_end; o < n; ++o) {
+      const T *const base = packed + row_o + au;
+      double v[W];
+      for (size_t g = 0; g < W; ++g) v[g] = static_cast<double>(base[g]);
+      f(o, static_cast<const double *>(v));
+      row_o += static_cast<size_t>(o) + 1;
+    }
+    return;
+  }
   index_t rows[W];
   for (size_t g = 0; g < W; ++g) rows[g] = std::min(a + static_cast<index_t>(g), n - 1);
   for (index_t o = 0; o < n; ++o) {

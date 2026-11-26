@@ -45,6 +45,7 @@
 #include "algorithms/one_batch_pam.hpp"
 #include "algorithms/barycenter.hpp"
 #include "algorithms/hierarchical.hpp"
+#include "algorithms/tadpole.hpp"
 
 // Core types (binding-friendly, Armadillo-independent headers)
 #include "core/clustering_result.hpp"

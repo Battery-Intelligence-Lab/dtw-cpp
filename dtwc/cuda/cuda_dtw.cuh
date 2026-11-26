@@ -17,6 +17,7 @@
 
 #include "../base/env.hpp"
 #include "../base/error.hpp"
+#include "../base/settings.hpp"
 #include "../core/distance_matrix.hpp"
 #include "../core/gpu_dtw_common.hpp"
 
@@ -146,6 +147,24 @@ CUDADistMatResult compute_medoid_distances_cuda(
     const CUDADistMatOptions &opts, const ParallelFor &parallel,
     const std::function<void(std::size_t first, std::size_t count,
                              std::span<const double> distances)> &consume);
+
+/// Nearest-medoid assignment on the GPU: deduplicates unique @p medoids across
+/// @p n_samples subsamples of @p k medoids each (`medoids.size() == n_samples * k`),
+/// computes unique medoid distances on GPU, and reduces `(best_label, best_dist)`
+/// per sample on GPU with exact lowest-slot and self (`first_point_index + i == medoid_indices[slot]`)
+/// tie-breaking. @p consume receives each block of @p count points in order:
+/// `labels` of size `n_samples * count` (`labels[s * count + i]`) and
+/// `best_dists` of size `n_samples * count` (`best_dists[s * count + i]`).
+CUDADistMatResult compute_medoid_argmin_cuda(
+    std::size_t n_series, const SeriesAt &series,
+    const std::vector<std::span<const double>> &medoids,
+    std::span<const index_t> medoid_indices,
+    index_t first_point_index,
+    std::size_t n_samples, std::size_t k,
+    const CUDADistMatOptions &opts, const ParallelFor &parallel,
+    const std::function<void(std::size_t first, std::size_t count,
+                             std::span<const index_t> labels,
+                             std::span<const double> best_dists)> &consume);
 
 }  // namespace dtwc::cuda
 

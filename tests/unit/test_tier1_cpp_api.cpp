@@ -741,3 +741,73 @@ TEST_CASE("detail::filled_matrix is the run's distance matrix at its stored widt
   config.matrix_dtype = dtwc::core::Precision::Float64;
   CHECK(dtwc::detail::filled_matrix(dtwc::run(config, seam_series())).width() == dtwc::core::Precision::Float64);
 }
+
+TEST_CASE("Config::output defaults to empty so cluster(dataset, cfg) writes no files unless asked",
+          "[api][tier1][config][sideeffects]")
+{
+  dtwc::Config cfg;
+  CHECK(cfg.output.empty());
+  cfg.k = 2;
+  cfg.method = dtwc::Method::PAM;
+
+  const ScratchDirectory scratch{ "tier1_default_cfg_cwd" };
+  {
+    const ScopedWorkingDirectory cwd{ scratch.path };
+    const auto result = dtwc::cluster(dtwc::load(two_cluster_series()), cfg);
+    CHECK(result.labels().size() == 4);
+    CHECK(fs::is_empty(scratch.path));
+  }
+  CHECK(fs::is_empty(scratch.path));
+}
+
+TEST_CASE("dtwc::load validates and propagates ndim for memory and path datasets", "[api][tier1][ndim]")
+{
+  const ScratchDirectory scratch{ "tier1_ndim" };
+  const fs::path csv = scratch.path / "mv.csv";
+  {
+    std::ofstream out(csv);
+    REQUIRE(out.good());
+    out << "0,0, 0,1, 0,0\n"
+           "0,0, 0,2, 0,0\n"
+           "9,9, 9,8, 9,9\n"
+           "9,9, 9,7, 9,9\n";
+  }
+
+  REQUIRE_THROWS_AS(dtwc::load(csv, 0, 0, ',', "bad", dtwc::core::Precision::Float64, 0), dtwc::InvalidInput);
+  REQUIRE_THROWS_AS(
+    dtwc::load(dtwc::Dataset::series_type{ { 1.0, 2.0 } }, 0, 0, 0, "bad", dtwc::core::Precision::Float64, 0),
+    dtwc::InvalidInput);
+
+  // In-memory series with flat length not divisible by ndim fails when materialised.
+  const auto odd = dtwc::load(dtwc::Dataset::series_type{ { 1.0, 2.0, 3.0 }, { 4.0, 5.0, 6.0 } },
+                              0, 0, 0, "odd", dtwc::core::Precision::Float64, 2);
+  CHECK(odd.ndim() == 2);
+  REQUIRE_THROWS_AS(dtwc::cluster(odd, 2, "pam", -1, "cpu", 10), dtwc::InvalidInput);
+
+  const dtwc::Dataset::series_type mv_mem{
+    { 0.0, 0.0, 0.0, 1.0, 0.0, 0.0 },
+    { 0.0, 0.0, 0.0, 2.0, 0.0, 0.0 },
+    { 9.0, 9.0, 9.0, 8.0, 9.0, 9.0 },
+    { 9.0, 9.0, 9.0, 7.0, 9.0, 9.0 },
+  };
+  const auto ds_mem = dtwc::load(mv_mem, 0, 0, 0, "mv_mem", dtwc::core::Precision::Float64, 2);
+  CHECK(ds_mem.ndim() == 2);
+  const auto res_mem = dtwc::cluster(ds_mem, 2, "pam", -1, "cpu", 10);
+
+  dtwc::Problem oracle("mv_oracle");
+  oracle.set_data(dtwc::Data(
+    dtwc::Dataset::series_type(mv_mem), std::vector<std::string>{ "0", "1", "2", "3" }, 2));
+  oracle.set_n_clusters(2);
+  oracle.set_method(dtwc::Method::PAM);
+  oracle.cluster();
+  CHECK(res_mem.labels() == oracle.labels());
+  CHECK(res_mem.medoids() == oracle.medoids());
+  CHECK(res_mem.cost() == oracle.find_total_cost());
+
+  const auto ds_csv = dtwc::load(csv, 0, 0, ',', "mv_csv", dtwc::core::Precision::Float64, 2);
+  CHECK(ds_csv.ndim() == 2);
+  const auto res_csv = dtwc::cluster(ds_csv, 2, "pam", -1, "cpu", 10);
+  CHECK(res_csv.labels() == oracle.labels());
+  CHECK(res_csv.medoids() == oracle.medoids());
+  CHECK(res_csv.cost() == oracle.find_total_cost());
+}

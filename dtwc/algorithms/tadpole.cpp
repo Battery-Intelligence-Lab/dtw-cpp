@@ -21,7 +21,7 @@
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
 #include "../core/lower_bound_impl.hpp" // Envelope, compute_envelope, lb_keogh_symmetric
-#include "../core/distance_matrix.hpp"  // tri_index, packed_size
+#include "../core/distance_matrix.hpp"  // refuse_float32_range
 #include "../core/dtw_options.hpp"      // DTWVariant, MissingStrategy
 
 #include <algorithm>
@@ -75,6 +75,15 @@ namespace algorithms {
 #endif
       for (std::size_t t = 0; t < n; ++t) s += std::abs(xp[t] - yp[t]);
       return s;
+    }
+
+    /// O(1) LB_Kim lower bound for equal-length L1 DTW: endpoints must align.
+    inline double lb_kim_l1(std::span<const double> x, std::span<const double> y) noexcept
+    {
+      const std::size_t len = x.size();
+      if (len == 0) return 0.0;
+      if (len == 1) return std::abs(x[0] - y[0]);
+      return std::abs(x[0] - y[0]) + std::abs(x[len - 1] - y[len - 1]);
     }
 
     /// The exact distance of a pair: the Problem's matrix when it is filled (a
@@ -149,6 +158,10 @@ namespace algorithms {
     auto sample_pair = [&](std::size_t p) { sample[p] = distance(pairs[p].first, pairs[p].second); };
     run_openmp(sample_pair, pairs.size());
 
+    for (double v : sample)
+      if (!std::isfinite(v))
+        throw InvalidInput("tadpole_auto_dc: distance function returned a non-finite value.");
+
     std::size_t idx = static_cast<std::size_t>(percentile / 100.0 * static_cast<double>(sample.size() - 1));
     if (idx >= sample.size()) idx = sample.size() - 1;
     std::nth_element(sample.begin(), sample.begin() + idx, sample.end());
@@ -184,49 +197,52 @@ namespace algorithms {
 
     const auto distance = exact_distance(prob);
     const int band = prob.distance().band;
-    const bool can_prune = prune && !prob.is_distance_matrix_filled()
+    const bool filled = prob.is_distance_matrix_filled();
+    const bool f32_matrix = !filled && prob.matrix_dtype() == core::Precision::Float32;
+    const bool can_prune = prune && !filled
                            && detail::bounds_valid(prob.variant_params().variant, prob.metric(), prob.data().ndim,
                                                    prob.data().precision, prob.matrix_dtype(), prob.missing_strategy());
 
-    const std::size_t M = core::packed_size(static_cast<std::size_t>(N)); // incl. diagonal slots
-    std::vector<char> computed(M, 0);                                     // first-touch flag per pair (dedup + exact-call count)
-    // The pairs computed so far, when the Problem's matrix does not hold them.
-    core::DistanceMatrix cache(prob.is_distance_matrix_filled() ? 0 : static_cast<std::size_t>(N), prob.matrix_dtype());
+    // Sparse per-row exact-pair storage when the Problem's matrix is not pre-filled:
+    // Stage 1 populates upper_cache[i] (j > i, sorted ascending) exclusively per row i;
+    // after Stage 1, lower_cache[j] mirrors (i, d) with i < j, also sorted ascending.
+    const auto points = static_cast<std::size_t>(N);
+    std::vector<std::vector<std::pair<index_t, double>>> upper_cache(filled ? 0 : points);
+    std::vector<std::vector<std::pair<index_t, double>>> lower_cache;
+    constexpr std::size_t kMaxUbSeeds = 16;
+    std::vector<std::vector<std::pair<index_t, double>>> upper_ub(can_prune ? points : 0);
+    std::vector<std::vector<std::pair<index_t, double>>> lower_ub(can_prune ? points : 0);
 
-    // Exact DTW with dedup. computed[p] and the cache slot are written by exactly
-    // one thread per pair (each unordered pair is visited by a single owner in
-    // every stage, and the stages are barrier-separated), so no lock is needed; a
-    // pair touched twice is computed once.
-    auto exact = [&](index_t i, index_t j) -> double {
-      computed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))] = 1;
-      if (cache.size() == 0) return distance(i, j);
-      const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(j);
-      if (!cache.is_computed(a, b)) cache.set(a, b, distance(i, j));
-      return cache.get(a, b);
+    auto eval_pair = [&](index_t i, index_t j) -> double {
+      double d = distance(i, j);
+      if (f32_matrix) {
+        const float f = static_cast<float>(d);
+        if (!std::isfinite(f) && std::isfinite(d))
+          core::refuse_float32_range("tadpole", static_cast<std::size_t>(std::min(i, j)),
+                                     static_cast<std::size_t>(std::max(i, j)), d);
+        d = static_cast<double>(f);
+      }
+      return d;
     };
 
     // Per-series LB_Keogh envelopes, reused across ALL pairs (Begum's cached
     // envelope). For full DTW (band<0) the valid envelope is the GLOBAL min/max
-    // (window ≥ n), which the series length as the window gives (compute_envelopes
+    // (window >= n), which the series length as the window gives (compute_envelopes
     // reads a negative band the same way).
     std::vector<core::Envelope> envs;
     if (can_prune) {
-      envs.resize(static_cast<std::size_t>(N));
+      envs.resize(points);
       auto build_env = [&](std::size_t idx_i) {
         auto s = prob.series(idx_i);
         const int env_band = (band < 0) ? static_cast<int>(s.size()) : band;
         envs[idx_i] = core::compute_envelope(s, env_band);
       };
-      run_openmp(build_env, static_cast<std::size_t>(N), N >= 64);
+      run_openmp(build_env, points, N >= 64);
     }
 
     // ── Stage 1 · local density ρ_i = |{ j≠i : d(i,j) < dc }| (cutoff kernel) ──
-    // Each thread owns one count row and one pair of tallies (LB / UB pruning),
-    // so the region has no shared write; the rows are summed serially after it.
-    // A thread's failure waits in its own slot (Failure) until the join, in both stages.
     const int n_threads = get_max_threads();
     const auto threads = static_cast<std::size_t>(n_threads);
-    const auto points = static_cast<std::size_t>(N);
     std::vector<index_t> rho_rows(threads * points, 0);
     std::vector<std::size_t> plb_by_thread(threads, 0), pub_by_thread(threads, 0);
     std::vector<Failure> failures(threads, Failure{ nullptr, N });
@@ -242,20 +258,22 @@ namespace algorithms {
       std::size_t loc_plb = 0, loc_pub = 0;
       Failure &slot = failures[thread];
 
-// `can_prune` is loop-invariant, so it selects the whole i-body once rather
-// than being retested per pair, and keeps prob.series() — which throws under
-// Float32 — strictly inside the pruning branch.
 #pragma omp for schedule(dynamic, 8) nowait
       for (index_t i = 0; i < N; ++i) {
         if (i > slot.failed_at) continue;
         try {
           if (can_prune) {
             const auto si = prob.series(static_cast<std::size_t>(i));
+            auto &uc = upper_cache[static_cast<std::size_t>(i)];
+            auto &uub = upper_ub[static_cast<std::size_t>(i)];
             for (index_t j = i + 1; j < N; ++j) {
               const auto sj = prob.series(static_cast<std::size_t>(j));
               bool neighbour;
               if (si.size() == sj.size()) {
-                if (core::lb_keogh_at_least(si, envs[i], sj, envs[j], dc)) { // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
+                if (lb_kim_l1(si, sj) >= dc) {
+                  neighbour = false;
+                  ++loc_plb;
+                } else if (core::lb_keogh_at_least(si, envs[i], sj, envs[j], dc)) { // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
                   neighbour = false;
                   ++loc_plb;
                 } else {
@@ -263,12 +281,17 @@ namespace algorithms {
                   if (ub < dc) { // Case B: d ≤ UB < dc ⇒ neighbour
                     neighbour = true;
                     ++loc_pub;
+                    if (uub.size() < kMaxUbSeeds) uub.emplace_back(j, ub);
                   } else { // Case D: bounds straddle dc ⇒ exact
-                    neighbour = (exact(i, j) < dc);
+                    const double d = eval_pair(i, j);
+                    uc.emplace_back(j, d);
+                    neighbour = (d < dc);
                   }
                 }
               } else {
-                neighbour = (exact(i, j) < dc);
+                const double d = eval_pair(i, j);
+                uc.emplace_back(j, d);
+                neighbour = (d < dc);
               }
               if (neighbour) {
                 ++rho_local[i];
@@ -276,11 +299,14 @@ namespace algorithms {
               }
             }
           } else {
-            for (index_t j = i + 1; j < N; ++j)
-              if (exact(i, j) < dc) {
+            for (index_t j = i + 1; j < N; ++j) {
+              const double d = eval_pair(i, j);
+              if (!filled) upper_cache[static_cast<std::size_t>(i)].emplace_back(j, d);
+              if (d < dc) {
                 ++rho_local[i];
                 ++rho_local[j];
               }
+            }
           }
         } catch (...) {
           slot.failure = std::current_exception();
@@ -298,75 +324,152 @@ namespace algorithms {
     const std::size_t plb = std::accumulate(plb_by_thread.begin(), plb_by_thread.end(), std::size_t{ 0 });
     const std::size_t pub = std::accumulate(pub_by_thread.begin(), pub_by_thread.end(), std::size_t{ 0 });
 
+    std::size_t stage1_calls = 0;
+    if (!filled) {
+      lower_cache.resize(points);
+      for (index_t i = 0; i < N; ++i) {
+        const auto &uc = upper_cache[static_cast<std::size_t>(i)];
+        stage1_calls += uc.size();
+        for (const auto &[j, d] : uc)
+          lower_cache[static_cast<std::size_t>(j)].emplace_back(i, d);
+      }
+      if (can_prune) {
+        for (index_t i = 0; i < N; ++i) {
+          for (const auto &[j, ub] : upper_ub[static_cast<std::size_t>(i)]) {
+            auto &lub = lower_ub[static_cast<std::size_t>(j)];
+            if (lub.size() < kMaxUbSeeds) lub.emplace_back(i, ub);
+          }
+        }
+      }
+    } else {
+      stage1_calls = points * (points - 1) / 2;
+    }
+
     // ── Stage 2 · separation δ_i = min distance to a higher-density point, and
     //    parent = that nearest higher-density neighbour (with LB pruning) ──
     constexpr double kInf = std::numeric_limits<double>::max();
     std::vector<double> delta(N, kInf);
     std::vector<index_t> parent(N, -1);
+    std::vector<std::size_t> stage2_by_thread(threads, 0);
 
-// The slots are Stage 1's, every one empty again: a failure there was rethrown above.
-#pragma omp parallel for schedule(dynamic, 8) num_threads(n_threads)
-    for (index_t i = 0; i < N; ++i) {
+#pragma omp parallel num_threads(n_threads)
+    {
 #ifdef _OPENMP
-      Failure &slot = failures[static_cast<std::size_t>(omp_get_thread_num())];
+      const auto thread = static_cast<std::size_t>(omp_get_thread_num());
 #else
-      Failure &slot = failures[0];
+      const std::size_t thread = 0;
 #endif
-      if (i > slot.failed_at) continue;
-      try {
-        double best = kInf;
-        index_t best_parent = -1;
-        if (can_prune) { // prob.series() only on the pruning path — see above
-          const auto si = prob.series(static_cast<std::size_t>(i));
-          // Seed `best` from any higher-density pairs already evaluated in Stage 1 so LB_Keogh starts with a tight bound.
-          if (cache.size() > 0) {
-            for (index_t q = 0; q < N; ++q) {
-              if (q == i || !higher_density(q, i, rho)) continue;
-              const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(q);
-              if (cache.is_computed(a, b)) {
-                const double d = cache.get(a, b);
-                if (d < best) {
-                  best = d;
-                  best_parent = q;
+      Failure &slot = failures[thread];
+      std::size_t loc_stage2 = 0;
+
+#pragma omp for schedule(dynamic, 8) nowait
+      for (index_t i = 0; i < N; ++i) {
+        if (i > slot.failed_at) continue;
+        try {
+          double best = kInf;
+          index_t best_parent = -1;
+          if (can_prune) { // prob.series() only on the pruning path — see above
+            const auto si = prob.series(static_cast<std::size_t>(i));
+            const auto &lc = lower_cache[static_cast<std::size_t>(i)];
+            const auto &uc = upper_cache[static_cast<std::size_t>(i)];
+
+            // Seed `best` from any higher-density pairs already evaluated in Stage 1.
+            for (const auto &[q, d] : lc) {
+              if (!higher_density(q, i, rho)) continue;
+              if (d < best || (d == best && q < best_parent)) {
+                best = d;
+                best_parent = q;
+              }
+            }
+            for (const auto &[q, d] : uc) {
+              if (!higher_density(q, i, rho)) continue;
+              if (d < best || (d == best && q < best_parent)) {
+                best = d;
+                best_parent = q;
+              }
+            }
+
+            // Seed `best` from Stage 1 close neighbours (UB < dc) when helpful.
+            index_t ub_seed_q = -1;
+            double ub_seed_val = best;
+            for (const auto &list : { &lower_ub[static_cast<std::size_t>(i)], &upper_ub[static_cast<std::size_t>(i)] }) {
+              for (const auto &[q, ub] : *list) {
+                if (!higher_density(q, i, rho)) continue;
+                if (ub < ub_seed_val) {
+                  ub_seed_val = ub;
+                  ub_seed_q = q;
                 }
               }
             }
-          }
-          for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
-            if (q == i || !higher_density(q, i, rho)) continue;
-            if (cache.size() > 0 && cache.is_computed(static_cast<std::size_t>(i), static_cast<std::size_t>(q)))
-              continue;
-            const auto sq = prob.series(static_cast<std::size_t>(q));
-            const bool wins_tie = (best_parent >= 0 && q < best_parent);
-            if (si.size() == sq.size()) {
-              const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], best)
-                                           : core::lb_keogh_at_least(si, envs[i], sq, envs[q], best);
-              if (pruned) continue;
+            if (ub_seed_q >= 0) {
+              const double d = eval_pair(i, ub_seed_q);
+              ++loc_stage2;
+              if (d < best || (d == best && ub_seed_q < best_parent)) {
+                best = d;
+                best_parent = ub_seed_q;
+              }
             }
-            const double d = exact(i, q);
-            if (d < best || (wins_tie && d == best)) {
-              best = d;
-              best_parent = q;
+
+            std::size_t li = 0, ui = 0;
+            for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
+              while (li < lc.size() && lc[li].first < q) ++li;
+              while (ui < uc.size() && uc[ui].first < q) ++ui;
+              if (q == i || !higher_density(q, i, rho)) continue;
+              if ((li < lc.size() && lc[li].first == q) || (ui < uc.size() && uc[ui].first == q)
+                  || q == ub_seed_q)
+                continue;
+              const auto sq = prob.series(static_cast<std::size_t>(q));
+              const bool wins_tie = (best_parent >= 0 && q < best_parent);
+              if (si.size() == sq.size()) {
+                const double kim = lb_kim_l1(si, sq);
+                if (wins_tie ? (kim > best) : (kim >= best)) continue;
+                const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], best)
+                                             : core::lb_keogh_at_least(si, envs[i], sq, envs[q], best);
+                if (pruned) continue;
+              }
+              const double d = eval_pair(i, q);
+              ++loc_stage2;
+              if (d < best || (wins_tie && d == best)) {
+                best = d;
+                best_parent = q;
+              }
+            }
+          } else if (filled) {
+            for (index_t q = 0; q < N; ++q) {
+              if (q == i || !higher_density(q, i, rho)) continue;
+              const double d = distance(i, q);
+              if (d < best) {
+                best = d;
+                best_parent = q;
+              }
+            }
+          } else {
+            for (const auto &[q, d] : lower_cache[static_cast<std::size_t>(i)]) {
+              if (!higher_density(q, i, rho)) continue;
+              if (d < best || (d == best && q < best_parent)) {
+                best = d;
+                best_parent = q;
+              }
+            }
+            for (const auto &[q, d] : upper_cache[static_cast<std::size_t>(i)]) {
+              if (!higher_density(q, i, rho)) continue;
+              if (d < best || (d == best && q < best_parent)) {
+                best = d;
+                best_parent = q;
+              }
             }
           }
-        } else {
-          for (index_t q = 0; q < N; ++q) {
-            if (q == i || !higher_density(q, i, rho)) continue;
-            const double d = exact(i, q);
-            if (d < best) {
-              best = d;
-              best_parent = q;
-            }
-          }
+          delta[i] = best;
+          parent[i] = best_parent;
+        } catch (...) {
+          slot.failure = std::current_exception();
+          slot.failed_at = i;
         }
-        delta[i] = best;
-        parent[i] = best_parent;
-      } catch (...) {
-        slot.failure = std::current_exception();
-        slot.failed_at = i;
       }
+      stage2_by_thread[thread] = loc_stage2;
     }
     rethrow_lowest(failures, N);
+    const std::size_t stage2_calls = std::accumulate(stage2_by_thread.begin(), stage2_by_thread.end(), std::size_t{ 0 });
 
     // Global densest point (unique under the strict order: no higher-density
     // neighbour ⇒ parent == -1): δ = max of all other points' δ (Begum's
@@ -420,22 +523,28 @@ namespace algorithms {
       label[p] = (par >= 0 && label[par] >= 0) ? label[par] : 0;
     }
 
-    // Objective: Σ_i d(i, its cluster's center).
+    // Objective: Σ_i d(i, its cluster's center) without polluting dtw_calls or caches.
+    auto lookup_or_distance = [&](index_t i, index_t c) -> double {
+      if (filled) return distance(i, c);
+      const auto &row = (c > i) ? upper_cache[static_cast<std::size_t>(i)]
+                                : lower_cache[static_cast<std::size_t>(i)];
+      const auto it = std::lower_bound(row.begin(), row.end(), c,
+                                       [](const std::pair<index_t, double> &entry, index_t target) {
+                                         return entry.first < target;
+                                       });
+      if (it != row.end() && it->first == c) return it->second;
+      return eval_pair(i, c);
+    };
+
     double total_cost = 0.0;
     for (index_t i = 0; i < N; ++i) {
       const index_t c = center_of_label[label[i]];
-      if (i != c) total_cost += exact(i, c);
+      if (i != c) total_cost += lookup_or_distance(i, c);
     }
-    // A float32 cache stores a distance beyond its range as inf, which no result may rest on.
-    if (cache.width() == core::Precision::Float32)
-      if (const auto [i, j] = cache.first_infinite(0, cache.size()); i < cache.size())
-        core::refuse_float32_range("tadpole", i, j, distance(static_cast<index_t>(j), static_cast<index_t>(i)));
 
     if (stats) {
-      std::size_t uniq = 0;
-      for (char c : computed) uniq += (c != 0); // diagonal slots never set
-      stats->total_pairs = static_cast<std::size_t>(N * (N - 1) / 2);
-      stats->dtw_calls = uniq;
+      stats->total_pairs = points * (points - 1) / 2;
+      stats->dtw_calls = stage1_calls + stage2_calls;
       stats->pruned_by_lb = plb;
       stats->pruned_by_ub = pub;
       stats->dc = dc;

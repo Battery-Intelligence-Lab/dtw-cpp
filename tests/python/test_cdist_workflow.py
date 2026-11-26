@@ -76,6 +76,21 @@ class TestCdist:
         with pytest.raises(dtwcpp.InvalidInput, match="ndim"):
             dtwcpp.cdist(X_3d, Y_3d, ndim=2)
 
+    def test_cdist_refuses_explicit_ndim_1_on_multivariate_data_and_dataset(self):
+        rng = np.random.default_rng(19)
+        X_flat = rng.normal(size=(4, 12))
+        mv_ds = dtwcpp.load(X_flat, ndim=2)
+        mv_data = mv_ds.as_data()
+
+        D_ds = dtwcpp.cdist(mv_ds)
+        D_data = dtwcpp.cdist(mv_data)
+        np.testing.assert_allclose(D_ds, D_data, rtol=1e-12)
+
+        with pytest.raises(dtwcpp.InvalidInput, match="ndim=2.*ndim=1"):
+            dtwcpp.cdist(mv_data, ndim=1)
+        with pytest.raises(dtwcpp.InvalidInput, match="ndim=2.*ndim=1"):
+            dtwcpp.cdist(mv_ds, ndim=1)
+
     def test_hpc_device_rejected_on_cdist(self):
         X = np.zeros((2, 4))
         with pytest.raises(dtwcpp.DeviceError, match="hpc"):

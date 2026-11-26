@@ -14,8 +14,8 @@
  *      `.dtwm` distance matrices;
  *   3. O(Σ_c |C_c|^2) cluster-grouped Lloyd local search (`pmedian_local_search`)
  *      plus Volume-style exponential primal averages ȳ_i for fractional recovery;
- *   4. Zero-allocation DFS branch-and-bound with precomputed suffix minima and
- *      additive Erlenkotter client-floor tightening Σ_j max(0, m_j(A) − μ*_j).
+ *   4. Zero-allocation DFS branch-and-bound with precomputed suffix minima,
+ *      additive Erlenkotter client-floor tightening, and d_{F_1}(j) dual clamping.
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
@@ -34,10 +34,10 @@
 #include "../algorithms/fast_pam.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -94,9 +94,13 @@ namespace {
     const double *D;
     index_t N;
     std::size_t Nz;
+    bool nonneg = false;
 
     DenseMatrixView(const double *d, index_t n) noexcept
-      : D(d), N(n), Nz(static_cast<std::size_t>(n)) {}
+      : D(d), N(n), Nz(static_cast<std::size_t>(n))
+    {
+      nonneg = (min_distance() >= 0.0);
+    }
 
     double operator()(index_t i, index_t j) const noexcept
     {
@@ -118,13 +122,16 @@ namespace {
     {
       mu.assign(Nz, 0.0);
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (N >= kParallelMinN)
+      const int nthreads = (N >= kParallelMinN) ? get_max_threads() : 1;
+      const index_t chunk = omp_chunk_size_for(N, 4, nthreads);
+#pragma omp parallel for schedule(dynamic, chunk) num_threads(nthreads) if (N >= kParallelMinN)
 #endif
       for (index_t j = 0; j < N; ++j) {
+        const double *Dj = D + static_cast<std::size_t>(j) * Nz;
         double d1 = std::numeric_limits<double>::infinity();
         double d2 = std::numeric_limits<double>::infinity();
         for (index_t i = 0; i < N; ++i) {
-          const double v = D[static_cast<std::size_t>(i) * Nz + static_cast<std::size_t>(j)];
+          const double v = Dj[i];
           if (v < d1) {
             d2 = d1;
             d1 = v;
@@ -139,7 +146,9 @@ namespace {
     void compute_rho(const std::vector<double> &mu, std::vector<double> &rho) const
     {
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (N >= kParallelMinN)
+      const int nthreads = (N >= kParallelMinN) ? get_max_threads() : 1;
+      const index_t chunk = omp_chunk_size_for(N, 4, nthreads);
+#pragma omp parallel for schedule(dynamic, chunk) num_threads(nthreads) if (N >= kParallelMinN)
 #endif
       for (index_t i = 0; i < N; ++i) {
         const double *Di = D + static_cast<std::size_t>(i) * Nz;
@@ -160,6 +169,7 @@ namespace {
     const T *packed;
     index_t N;
     std::size_t Nz;
+    static constexpr bool nonneg = true;
 
     PackedMatrixView(const T *p, index_t n) noexcept
       : packed(p), N(n), Nz(static_cast<std::size_t>(n)) {}
@@ -175,7 +185,9 @@ namespace {
       constexpr std::size_t W = core::group_rows;
       const index_t n_groups = static_cast<index_t>((Nz + W - 1) / W);
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (N >= kParallelMinN)
+      const int nthreads = (N >= kParallelMinN) ? get_max_threads() : 1;
+      const index_t chunk = omp_chunk_size_for(n_groups, 4, nthreads);
+#pragma omp parallel for schedule(dynamic, chunk) num_threads(nthreads) if (N >= kParallelMinN)
 #endif
       for (index_t q = 0; q < n_groups; ++q) {
         const index_t a = q * static_cast<index_t>(W);
@@ -207,7 +219,9 @@ namespace {
       constexpr std::size_t W = core::group_rows;
       const index_t n_groups = static_cast<index_t>((Nz + W - 1) / W);
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (N >= kParallelMinN)
+      const int nthreads = (N >= kParallelMinN) ? get_max_threads() : 1;
+      const index_t chunk = omp_chunk_size_for(n_groups, 4, nthreads);
+#pragma omp parallel for schedule(dynamic, chunk) num_threads(nthreads) if (N >= kParallelMinN)
 #endif
       for (index_t q = 0; q < n_groups; ++q) {
         const index_t a = q * static_cast<index_t>(W);
@@ -444,11 +458,13 @@ namespace {
     return cost;
   }
 
-  /// Evaluate the Lagrangian dual at μ: fills @p rho, @p g, and @p idx (S_k = idx[0..k-1]); returns L(μ).
+  /// Evaluate the Lagrangian dual at μ and fused primal nearest-medoid repair on S_k = idx[0..k-1]:
+  /// fills @p rho, @p g, @p idx, @p cheap_lab, and @p cheap_cost; returns L(μ).
   template <typename Mat>
-  double evaluate_dual(const Mat &mat, index_t N, index_t k,
-                       const std::vector<double> &mu, std::vector<double> &rho,
-                       std::vector<double> &g, std::vector<index_t> &idx)
+  double evaluate_dual_and_primal(const Mat &mat, index_t N, index_t k,
+                                  const std::vector<double> &mu, std::vector<double> &rho,
+                                  std::vector<double> &g, std::vector<index_t> &idx,
+                                  std::vector<index_t> &cheap_lab, double &cheap_cost)
   {
     mat.compute_rho(mu, rho);
 
@@ -465,33 +481,37 @@ namespace {
     for (index_t t = 0; t < k; ++t) sum_rho_S += rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)])];
     const double L = sum_mu + sum_rho_S;
 
+    cheap_cost = 0.0;
     for (index_t j = 0; j < N; ++j) {
       index_t served = 0;
       const double muj = mu[static_cast<std::size_t>(j)];
+      double best_d = std::numeric_limits<double>::infinity();
+      index_t best_m = idx[0];
       for (index_t t = 0; t < k; ++t) {
         const index_t m = idx[static_cast<std::size_t>(t)];
-        if (mat(m, j) < muj) ++served;
+        const double d = mat(m, j);
+        if (d < muj) ++served;
+        if (d < best_d) {
+          best_d = d;
+          best_m = m;
+        }
       }
       g[static_cast<std::size_t>(j)] = 1.0 - static_cast<double>(served);
+      cheap_lab[static_cast<std::size_t>(j)] = best_m;
+      cheap_cost += best_d;
     }
     return L;
   }
 
-  /// Update the primal incumbent from candidate medoid prefix `cand_k[0..k-1]`.
+  /// Update the primal incumbent from a pre-evaluated cheap primal repair (`cheap_cost`, `cheap_lab`),
+  /// optionally followed by local-search polish.
   template <typename Mat>
-  void try_primal(const Mat &mat, index_t N, index_t k,
-                  const index_t *cand_k, bool do_polish, double &best_primal,
-                  std::vector<index_t> &best_medoids, std::vector<index_t> &best_labels,
-                  std::vector<index_t> &cheap_lab)
+  void update_primal(const Mat &mat, index_t N, index_t k,
+                     const index_t *cand_k, double cheap_cost,
+                     const std::vector<index_t> &cheap_lab, bool do_polish,
+                     double &best_primal, std::vector<index_t> &best_medoids,
+                     std::vector<index_t> &best_labels)
   {
-    double cheap_cost = 0.0;
-    for (index_t j = 0; j < N; ++j) {
-      const auto nearest = mip::nearest_medoid(k, [&](index_t t) {
-        return mat(cand_k[t], j);
-      });
-      cheap_lab[static_cast<std::size_t>(j)] = cand_k[nearest.position];
-      cheap_cost += nearest.distance;
-    }
     if (cheap_cost < best_primal) {
       best_primal = cheap_cost;
       best_medoids.assign(cand_k, cand_k + k);
@@ -507,6 +527,25 @@ namespace {
         best_labels = std::move(rl);
       }
     }
+  }
+
+  /// Evaluate cheap primal repair for candidate medoid prefix `cand_k[0..k-1]` and update incumbent.
+  template <typename Mat>
+  void try_primal(const Mat &mat, index_t N, index_t k,
+                  const index_t *cand_k, bool do_polish, double &best_primal,
+                  std::vector<index_t> &best_medoids, std::vector<index_t> &best_labels,
+                  std::vector<index_t> &cheap_lab)
+  {
+    double cheap_cost = 0.0;
+    for (index_t j = 0; j < N; ++j) {
+      const auto nearest = mip::nearest_medoid(k, [&](index_t t) {
+        return mat(cand_k[t], j);
+      });
+      cheap_lab[static_cast<std::size_t>(j)] = cand_k[nearest.position];
+      cheap_cost += nearest.distance;
+    }
+    update_primal(mat, N, k, cand_k, cheap_cost, cheap_lab, do_polish,
+                  best_primal, best_medoids, best_labels);
   }
 
   /// Resolve public `initial_ub` (default -1.0 means "unset" on non-negative matrices) into a SeedIncumbent.
@@ -539,16 +578,25 @@ namespace {
     }
   }
 
+  struct RootSolveOutput
+  {
+    LagrangianResult result;
+    std::vector<double> rho_at_best;
+    FixingResult fix;
+  };
+
   /// Tail of the subgradient root: final polish, Beasley reduced-cost fixing, and result assembly.
   template <typename Mat>
-  LagrangianResult finalize(const Mat &mat, index_t N, index_t k, double best_lb,
-                            double best_primal, double seed_ub,
-                            std::vector<index_t> best_medoids, std::vector<index_t> best_labels,
-                            std::vector<double> mu, const std::vector<double> &rho_at_best,
-                            int iterations, double rel_gap_tol)
+  RootSolveOutput finalize(const Mat &mat, index_t N, index_t k, double best_lb,
+                           double best_primal, double seed_ub,
+                           const std::vector<index_t> &sorted_seed_medoids,
+                           std::vector<index_t> best_medoids, std::vector<index_t> best_labels,
+                           std::vector<double> mu, std::vector<double> rho_at_best,
+                           int iterations, double rel_gap_tol)
   {
     const double inf = std::numeric_limits<double>::infinity();
-    if (!best_medoids.empty()) {
+    const bool seed_unchanged = !sorted_seed_medoids.empty() && best_medoids == sorted_seed_medoids;
+    if (!best_medoids.empty() && !seed_unchanged) {
       std::vector<index_t> fm = best_medoids, fl;
       const double fc = pmedian_local_search(mat, N, k, fm, fl, /*max_sweeps=*/32, /*enable_1swap=*/(N <= 2048));
       if (fc < best_primal) {
@@ -557,26 +605,36 @@ namespace {
         best_labels = std::move(fl);
       }
     }
+
+    double lower = (best_lb == -inf) ? 0.0 : best_lb;
+    if (mat.nonneg) lower = std::max(lower, 0.0);
+
     const double fix_ub = std::min(best_primal, seed_ub);
-    FixingResult fix = reduced_cost_fixing(rho_at_best, k, best_lb, fix_ub);
+    FixingResult fix = reduced_cost_fixing(rho_at_best, k, lower, fix_ub);
 
     LagrangianResult r;
-    r.lower_bound = (best_lb == -inf) ? 0.0 : best_lb;
+    r.lower_bound = lower;
     r.upper_bound = best_primal;
-    r.gap = best_primal == r.lower_bound ? 0.0 : (best_primal - r.lower_bound) / std::abs(best_primal);
-    r.certified_optimal = (r.gap <= rel_gap_tol);
+    if ((mat.nonneg && best_primal == 0.0) || best_primal == r.lower_bound) {
+      r.gap = 0.0;
+      r.certified_optimal = true;
+    } else {
+      const double denom = (best_primal == 0.0) ? 1e-12 : std::abs(best_primal);
+      r.gap = (best_primal - r.lower_bound) / denom;
+      r.certified_optimal = (r.gap <= rel_gap_tol);
+    }
     r.medoids = std::move(best_medoids);
     r.labels = std::move(best_labels);
     r.multipliers = std::move(mu);
     r.iterations = iterations;
-    r.core = std::move(fix.core);
+    r.core = fix.core;
     r.n_core = static_cast<index_t>(r.core.size());
-    return r;
+    return { std::move(r), std::move(rho_at_best), std::move(fix) };
   }
 
   template <typename Mat>
-  LagrangianResult lagrangian_root_subgrad_impl(const Mat &mat, index_t N, index_t k,
-                                                const SeedIncumbent &seed)
+  RootSolveOutput lagrangian_root_subgrad_internal(const Mat &mat, index_t N, index_t k,
+                                                   const SeedIncumbent &seed)
   {
     const std::size_t Nz = static_cast<std::size_t>(N);
     const double inf = std::numeric_limits<double>::infinity();
@@ -598,10 +656,17 @@ namespace {
     double best_primal = inf;
     const double seed_ub = seed.has_ub ? seed.ub : inf;
     std::vector<index_t> best_medoids, best_labels;
+    std::vector<index_t> sorted_seed_medoids;
+    if (seed.medoids != nullptr && static_cast<index_t>(seed.medoids->size()) == k) {
+      sorted_seed_medoids = *seed.medoids;
+      std::sort(sorted_seed_medoids.begin(), sorted_seed_medoids.end());
+    }
     apply_seed_medoids(mat, N, k, seed, best_primal, best_medoids, best_labels, cheap_lab);
 
     std::vector<double> mu_at_best = mu;
     std::vector<double> rho_at_best(Nz, 0.0);
+    std::array<double, 100> lb_hist;
+    lb_hist.fill(-inf);
 
     double lambda = params.lambda0;
     int stall = 0;
@@ -610,10 +675,11 @@ namespace {
     warn_if_single_threaded();
 
     for (iter = 0; iter < params.max_iters; ++iter) {
-      const double L = evaluate_dual(mat, N, k, mu, rho, g, idx);
+      double cheap_cost = inf;
+      const double L = evaluate_dual_and_primal(mat, N, k, mu, rho, g, idx, cheap_lab, cheap_cost);
 
       if (L > best_lb) {
-        best_lb = L;
+        best_lb = mat.nonneg ? std::max(L, 0.0) : L;
         mu_at_best = mu;
         rho_at_best = rho;
         stall = 0;
@@ -628,7 +694,8 @@ namespace {
         y_bar[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)])] += alpha;
 
       const bool do_polish = params.polish_period > 0 && (iter % params.polish_period) == 0;
-      try_primal(mat, N, k, idx.data(), do_polish, best_primal, best_medoids, best_labels, cheap_lab);
+      update_primal(mat, N, k, idx.data(), cheap_cost, cheap_lab, do_polish,
+                    best_primal, best_medoids, best_labels);
       if (do_polish && iter > 0) {
         std::iota(vol_idx.begin(), vol_idx.end(), index_t{ 0 });
         std::nth_element(vol_idx.begin(), vol_idx.begin() + (k - 1), vol_idx.end(), [&](index_t a, index_t b) {
@@ -640,9 +707,20 @@ namespace {
         try_primal(mat, N, k, vol_idx.data(), vol_polish, best_primal, best_medoids, best_labels, cheap_lab);
       }
 
-      if (best_primal - best_lb <= params.rel_gap_tol * std::abs(best_primal)) {
+      if ((mat.nonneg && best_primal == 0.0)
+          || best_primal - best_lb <= params.rel_gap_tol * std::abs(best_primal)) {
         ++iter;
         break;
+      }
+
+      const double lb_100_ago = lb_hist[static_cast<std::size_t>(iter % 100)];
+      lb_hist[static_cast<std::size_t>(iter % 100)] = best_lb;
+      if (iter >= 100 && lambda <= params.lambda_min && std::isfinite(lb_100_ago) && std::isfinite(best_lb)) {
+        const double lb_denom = std::max(std::abs(best_lb), std::abs(lb_100_ago));
+        if ((best_lb - lb_100_ago) <= 1e-7 * lb_denom) {
+          ++iter;
+          break;
+        }
       }
 
       double gnorm2 = 0.0;
@@ -663,19 +741,22 @@ namespace {
         for (index_t j = 0; j < N; ++j) dot += g[static_cast<std::size_t>(j)] * d_prev[static_cast<std::size_t>(j)];
         if (dot < 0.0) beta = -params.deflect * dot / dprev_norm2;
       }
-      double dnorm2 = 0.0, dg = 0.0;
+      double dnorm2 = 0.0;
       for (index_t j = 0; j < N; ++j) {
         const double dj = g[static_cast<std::size_t>(j)] + beta * d_prev[static_cast<std::size_t>(j)];
         d[static_cast<std::size_t>(j)] = dj;
         dnorm2 += dj * dj;
-        dg += dj * g[static_cast<std::size_t>(j)];
       }
-      if (dnorm2 <= 0.0 || dg <= 0.0) {
+      if (dnorm2 <= 0.0) {
         d = g;
         dnorm2 = gnorm2;
       }
 
       const double ub_step = std::min(best_primal, seed_ub);
+      if (ub_step <= L) {
+        ++iter;
+        break;
+      }
       const double step = lambda * (ub_step - L) / dnorm2;
       for (index_t j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] += step * d[static_cast<std::size_t>(j)];
 
@@ -684,7 +765,16 @@ namespace {
       have_dprev = true;
     }
 
-    return finalize(mat, N, k, best_lb, best_primal, seed_ub, std::move(best_medoids), std::move(best_labels), std::move(mu_at_best), rho_at_best, iter, params.rel_gap_tol);
+    return finalize(mat, N, k, best_lb, best_primal, seed_ub, sorted_seed_medoids,
+                    std::move(best_medoids), std::move(best_labels),
+                    std::move(mu_at_best), std::move(rho_at_best), iter, params.rel_gap_tol);
+  }
+
+  template <typename Mat>
+  LagrangianResult lagrangian_root_subgrad_impl(const Mat &mat, index_t N, index_t k,
+                                                const SeedIncumbent &seed)
+  {
+    return lagrangian_root_subgrad_internal(mat, N, k, seed).result;
   }
 
   template <typename Mat>
@@ -692,7 +782,8 @@ namespace {
                                               const SeedIncumbent &seed,
                                               std::int64_t max_nodes)
   {
-    LagrangianResult root = lagrangian_root_subgrad_impl(mat, N, k, seed);
+    RootSolveOutput sub = lagrangian_root_subgrad_internal(mat, N, k, seed);
+    LagrangianResult &root = sub.result;
     if (root.certified_optimal) {
       root.nodes = 0;
       return root;
@@ -702,20 +793,12 @@ namespace {
     const double inf = std::numeric_limits<double>::infinity();
 
     const std::vector<double> &mu = root.multipliers;
+    const std::vector<double> &rho = sub.rho_at_best;
     double sum_mu = 0.0;
     for (index_t j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
-    std::vector<double> rho(Nz, 0.0);
-    mat.compute_rho(mu, rho);
 
-    double lb_star = sum_mu;
-    {
-      std::vector<double> rho_sorted = rho;
-      std::nth_element(rho_sorted.begin(), rho_sorted.begin() + (k - 1), rho_sorted.end());
-      for (index_t t = 0; t < k; ++t) lb_star += rho_sorted[static_cast<std::size_t>(t)];
-    }
-    root.lower_bound = std::max(root.lower_bound, lb_star);
-    const FixingResult fx = reduced_cost_fixing(rho, k, lb_star, root.upper_bound);
-    const std::vector<index_t> forced = fx.fixed_open;
+    const FixingResult &fx = sub.fix;
+    const std::vector<index_t> &forced = fx.fixed_open;
     std::vector<char> is_forced(Nz, 0);
     for (index_t f : forced) is_forced[static_cast<std::size_t>(f)] = 1;
     std::vector<index_t> cand;
@@ -739,13 +822,15 @@ namespace {
 
     // Precompute per-client suffix minima over cand[pos..C-1] and depth-indexed open_mins[0..need]
     // when within memory budget, eliminating per-node std::vector allocations and tightening node bounds
-    // via exact Erlenkotter client-floor adjustments Σ_j max(0, min_{i∈A} D_ij − μ*_j).
+    // via exact Erlenkotter client-floor adjustments and d_{F_1}(j) dual clamping.
     const std::size_t suffix_cells = (static_cast<std::size_t>(C) + 1) * Nz;
     const std::size_t open_cells = (static_cast<std::size_t>(need) + 1) * Nz;
     const bool fast_tables = suffix_cells <= kMaxSuffixMinCells && open_cells <= kMaxSuffixMinCells;
 
     std::vector<double> suffix_min;
     std::vector<double> open_mins;
+    std::vector<double> tilde_mu;
+    std::vector<double> tilde_rho;
     if (fast_tables) {
       suffix_min.assign(suffix_cells, inf);
       for (index_t pos = C; pos-- > 0;) {
@@ -760,6 +845,8 @@ namespace {
         for (index_t j = 0; j < N; ++j)
           open_mins[static_cast<std::size_t>(j)] = std::min(open_mins[static_cast<std::size_t>(j)], mat(f, j));
       }
+      tilde_mu.resize(Nz);
+      tilde_rho.resize(static_cast<std::size_t>(C));
     }
 
     auto fallback_cost_of = [&](const std::vector<index_t> &S) {
@@ -825,7 +912,7 @@ namespace {
           leaf_S.insert(leaf_S.end(), chosen.begin(), chosen.end());
           c = fallback_cost_of(leaf_S);
         }
-        if (c < best_cost - tol) {
+        if (c < best_cost) {
           best_cost = c;
           best_medoids = forced;
           best_medoids.insert(best_medoids.end(), chosen.begin(), chosen.end());
@@ -851,6 +938,45 @@ namespace {
                                 - csum[static_cast<std::size_t>(fr.pos)]);
       if (node_lb >= best_cost - tol) continue;
 
+      if (fast_tables && nodes >= 64 && (fr.opened > 0 || !forced.empty())) {
+        const double *cur_open = open_mins.data() + static_cast<std::size_t>(fr.opened) * Nz;
+        const double *rem_min = suffix_min.data() + static_cast<std::size_t>(fr.pos) * Nz;
+        bool any_clamped = false;
+        double sum_tilde_mu = 0.0;
+        double tilde_mu_size = 0.0;
+        for (index_t j = 0; j < N; ++j) {
+          const double dj = cur_open[j];
+          const double mj = std::min(dj, rem_min[j]);
+          const double muj = mu[static_cast<std::size_t>(j)];
+          if (dj < muj) any_clamped = true;
+          const double tm = std::max(mj, std::min(muj, dj));
+          tilde_mu[static_cast<std::size_t>(j)] = tm;
+          sum_tilde_mu += tm;
+          tilde_mu_size += std::abs(tm);
+        }
+        if (any_clamped) {
+          for (index_t t = 0; t < rem; ++t) {
+            const index_t fac = cand[static_cast<std::size_t>(fr.pos + t)];
+            double s = 0.0;
+            for (index_t j = 0; j < N; ++j) {
+              const double dd = mat(fac, j) - tilde_mu[static_cast<std::size_t>(j)];
+              if (dd < 0.0) s += dd;
+            }
+            tilde_rho[static_cast<std::size_t>(t)] = s;
+          }
+          std::nth_element(tilde_rho.begin(),
+                           tilde_rho.begin() + (remaining_need - 1),
+                           tilde_rho.begin() + rem);
+          double clamped_lb = sum_tilde_mu;
+          for (index_t t = 0; t < remaining_need; ++t)
+            clamped_lb += tilde_rho[static_cast<std::size_t>(t)];
+          const double clamped_tol = std::max(
+            1e-9 * std::abs(best_cost),
+            kRounding * static_cast<double>(N) * tilde_mu_size);
+          if (clamped_lb >= best_cost - clamped_tol) continue;
+        }
+      }
+
       const index_t next_fac = cand[static_cast<std::size_t>(fr.pos)];
       stack.push_back({ fr.pos + 1, fr.opened, -1, fr.opened_rho });
       stack.push_back({ fr.pos + 1, fr.opened + 1, next_fac, fr.opened_rho + rho[static_cast<std::size_t>(next_fac)] });
@@ -873,17 +999,14 @@ namespace {
     r.nodes = nodes;
     if (capped) {
       r.lower_bound = root.lower_bound;
-      r.gap = best_cost == r.lower_bound ? 0.0 : (best_cost - r.lower_bound) / std::abs(best_cost);
-      r.certified_optimal = false;
-      std::fprintf(stderr,
-                   "lagrangian_root_exact: node cap %lld reached at N=%lld k=%lld before the tree "
-                   "closed; returning best incumbent (cost %.10g, gap %.3e) UNCERTIFIED. "
-                   "Raise the node cap or use an exact MIP solver for a certificate.\n",
-                   static_cast<long long>(max_nodes),
-                   static_cast<long long>(N),
-                   static_cast<long long>(k),
-                   best_cost,
-                   r.gap);
+      if ((mat.nonneg && best_cost == 0.0) || best_cost == r.lower_bound) {
+        r.gap = 0.0;
+        r.certified_optimal = (mat.nonneg && best_cost == 0.0);
+      } else {
+        const double denom = (best_cost == 0.0) ? 1e-12 : std::abs(best_cost);
+        r.gap = (best_cost - r.lower_bound) / denom;
+        r.certified_optimal = false;
+      }
     } else {
       r.lower_bound = best_cost;
       r.gap = 0.0;
@@ -951,24 +1074,24 @@ void LR_core_clustering(Problem &prob)
                       "heuristic answer.");
 
   const auto n_medoids = static_cast<index_t>(r.medoids.size());
+  std::vector<index_t> slot_of(static_cast<std::size_t>(N), -1);
+  for (index_t c = 0; c < n_medoids; ++c)
+    slot_of[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])] = c;
+
   core::ClusteringResult result;
   result.medoid_indices = r.medoids;
-  result.labels.assign(static_cast<std::size_t>(N), 0);
+  result.labels.resize(static_cast<std::size_t>(N));
   prob.distance_matrix().visit([&](const auto *packed) {
     for (index_t j = 0; j < N; ++j) {
-      result.labels[static_cast<std::size_t>(j)] =
-        mip::nearest_medoid(n_medoids, [&](index_t c) {
-          return static_cast<double>(packed[core::tri_index(
-            static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)]),
-            static_cast<std::size_t>(j))]);
-        }).position;
-    }
-    for (index_t c = 0; c < n_medoids; ++c) {
-      const auto m = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)]);
-      const auto served_by = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(result.labels[m])]);
-      const auto d_self = static_cast<double>(packed[core::tri_index(m, m)]);
-      const auto d_served = static_cast<double>(packed[core::tri_index(served_by, m)]);
-      if (d_self <= d_served) result.labels[m] = c;
+      const auto jz = static_cast<std::size_t>(j);
+      const index_t med_idx = r.labels[jz];
+      index_t lab = slot_of[static_cast<std::size_t>(med_idx)];
+      if (slot_of[jz] >= 0 && med_idx != j) {
+        const auto d_self = static_cast<double>(packed[core::tri_index(jz, jz)]);
+        const auto d_served = static_cast<double>(packed[core::tri_index(static_cast<std::size_t>(med_idx), jz)]);
+        if (d_self <= d_served) lab = slot_of[jz];
+      }
+      result.labels[jz] = lab;
     }
   });
   result.total_cost = r.upper_bound;

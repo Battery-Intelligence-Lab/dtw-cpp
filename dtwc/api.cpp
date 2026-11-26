@@ -26,10 +26,33 @@
 namespace dtwc {
 namespace {
 
-  void validate_skips(index_t skip_cols, index_t skip_rows)
+  void validate_load_options(index_t skip_cols, index_t skip_rows, std::size_t ndim)
   {
     if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
     if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
+    if (ndim < 1) throw InvalidInput("load: ndim must be at least 1.");
+  }
+
+  Data read_dataset_path(const Dataset &ds, const std::string &column)
+  {
+    Data out =
+#ifdef DTWC_HAS_ARROW
+      io::arrow_format(ds.path())
+        ? io::read_arrow(ds.path(), column, ds.skip_cols(), ds.skip_rows(), ds.dtype())
+        :
+#endif
+        read_data(ds.path(), ds.skip_cols(), ds.skip_rows(), ds.delimiter(), column, ds.dtype());
+    if (ds.ndim() > 1) {
+      if (out.ndim != 1 && out.ndim != ds.ndim())
+        throw InvalidInput("load: the Arrow IPC file's metadata gives ndim=" + std::to_string(out.ndim)
+                           + " and ndim=" + std::to_string(ds.ndim()) + " was given; pass ndim="
+                           + std::to_string(out.ndim) + ", or leave ndim out.");
+      if (out.ndim == 1) {
+        out.ndim = ds.ndim();
+        out.validate_ndim();
+      }
+    }
+    return out;
   }
 
   /// Refuse a reader option of `cfg` (skip_cols, skip_rows, delimiter, dtype) that is not at its default and differs
@@ -71,15 +94,15 @@ namespace {
 } // namespace
 
 Dataset::Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
-                 char delimiter, std::string name, core::Precision dtype)
+                 char delimiter, std::string name, core::Precision dtype, std::size_t ndim)
   : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
-    delimiter_(delimiter), name_(std::move(name)), dtype_(dtype)
+    delimiter_(delimiter), name_(std::move(name)), dtype_(dtype), ndim_(ndim)
 {}
 
 Dataset::Dataset(series_type source, index_t skip_cols, index_t skip_rows, char delimiter,
-                 std::string name, core::Precision dtype)
+                 std::string name, core::Precision dtype, std::size_t ndim)
   : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
-    delimiter_(delimiter), name_(std::move(name)), dtype_(dtype)
+    delimiter_(delimiter), name_(std::move(name)), dtype_(dtype), ndim_(ndim)
 {}
 
 bool Dataset::is_path() const noexcept
@@ -111,22 +134,23 @@ Data Dataset::materialize_local() &&
   }
   std::vector<std::string> names(series.size());
   for (std::size_t i = 0; i < names.size(); ++i) names[i] = std::to_string(i);
-  return Data(std::move(series), std::move(names));
+  return Data(std::move(series), std::move(names), ndim_);
 }
 
 Dataset load(const std::filesystem::path &source, index_t skip_cols, index_t skip_rows,
-             char delimiter, std::string_view name, core::Precision dtype)
+             char delimiter, std::string_view name, core::Precision dtype, std::size_t ndim)
 {
-  validate_skips(skip_cols, skip_rows);
+  validate_load_options(skip_cols, skip_rows, ndim);
   std::string resolved = name.empty() ? detail::default_name(source) : std::string(name);
-  return Dataset(source, skip_cols, skip_rows, delimiter, std::move(resolved), dtype);
+  return Dataset(source, skip_cols, skip_rows, delimiter, std::move(resolved), dtype, ndim);
 }
 
 Dataset load(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
-             char delimiter, std::string_view name, core::Precision dtype)
+             char delimiter, std::string_view name, core::Precision dtype, std::size_t ndim)
 {
-  validate_skips(skip_cols, skip_rows);
-  return Dataset(std::move(source), skip_cols, skip_rows, delimiter, name.empty() ? "dataset" : std::string(name), dtype);
+  validate_load_options(skip_cols, skip_rows, ndim);
+  return Dataset(std::move(source), skip_cols, skip_rows, delimiter, name.empty() ? "dataset" : std::string(name),
+                 dtype, ndim);
 }
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
@@ -178,12 +202,11 @@ Result cluster(const Dataset &dataset, index_t k, std::string_view method, int b
 Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
                std::string_view device, int max_iter)
 {
-  Config config; // dtwc_cl's defaults for everything this signature does not name
+  Config config; // Config's defaults (output is "", so cluster() writes nothing)
   config.k = k;
   config.method = parse_name(method_names, method, "method");
   config.band = band;
   config.max_iter = max_iter;
-  config.output.clear(); // Result::save writes; cluster() does not
   std::tie(config.device, config.device_index) =
     device.empty() ? detail::parse_device(dtwc::device()) : detail::parse_device(device);
   return cluster(std::move(dataset), config);
@@ -207,6 +230,14 @@ Result cluster(Dataset &&dataset, const Config &cfg)
     config.delimiter = '\0';
     return run(config, std::move(dataset).materialize_local());
   }
+  if (dataset.ndim() > 1) {
+    Data loaded = read_dataset_path(dataset, cfg.column);
+    config.input.clear();
+    config.skip_cols = 0;
+    config.skip_rows = 0;
+    config.delimiter = '\0';
+    return run(config, std::move(loaded));
+  }
   config.input = path_to_utf8(dataset.path());
   config.skip_cols = dataset.skip_cols();
   config.skip_rows = dataset.skip_rows();
@@ -224,12 +255,7 @@ std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg)
                ? detail::owned_copy(out, core::Precision::Float32)
                : out;
     }
-#ifdef DTWC_HAS_ARROW
-    if (io::arrow_format(ds.path())) {
-      return io::read_arrow(ds.path(), cfg.column, ds.skip_cols(), ds.skip_rows(), ds.dtype());
-    }
-#endif
-    return read_data(ds.path(), ds.skip_cols(), ds.skip_rows(), ds.delimiter(), cfg.column, ds.dtype());
+    return read_dataset_path(ds, cfg.column);
   };
   const Data x_data = read_ds(X);
   const Data y_data = read_ds(Y);
@@ -238,7 +264,7 @@ std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg)
 
 std::vector<double> cdist(const Dataset &X, const Dataset &Y)
 {
-  Config cfg; // dtwc_cl's defaults, on the process device
+  Config cfg; // Config's defaults, on the process device
   std::tie(cfg.device, cfg.device_index) = detail::parse_device(dtwc::device());
   return cdist(X, Y, cfg);
 }

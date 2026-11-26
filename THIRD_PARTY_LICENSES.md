@@ -24,7 +24,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | CLI11 | 2.7.2 | BSD-3-Clause | yes — headers compiled in | yes — headers compiled in: the module links the CLI library (`dtwc::run`, whose run report prints the command line's key table) |
 | fkYAML | 0.5.0 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no — the wheels are built with `DTWC_ENABLE_YAML=OFF` |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
-| LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS — `lib/`; Windows — `bin/libomp.dll`, beside `dtwc_cl.exe`; see note below | macOS wheels — bundled by `delocate`; Windows wheels — `libomp.dll` in `dtwcpp.libs/`, bundled by `delvewheel` |
+| LLVM OpenMP runtime (`libomp`) | 23.1.1 (Linux wheels: AlmaLinux 8's, see note below) | Apache-2.0 WITH LLVM-exception | macOS — `lib/`; Windows — `bin/libomp.dll`, beside `dtwc_cl.exe`; see note below | macOS wheels — bundled by `delocate`; Linux wheels — `libomp` in `dtwcpp.libs/`, bundled by `auditwheel`; Windows wheels — `libomp.dll` in `dtwcpp.libs/`, bundled by `delvewheel` |
 | Microsoft Visual C++ runtime (`msvcp140*`, `vcruntime140*`, `concrt140`) and its OpenMP runtime (`vcomp140`) | that of the Visual Studio that built the artefact | Microsoft Distributable Code — see below | Windows only — `bin/`, beside `dtwc_cl.exe` and `dtwc_cl_msvc.exe`; `vcomp140` for `dtwc_cl_msvc.exe` only | Windows wheels — `msvcp140` in `dtwcpp.libs/`, bundled by `delvewheel` |
 | llfio, quickcpplib, outcome, ntkernel-error-category (Windows) | pinned commits | Apache-2.0 **OR** BSL-1.0 | yes — headers compiled in (`DTWC_ENABLE_LLFIO=ON`) | yes — headers compiled in |
 | wg14_signals (llfio's signal guard) | pinned commit | Apache-2.0 | as llfio | as llfio |
@@ -38,16 +38,21 @@ CPM.cmake and CPMLicenses.cmake (MIT), which are build-time CMake helpers; Apach
 (Apache-2.0), which is opt-in and linked only if a user builds against their own installation; and
 Gurobi, which is proprietary, supplied by the user under their own licence, and never bundled.
 
-**Note on the OpenMP runtime.** On Linux the OpenMP runtime is the one belonging to the user's
-toolchain and is not redistributed by us. On Windows, which ships neither runtime, the wheels and the
+**Note on the OpenMP runtime.** The Linux CLI archive uses the OpenMP runtime belonging to the user's
+toolchain, which we do not redistribute. On Windows, which ships neither runtime, the wheels and the
 archive's `dtwc_cl.exe`, which clang-cl builds, carry LLVM's `libomp.dll`; the archive's
 `dtwc_cl_msvc.exe`, which MSVC builds, has MSVC's `vcomp140.dll` beside it, with the Visual C++
-runtime, as Microsoft's Distributable Code (section below). On macOS we bundle LLVM's `libomp` too.
+runtime, as Microsoft's Distributable Code (section below). On macOS, and in the Linux wheels, we
+bundle LLVM's `libomp` too.
 LLVM's `libomp` is Apache-2.0 WITH LLVM-exception; its terms are reproduced below. For macOS the
 release workflows build it unmodified from the LLVM 23.1.1 source release
 (`scripts/build_libomp_macos.sh`, SHA-256-pinned) for the artefacts' minimum macOS; the Windows wheels
 and archive take `bin/libomp.dll` from LLVM 23.1.1's official release binary for Windows x64,
-unmodified (`scripts/fetch_llvm_windows.sh`, SHA-256-pinned), whose clang-cl compiles them. We
+unmodified (`scripts/fetch_llvm_windows.sh`, SHA-256-pinned), whose clang-cl compiles them. The Linux
+wheels, which clang compiles, take `libomp` from AlmaLinux 8's AppStream `libomp` package, as AlmaLinux
+builds it, which the wheel workflow installs into the manylinux_2_28 image it builds in; `auditwheel`
+copies it into `dtwcpp.libs/`. Its version is AlmaLinux's current one, not pinned by us (LLVM 22.1.8
+in November 2026). We
 deliberately never redistribute GCC's `libgomp`, which is GPL-3.0 WITH GCC-exception.
 
 ---
@@ -137,12 +142,12 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## lz4 1.10.0 — BSD-2-Clause
+## lz4 1.11.1 — BSD-2-Clause
 
 lz4's library sources `lz4.c`, `lz4frame.c`, `lz4hc.c` and `xxhash.c` decode the LZ4_FRAME-compressed record
 batches of Arrow IPC files; they are compiled into `dtwc++` from the release archive
-`https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz` (SHA-256
-`537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b`, as the release publishes it), unmodified. Its
+`https://github.com/lz4/lz4/releases/download/v1.11.1/lz4-1.11.1.tar.gz` (SHA-256
+`683fed08a844ad012196381e40badf80c0bbe4962959761416d41c9e67d77ec7`, as the release publishes it), unmodified. Its
 `lib/LICENSE`:
 
 ```
@@ -172,12 +177,12 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## Zstandard 1.5.7 — BSD-3-Clause
+## Zstandard 1.6.0 — BSD-3-Clause
 
 Zstandard's decoder (`lib/decompress/` and the files of `lib/common/` it calls) decodes the ZSTD-compressed record
 batches of Arrow IPC files; it is compiled into `dtwc++` from the release archive
-`https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz` (SHA-256
-`eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3`, as the release publishes it), unmodified.
+`https://github.com/facebook/zstd/releases/download/v1.6.0/zstd-1.6.0.tar.gz` (SHA-256
+`2ba599ae2a257976278e7e71e998433a387bfd18aa7b78678229fd5d84f5e9b8`, as the release publishes it), unmodified.
 Zstandard is dual-licensed, BSD-3-Clause or GPL-2.0; DTWC++ takes it under BSD-3-Clause, its `LICENSE`:
 
 ```
@@ -223,11 +228,11 @@ Two test files of the Apache Arrow project's `arrow-testing` repository, at comm
 (SHA-256 `7aab19247177ea959506d7b192e8e21235f082267c72f394bb788c615ce03f54`). The repository's Apache License 2.0
 text is beside them, as `LICENSE.txt`; the repository has no NOTICE file.
 
-## fast_float 8.3.0 — Apache-2.0 OR MIT OR BSL-1.0
+## fast_float 8.3.3 — Apache-2.0 OR MIT OR BSL-1.0
 
-The single-header release `fast_float.h` of fast_float 8.3.0 (tag commit
-`b0ab987b3dfdde13fa1915f65ef2a5c068d9208c`, SHA-256
-`f23d93a4d1adf052e7b50e2a55ac54feeef91e188b71d35ae3038597e2659b90`) is vendored at
+The single-header release `fast_float.h` of fast_float 8.3.3 (tag commit
+`048df798cab53c26c9ab1a7c15585ecf6fd5ef9c`, SHA-256
+`9294ea363bbe6c43a026e0741f05c65e4fc02f3d582b70d6e2787c89edd6f966`) is vendored at
 `dtwc/extern/fast_float/` and compiled unconditionally into `dtwc++`, through
 `dtwc/io/parse_number.cpp` only. Copyright (c) 2021 The fast_float authors. It is offered under
 your choice of three licences; DTWC++ elects the **Boost Software License 1.0**, whose text is
@@ -235,7 +240,7 @@ reproduced in full in the llfio section below. The three upstream licence texts 
 file — in the CLI archive at `share/doc/dtwc/fast_float/`, and in the wheel under
 `dtwcpp-<version>.dist-info/licenses/dtwc/extern/fast_float/`.
 
-## HiGHS 1.15.1 — MIT
+## HiGHS 1.16.0 — MIT
 
 The CLI archive ships it as `lib/libhighs.*`, and the MATLAB MEX links it statically; the MIT
 licence below covers both. The Python wheel links no HiGHS: `method="mip"` solves with highspy,
@@ -265,12 +270,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## CLI11 2.6.2 — BSD-3-Clause
+## CLI11 2.7.2 — BSD-3-Clause
 
 Its headers are compiled into the CLI archives, the Python wheels and the MATLAB MEX, which link the CLI library.
 
 ```
-CLI11 2.6.2 Copyright (c) 2017-2026 University of Cincinnati, developed by Henry
+CLI11 2.7.2 Copyright (c) 2017-2026 University of Cincinnati, developed by Henry
 Schreiner under NSF AWARD 1414736. All rights reserved.
 
 Redistribution and use in source and binary forms of CLI11, with or without
@@ -297,7 +302,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## fkYAML 0.4.4 — MIT
+## fkYAML 0.5.0 — MIT
 
 ```
 MIT License
@@ -356,7 +361,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## LLVM OpenMP runtime (`libomp`) — Apache-2.0 WITH LLVM-exception
 
-Bundled in the macOS artefacts and the Windows wheels and archive. The complete Apache License 2.0
+Bundled in the macOS artefacts, the Linux wheels, and the Windows wheels and archive. The complete Apache License 2.0
 text is shipped alongside this file, at the `nanoarrow/` path given in the nanoarrow section above.
 The LLVM exception to it reads, in full:
 
@@ -444,9 +449,9 @@ DEALINGS IN THE SOFTWARE.
 
 pytorch/cpuinfo reads the CPU's model, its cores and its SIMD extensions for the machine facts that `dtwc_cl -v`
 and the run report print. Its library (`src/`, `include/cpuinfo.h`) is compiled into the CLI archives, the Python
-wheels and the MATLAB MEX (`DTWC_ENABLE_CPUINFO=ON`, the default) from the archive of commit `e9320ce3398899fbecc986c82f49b5d59b80dff7`
-(`https://github.com/pytorch/cpuinfo/archive/e9320ce3398899fbecc986c82f49b5d59b80dff7.tar.gz`, SHA-256
-`0f19bffed603d591240b6e25e8def96d203ccf59db09c28cd15c92bf856f5e90`), unmodified; its `deps/clog` is not built. Its
+wheels and the MATLAB MEX (`DTWC_ENABLE_CPUINFO=ON`, the default) from the archive of commit `fd8b912165dfffccb4f652610a0a19afc51d98ee`
+(`https://github.com/pytorch/cpuinfo/archive/fd8b912165dfffccb4f652610a0a19afc51d98ee.tar.gz`, SHA-256
+`196577afcc8c156d64667aa008d6d8aa828b397333acc7b055850726e2f046bb`), unmodified; its `deps/clog` is not built. Its
 `LICENSE`:
 
 ```

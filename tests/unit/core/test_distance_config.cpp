@@ -265,3 +265,26 @@ TEST_CASE("core::validate refuses each rule's configuration, and so does every e
       CHECK((row.f32 ? facade_message<float>(row.config) : facade_message<double>(row.config)) == row.message);
   }
 }
+
+TEMPLATE_TEST_CASE("distance::* rejects band < -1 with InvalidInput and returns max() for infeasible band",
+                   "[distance_config][band]", double, float)
+{
+  using T = TestType;
+  const std::vector<T> x{ T(1), T(2), T(3) };
+  const std::vector<T> y{ T(1), T(2), T(3), T(4), T(5) };
+
+  CHECK(message_of([&] { dtwc::core::validate({ .band = -2 }, std::is_same_v<T, float>); })
+        == "band must be >= -1");
+  CHECK_THROWS_AS(dtwc::distance::dtw(x, y, -2), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::distance::ddtw(x, y, -2), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::distance::wdtw(x, y, -2), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::distance::adtw(x, y, -2), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::distance::missing(x, y, -2), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::distance::arow(x, y, -2), dtwc::InvalidInput);
+
+  // band = 1 < |3 - 5| = 2: feasible config, infeasible length gap -> max().
+  constexpr T kMax = std::numeric_limits<T>::max();
+  CHECK(dtwc::distance::dtw(x, y, 1) == kMax);
+  CHECK(dtwc::distance::wdtw(x, y, 1) == kMax);
+  CHECK(dtwc::distance::adtw(x, y, 1) == kMax);
+}

@@ -1,7 +1,7 @@
 /**
  * @file test_config_spellings.cpp
  * @brief Contract of cli::bind(): every spelling of every dtwc::Config key reads
- *        to one Config, and Config{} holds dtwc_cl's defaults.
+ *        to one Config, and Config{} holds the library defaults (dtwc_cl sets output = "./results").
  *
  * @details The golden text is tests/conformance/config_all_fields.toml: every key
  * at a non-default value, in to_config_text() form. A command line (short flags,

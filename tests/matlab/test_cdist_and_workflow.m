@@ -79,6 +79,19 @@ function test_cdist_ragged_cells_and_multivariate(testCase)
     oracle = dtwc.fast_pam(prob, 2);
     verifyEqual(testCase, dtwc.cluster(mv, 2, 'Method', 'pam').cost, oracle.total_cost, 'RelTol', 1e-12);
     verifyNotEqual(testCase, dtwc.cluster(X_mv, 2, 'Method', 'pam').cost, oracle.total_cost);
+
+    % cdist omits Ndim by default (adopts Dataset Ndim), and refuses explicit 'Ndim', 1 on multivariate Dataset
+    verifyEqual(testCase, dtwc.distance.cdist(mv), dtwc.distance.cdist(X_mv, 'Ndim', 2), 'RelTol', 1e-12);
+    verifyError(testCase, @() dtwc.distance.cdist(mv, 'Ndim', 1), 'dtwc:invalidArgument');
+end
+
+function test_compute_distance_matrix_metric_and_device(testCase)
+    rng(31);
+    X = randn(5, 10);
+    D_sq = dtwc.compute_distance_matrix(X, 'Metric', 'squared_euclidean', 'Band', 2, 'Device', 'cpu');
+    D_ref = dtwc.distance.cdist(X, X, 'Metric', 'squared_euclidean', 'Band', 2);
+    verifyEqual(testCase, D_sq, D_ref, 'RelTol', 1e-12);
+    verifyError(testCase, @() dtwc.compute_distance_matrix(X, 'Device', 'bogus_dev'), 'dtwc:deviceError');
 end
 
 function test_cluster_writes_the_files_and_checkpoint_it_is_asked_for(testCase)
@@ -116,7 +129,7 @@ function test_cluster_writes_the_files_and_checkpoint_it_is_asked_for(testCase)
 
     % The same checkpoint resumes.
     resumed = dtwc.cluster(ds, 2, opts{:}, 'Checkpoint', ckpt_dir);
-    verifyNotEmpty(testCase, regexp(resumed.Report, 'the checkpoint\s+resumed', 'once'));
+    verifyNotEmpty(testCase, regexp(resumed.report, 'the checkpoint\s+resumed', 'once'));
     verifyEqual(testCase, resumed.labels, res.labels);
 
     % No Output (the default) writes nothing; Result.save writes on request.

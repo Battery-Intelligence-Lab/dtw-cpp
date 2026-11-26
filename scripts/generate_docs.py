@@ -63,7 +63,8 @@ def landing() -> str:
 DTWC++ provides one clustering engine across C++, Python, MATLAB, and the CLI.
 It combines parallel CPU kernels, CUDA and Metal distance backends, scalable
 matrix-free algorithms, exact solver routes, and loud capability checks—without
-silently substituting a different device or method.
+silently substituting a different device or method (a `fallback` to the CPU is
+the caller's explicit, announced choice).
 
 ## 60-second cross-language quickstart
 

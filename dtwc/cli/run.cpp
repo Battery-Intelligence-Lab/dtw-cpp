@@ -688,12 +688,13 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     return *memory;
   };
   // The series as the report gives them: `values` values of `ndim` features, `bytes` of them in RAM, of `shortest`
-  // to `longest` time steps (0: not known, a stream's).
+  // to `longest` time steps (0: not known, a stream's), in `precision`.
   const auto report_input = [&](std::size_t series, std::size_t values, std::size_t ndim, std::size_t bytes,
-                                std::size_t shortest, std::size_t longest, bool streamed) {
+                                std::size_t shortest, std::size_t longest, bool streamed,
+                                core::Precision precision) {
     if (stage.report)
       stage.report->input =
-        detail::RunReport::Input{ format_name(format), series, values, ndim, bytes, shortest, longest, streamed };
+        detail::RunReport::Input{ format_name(format), series, values, ndim, bytes, shortest, longest, streamed, precision };
   };
 
 #ifdef DTWC_HAS_PARQUET
@@ -740,7 +741,7 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     plan_clara();
     if (stream_payload) check_stream("Parquet", "Parquet metadata", resident);
     stage.note("Parquet metadata");
-    if (stream_payload) report_input(n_series, values, 1, 0, 0, 0, true);
+    if (stream_payload) report_input(n_series, values, 1, 0, 0, 0, true, config.dtype);
   }
 #endif
 
@@ -820,7 +821,7 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     }
     if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
     stage.note("Arrow IPC walk");
-    if (stream_payload) report_input(n_series, ipc->num_values(), ipc->ndim(), 0, 0, 0, true);
+    if (stream_payload) report_input(n_series, ipc->num_values(), ipc->ndim(), 0, 0, 0, true, config.dtype);
     if (!stream_payload) {
       storage = ipc->storage(config.dtype); // the read below repeats the walk's decisions on the same file
       ipc.reset();                          // read below as every Arrow IPC file is read
@@ -853,7 +854,8 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
       shortest = std::min(shortest, series.series_flat_size(i) / series.ndim);
     }
     const std::size_t value_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
-    report_input(static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false);
+    report_input(static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false,
+                 series.precision);
     stage.note(loaded);
     if (config.verbose && series.size() > 0)
       std::cout << "  Data memory: ~" << (value_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "

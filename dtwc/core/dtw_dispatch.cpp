@@ -175,6 +175,22 @@ auto make_wdtw(const DistanceConfig &c, const Data &data, const Data *other)
   };
   add_lengths(data);
   if (other != nullptr && other != &data) add_lengths(*other);
+  if (weights.size() == 1) {
+    auto it = weights.begin();
+    const std::size_t single_dev = it->first;
+    std::vector<T> single_w = std::move(it->second);
+    return [band, g, ndim, single_dev, single_w = std::move(single_w)](
+             std::span<const T> x, std::span<const T> y) -> double {
+      const auto x_steps = x.size() / ndim;
+      const auto y_steps = y.size() / ndim;
+      if (x_steps == 0 || y_steps == 0) return std::numeric_limits<double>::max();
+      const auto max_dev = std::max(x_steps, y_steps) - std::size_t{ 1 };
+      const std::vector<T> &w = (max_dev == single_dev)
+                                  ? single_w
+                                  : dtwc::detail::cached_wdtw_weights<T>(static_cast<int>(max_dev), g);
+      return normalize_public_distance(wdtwBanded_mv<T>(x.data(), x_steps, y.data(), y_steps, ndim, w, band));
+    };
+  }
   return [band, g, ndim, weights = std::move(weights)](std::span<const T> x, std::span<const T> y) -> double {
     const auto x_steps = x.size() / ndim;
     const auto y_steps = y.size() / ndim;
@@ -290,6 +306,7 @@ void validate(const DistanceConfig &c, bool f32)
   case MVMode::Dependent: case MVMode::Independent: break;
   default: throw outside("MVMode", p.mv_mode);
   }
+  if (c.band < -1) throw InvalidInput("band must be >= -1");
 
   // Each parameter, the variant that reads it, and whether 0 is in its domain:
   // WDTW's g = 0 (constant half weights) and ADTW's penalty = 0 (Standard DTW)
@@ -400,7 +417,9 @@ std::size_t detail::dispatch_scratch(bool release) noexcept
   auto &wdtw32 = dtwc::detail::wdtw_cache<float>();
   auto &wdtw64 = dtwc::detail::wdtw_cache<data_t>();
   std::size_t bytes = held_bytes(release, detail::linear_short_buf<float>(), detail::linear_short_buf<data_t>(),
-                                 detail::banded_col_buf<float>(), detail::banded_col_buf<data_t>(), wdtw32.w, wdtw64.w);
+                                 detail::banded_col_buf<float>(), detail::banded_col_buf<data_t>(),
+                                 detail::twe_step_buf<float>(), detail::twe_step_buf<data_t>(),
+                                 wdtw32.w, wdtw64.w);
   if (release) {
     wdtw32 = {};
     wdtw64 = {};

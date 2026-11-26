@@ -11,14 +11,17 @@ classdef Result < handle
 %
 %   Properties
 %   ----------
-%   labels  : double row vector, the 1-based cluster of each series.
-%   medoids : double row vector, the 1-based medoid series of each cluster.
-%   cost    : double, the total DTW distance of the series to their medoids.
-%   device  : char, the device the run computed on ('cpu', 'gpu', 'gpu:N', 'cpu+gpu' or 'cpu+gpu:N'):
-%             'cpu' where a GPU Device fell back to it (Fallback).
-%   Report  : char, the run report, the text dtwc_cl writes to <name>_report.txt
-%             (the run's machine, memory plan, stages and result); '' under
-%             NoReport.
+%   labels     : double row vector, the 1-based cluster of each series.
+%   medoids    : double row vector, the 1-based medoid series of each cluster.
+%   cost       : double, the total DTW distance of the series to their medoids.
+%   device     : char, the device the run computed on ('cpu', 'gpu', 'gpu:N', 'cpu+gpu' or 'cpu+gpu:N'):
+%                'cpu' where a GPU Device fell back to it (Fallback).
+%   report     : char, the run report, the text dtwc_cl writes to <name>_report.txt
+%                (the run's machine, memory plan, stages and result); '' under
+%                NoReport.
+%   method     : char, the clustering method that ran (auto resolved: 'pam', 'clara', ...).
+%   iterations : double, the method's iteration count.
+%   converged  : logical, whether the method converged within MaxIter.
 %
 %   See also dtwc.cluster, dtwc.silhouette
 
@@ -31,7 +34,10 @@ classdef Result < handle
         medoids
         cost
         device
-        Report
+        report
+        method
+        iterations
+        converged
     end
 
     properties (Access = private)
@@ -48,7 +54,10 @@ classdef Result < handle
             obj.cost = out.cost;
             obj.device = out.device;
             obj.Name = out.name;
-            obj.Report = out.report;
+            obj.report = out.report;
+            obj.method = out.method;
+            obj.iterations = out.iterations;
+            obj.converged = out.converged;
         end
 
         function delete(obj)

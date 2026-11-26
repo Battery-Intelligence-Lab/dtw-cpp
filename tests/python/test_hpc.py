@@ -246,6 +246,7 @@ class TestJobToml:
             'missing-strategy = "error"\n'
             "wdtw-g = 0.05\n"
             "adtw-penalty = 1.0\n"
+            "sdtw-gamma = 1.0\n"
             "msm-c = 1.0\n"
             "twe-nu = 0.02\n"
             "twe-lambda = 1.0\n")

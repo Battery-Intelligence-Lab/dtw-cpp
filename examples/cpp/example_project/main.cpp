@@ -36,11 +36,9 @@ int main(int argc, char **argv)
 
   prob.cluster_by_mip();
 
-  prob.write_distance_matrix();
-
   prob.print_clusters(); // Prints to screen.
-  prob.write_clusters(); // Prints to file.
-  prob.write_silhouettes();
+  // Writes the files dtwc_cl writes (labels, medoids, distance matrix, silhouettes) into ./results.
+  dtwc::detail::write_result_files(prob, "./results", true, &std::cout);
 
   std::cout << "Finished all tasks " << clk << "\n";
 }

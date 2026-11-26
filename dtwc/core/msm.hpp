@@ -54,8 +54,7 @@ namespace dtwc::core {
 template <typename T>
 inline T msm_cost(T nv, T a, T b, T c) noexcept
 {
-  if ((a <= nv && nv <= b) || (a >= nv && nv >= b)) return c;
-  return c + std::min(std::abs(nv - a), std::abs(nv - b));
+  return c + std::max(std::max(std::min(a, b) - nv, nv - std::max(a, b)), T(0));
 }
 
 namespace detail {
@@ -75,6 +74,9 @@ namespace detail {
 template <typename T = dtwc::settings::default_data_t>
 T msm_distance(const T *x, std::size_t nx, const T *y, std::size_t ny, T c = T(1))
 {
+#if defined(__clang__)
+#pragma clang fp reassociate(off)
+#endif
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (nx == 0 || ny == 0) return maxValue;
   if (x == y && nx == ny) return T(0);
@@ -85,8 +87,8 @@ T msm_distance(const T *x, std::size_t nx, const T *y, std::size_t ny, T c = T(1
   orient(b, nb, a, na); // a = long (rows), b = short (cols); a tie keeps a = x
 
   auto [prev_buf, curr_buf] = detail::msm_rows<T>();
-  prev_buf.resize(nb);
-  curr_buf.resize(nb);
+  if (prev_buf.size() < nb) prev_buf.resize(nb);
+  if (curr_buf.size() < nb) curr_buf.resize(nb);
   T *prev = prev_buf.data();
   T *curr = curr_buf.data();
 

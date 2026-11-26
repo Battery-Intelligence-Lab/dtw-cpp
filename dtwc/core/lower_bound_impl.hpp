@@ -17,6 +17,7 @@
 #pragma once
 
 #include <algorithm>   // for min, max, fill, max_element, min_element
+#include <bit>         // for bit_ceil
 #include <cstddef>     // for size_t
 #include <span>        // for span
 #include <vector>      // for vector
@@ -76,25 +77,41 @@ void compute_envelopes(const T *series, std::size_t n, int band,
   // Reference: D. Lemire, "Streaming Maximum-Minimum Filter Using No More
   // Than Three Comparisons per Element," 2006.
 
-  const std::size_t cap = w + 2;
-  std::vector<std::size_t> dmax(cap), dmin(cap);
-  std::size_t mx_h = 0, mx_t = 0, mn_h = 0, mn_t = 0;
+  const std::size_t cap = std::bit_ceil(w + 2);
+  const std::size_t mask = cap - 1;
+  constexpr std::size_t kMaxScratchElems = std::size_t{ 1 } << 16;
 
-  // Temporary storage for trailing-window (left-side) results.
-  std::vector<T> lmax(n), lmin(n);
+  struct Scratch
+  {
+    std::vector<std::size_t> dmax, dmin;
+    std::vector<T> lmax, lmin;
+  };
+  thread_local Scratch tl_scratch;
+  Scratch local_scratch;
+  Scratch &sc = (n <= kMaxScratchElems && cap <= kMaxScratchElems) ? tl_scratch : local_scratch;
+  if (sc.dmax.size() < cap) sc.dmax.resize(cap);
+  if (sc.dmin.size() < cap) sc.dmin.resize(cap);
+  if (sc.lmax.size() < n) sc.lmax.resize(n);
+  if (sc.lmin.size() < n) sc.lmin.resize(n);
+
+  std::size_t *dmax = sc.dmax.data();
+  std::size_t *dmin = sc.dmin.data();
+  T *lmax = sc.lmax.data();
+  T *lmin = sc.lmin.data();
+  std::size_t mx_h = 0, mx_t = 0, mn_h = 0, mn_t = 0;
 
   // --- Forward pass: lmax[p] = max([max(0,p-w)..p]), lmin symmetric ---
   for (std::size_t p = 0; p < n; ++p) {
     // Evict indices that have left the trailing window [p-w, p]
-    if (mx_h != mx_t && dmax[mx_h % cap] + w < p) ++mx_h;
-    if (mn_h != mn_t && dmin[mn_h % cap] + w < p) ++mn_h;
+    if (mx_h != mx_t && dmax[mx_h & mask] + w < p) ++mx_h;
+    if (mn_h != mn_t && dmin[mn_h & mask] + w < p) ++mn_h;
     // Maintain monotone decreasing (max) and increasing (min) deques
-    while (mx_h != mx_t && series[dmax[(mx_t - 1) % cap]] <= series[p]) --mx_t;
-    while (mn_h != mn_t && series[dmin[(mn_t - 1) % cap]] >= series[p]) --mn_t;
-    dmax[mx_t++ % cap] = p;
-    dmin[mn_t++ % cap] = p;
-    lmax[p] = series[dmax[mx_h % cap]];
-    lmin[p] = series[dmin[mn_h % cap]];
+    while (mx_h != mx_t && series[dmax[(mx_t - 1) & mask]] <= series[p]) --mx_t;
+    while (mn_h != mn_t && series[dmin[(mn_t - 1) & mask]] >= series[p]) --mn_t;
+    dmax[mx_t++ & mask] = p;
+    dmin[mn_t++ & mask] = p;
+    lmax[p] = series[dmax[mx_h & mask]];
+    lmin[p] = series[dmin[mn_h & mask]];
   }
 
   // --- Backward pass: leading window [p, min(n-1,p+w)], merged with lmax/lmin ---
@@ -102,16 +119,16 @@ void compute_envelopes(const T *series, std::size_t n, int band,
   for (std::ptrdiff_t q = static_cast<std::ptrdiff_t>(n) - 1; q >= 0; --q) {
     const std::size_t p = static_cast<std::size_t>(q);
     // Evict indices past the leading window [p, p+w]
-    if (mx_h != mx_t && dmax[mx_h % cap] > p + w) ++mx_h;
-    if (mn_h != mn_t && dmin[mn_h % cap] > p + w) ++mn_h;
+    if (mx_h != mx_t && dmax[mx_h & mask] > p + w) ++mx_h;
+    if (mn_h != mn_t && dmin[mn_h & mask] > p + w) ++mn_h;
     // Maintain monotone deques
-    while (mx_h != mx_t && series[dmax[(mx_t - 1) % cap]] <= series[p]) --mx_t;
-    while (mn_h != mn_t && series[dmin[(mn_t - 1) % cap]] >= series[p]) --mn_t;
-    dmax[mx_t++ % cap] = p;
-    dmin[mn_t++ % cap] = p;
+    while (mx_h != mx_t && series[dmax[(mx_t - 1) & mask]] <= series[p]) --mx_t;
+    while (mn_h != mn_t && series[dmin[(mn_t - 1) & mask]] >= series[p]) --mn_t;
+    dmax[mx_t++ & mask] = p;
+    dmin[mn_t++ & mask] = p;
     // Centered window = union of trailing + leading; take max/min of both sides
-    upper_out[p] = std::max(lmax[p], series[dmax[mx_h % cap]]);
-    lower_out[p] = std::min(lmin[p], series[dmin[mn_h % cap]]);
+    upper_out[p] = std::max(lmax[p], series[dmax[mx_h & mask]]);
+    lower_out[p] = std::min(lmin[p], series[dmin[mn_h & mask]]);
   }
 }
 

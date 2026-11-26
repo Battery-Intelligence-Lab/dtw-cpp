@@ -17,6 +17,12 @@
  * `missing`, `arow` and the ZeroCost / AROW / Interpolate strategies read NaN
  * as a missing value and reject only ±inf. The unchecked per-pair wrappers
  * they call are unchanged.
+ *
+ * Band semantics: `band < -1` is invalid and throws `InvalidInput` via
+ * `core::validate`. `band == -1` means unconstrained full DTW. When
+ * `band >= 0 && band < |m - n|` (infeasible Sakoe-Chiba window for
+ * unequal-length series), `dtwc::distance::*` returns `std::numeric_limits<T>::max()`
+ * (`DBL_MAX` for `double`, `FLT_MAX` for `float`).
  * @author Volkan Kumtepeli
  */
 
@@ -73,7 +79,8 @@ core::series_value_t<X> wdtw(const X &x, const Y &y, int band = settings::DEFAUL
                              core::series_value_t<X> g = 0.05)
 {
   using T = core::series_value_t<X>;
-  core::validate({ .variant = { .variant = core::DTWVariant::WDTW, .wdtw_g = g } }, std::is_same_v<T, float>);
+  core::validate({ .variant = { .variant = core::DTWVariant::WDTW, .wdtw_g = g }, .band = band },
+                 std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::wdtw");
   return wdtwBanded(x, y, band, g);
 }
@@ -84,7 +91,7 @@ core::series_value_t<X> adtw(const X &x, const Y &y, int band = settings::DEFAUL
                              core::series_value_t<X> penalty = 1.0)
 {
   using T = core::series_value_t<X>;
-  core::validate({ .variant = { .variant = core::DTWVariant::ADTW, .adtw_penalty = penalty } },
+  core::validate({ .variant = { .variant = core::DTWVariant::ADTW, .adtw_penalty = penalty }, .band = band },
                  std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::adtw");
   return adtwBanded(x, y, band, penalty);
@@ -209,7 +216,9 @@ std::vector<double> cdist(const std::vector<std::vector<T>> &X,
                           const core::DistanceConfig &distance = {},
                           Device device = Device::CPU,
                           int device_index = 0,
-                          GpuPrecision gpu_precision = GpuPrecision::Auto)
+                          GpuPrecision gpu_precision = GpuPrecision::Auto,
+                          double gpu_share = -1.0,
+                          bool fallback = false)
 {
   static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>,
                 "distance::cdist supports double (data_t) and float series.");
@@ -229,7 +238,7 @@ std::vector<double> cdist(const std::vector<std::vector<T>> &X,
   std::vector<std::string> x_names, y_names;
   const Data X_data = make_view(X, x_names);
   const Data Y_data = make_view(Y, y_names);
-  return dtwc::cdist(X_data, Y_data, distance, device, device_index, gpu_precision);
+  return dtwc::cdist(X_data, Y_data, distance, device, device_index, gpu_precision, gpu_share, fallback);
 }
 
 } // namespace dtwc::distance

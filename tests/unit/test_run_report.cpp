@@ -261,3 +261,25 @@ TEST_CASE("The result files quote a name that holds a comma, a quote or a line b
   CHECK(read_text(scratch.path / "out" / "rr_medoids.csv") == medoids);
   CHECK_THAT(read_text(scratch.path / "out" / "rr_silhouettes.csv"), ContainsSubstring("\n\"say \"\"hi\"\"\","));
 }
+
+TEST_CASE("The run report logs actual stored series precision for direct float32 Data", "[run][report][precision]")
+{
+  std::vector<std::vector<float>> f32_series(6);
+  std::vector<std::string> names(6);
+  for (std::size_t i = 0; i < 6; ++i) {
+    for (std::size_t t = 0; t < 10; ++t) f32_series[i].push_back(float(i % 2) * 10.0f + float(t) * 0.1f);
+    names[i] = "s" + std::to_string(i);
+  }
+  dtwc::Data f32_data(std::move(f32_series), std::move(names), 1);
+
+  dtwc::Config config; // dtype defaults to Float64, output is empty
+  config.method = dtwc::Method::PAM;
+  config.k = 2;
+  const auto result = dtwc::run(config, std::move(f32_data));
+  const auto section4 = result.report().find("4. Input\n");
+  REQUIRE(section4 != std::string::npos);
+  const auto section5 = result.report().find("5. Stages\n", section4);
+  REQUIRE(section5 != std::string::npos);
+  const std::string input_section = result.report().substr(section4, section5 - section4);
+  CHECK_THAT(input_section, ContainsSubstring("; float32; "));
+}

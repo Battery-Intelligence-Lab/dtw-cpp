@@ -304,7 +304,7 @@ std::string RunReport::render() const
                 + ", mean " + number(mean, 1);
     else
       series += "time steps: mean " + number(mean, 1) + (input->streamed ? " (streamed: no lengths read)" : "");
-    series += "; " + std::string(name_of(core::precision_names, config.dtype));
+    series += "; " + std::string(name_of(core::precision_names, input->precision));
     if (input->bytes > 0) series += "; " + bytes(input->bytes) + " of values";
     row(out, "series", series);
   }

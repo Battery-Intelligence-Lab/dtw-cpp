@@ -367,6 +367,8 @@ core::ClusteringResult one_batch_pam(Problem &prob,
     // Recompute removal gains and tolerance only after an accepted swap.
     std::vector<double> base_removal_gain(static_cast<std::size_t>(k), 0.0);
     std::vector<double> removal_gain(static_cast<std::size_t>(k), 0.0);
+    std::vector<double> scaled_w(m);
+    for (std::size_t j = 0; j < m; ++j) scaled_w[j] = distances.weights[j] / distances.scale;
     double tolerance = 0.0;
     const auto refresh_swap_state = [&] {
       std::fill(base_removal_gain.begin(), base_removal_gain.end(), 0.0);
@@ -385,8 +387,8 @@ core::ClusteringResult one_batch_pam(Problem &prob,
 
         double add_gain = 0.0;
         const double *const cand_row = distances.raw.data() + candidate * m;
+        const double *const sw_col = scaled_w.data();
         const double *const w_col = distances.weights.data();
-        const double inv_or_scale = distances.scale;
         const auto accumulate_col = [&](std::size_t j, double d) {
           const index_t slot = nearest[j];
           if (d < nearest_distance[j]) {
@@ -399,14 +401,14 @@ core::ClusteringResult one_batch_pam(Problem &prob,
         const index_t self_pos = distances.sample_position[candidate];
         if (self_pos < 0) {
           for (std::size_t j = 0; j < m; ++j)
-            accumulate_col(j, (cand_row[j] / inv_or_scale) * w_col[j]);
+            accumulate_col(j, cand_row[j] * sw_col[j]);
         } else {
           const auto self_j = static_cast<std::size_t>(self_pos);
           for (std::size_t j = 0; j < self_j; ++j)
-            accumulate_col(j, (cand_row[j] / inv_or_scale) * w_col[j]);
+            accumulate_col(j, cand_row[j] * sw_col[j]);
           accumulate_col(self_j, w_col[self_j]);
           for (std::size_t j = self_j + 1; j < m; ++j)
-            accumulate_col(j, (cand_row[j] / inv_or_scale) * w_col[j]);
+            accumulate_col(j, cand_row[j] * sw_col[j]);
         }
 
         const auto best_it = std::max_element(removal_gain.begin(), removal_gain.end());
@@ -443,23 +445,160 @@ core::ClusteringResult one_batch_pam(Problem &prob,
   // never saw: unguarded, a non-finite d would leave the point silently on label 0
   // where fast_pam and fast_clara throw. run_openmp rethrows the lowest point's
   // failure, the one a serial scan meets first.
-  auto assign_point = [&](std::size_t point) {
-    double best = std::numeric_limits<double>::infinity();
-    index_t label = 0;
-    std::uint64_t calls = 0;
-    for (index_t slot = 0; slot < k; ++slot) {
-      const double d = core::detail::require_finite_medoid_distance(
-        distances.exact(point, medoids[slot], calls), "one_batch_pam", point, slot, medoids[slot]);
-      if (d < best) {
-        best = d;
-        label = slot;
-      }
+  std::vector<index_t> oob_slots;
+  std::vector<index_t> oob_idx_of_slot(static_cast<std::size_t>(k), -1);
+  for (index_t slot = 0; slot < k; ++slot) {
+    if (distances.sample_position[static_cast<std::size_t>(medoids[slot])] < 0) {
+      oob_idx_of_slot[static_cast<std::size_t>(slot)] = static_cast<index_t>(oob_slots.size());
+      oob_slots.push_back(slot);
     }
-    result.labels[point] = label;
-    point_cost[point] = best;
-    point_evaluations[point] = calls;
+  }
+
+  const auto assign_scalar = [&] {
+    auto assign_point = [&](std::size_t point) {
+      double best = std::numeric_limits<double>::infinity();
+      index_t label = 0;
+      std::uint64_t calls = 0;
+      for (index_t slot = 0; slot < k; ++slot) {
+        const double d = core::detail::require_finite_medoid_distance(
+          distances.exact(point, medoids[slot], calls), "one_batch_pam", point, slot, medoids[slot]);
+        if (d < best) {
+          best = d;
+          label = slot;
+        }
+      }
+      result.labels[point] = label;
+      point_cost[point] = best;
+      point_evaluations[point] = calls;
+    };
+    run_openmp(assign_point, n, n > 64);
   };
-  run_openmp(assign_point, n, n > 64);
+
+  const auto dist_cfg = prob.distance();
+  const bool use_f32_lanes = prob.data().is_f32();
+  const auto packed_f32 = use_f32_lanes ? core::resolve_dtw_packed_block_fn<float>(dist_cfg) : decltype(core::resolve_dtw_packed_block_fn<float>(dist_cfg)){};
+  const auto packed_f64 = !use_f32_lanes ? core::resolve_dtw_packed_block_fn<data_t>(dist_cfg) : decltype(core::resolve_dtw_packed_block_fn<data_t>(dist_cfg)){};
+
+  if (!oob_slots.empty() && core::dtw_lanes_packed && (packed_f32 || packed_f64)) {
+    auto assign_simd = [&](auto series_of, const auto &packed_block) {
+      using T = typename decltype(series_of(std::size_t{ 0 }))::value_type;
+      constexpr std::size_t W = core::dtw_lanes<T>;
+      const std::size_t n_oob = oob_slots.size();
+      const index_t *const col_of_slot = oob_idx_of_slot.data();
+
+      if (n_oob >= W) {
+        const std::size_t n_panels = (n_oob + W - 1) / W;
+        std::vector<core::PackedLanesPanel<T>> oob_panels(n_panels);
+        for (std::size_t b = 0; b < n_panels; ++b) {
+          const std::size_t u0 = b * W, count = std::min(W, n_oob - u0);
+          std::array<std::span<const T>, W> ys;
+          for (std::size_t w = 0; w < W; ++w)
+            ys[w] = series_of(static_cast<std::size_t>(medoids[oob_slots[u0 + std::min(w, count - 1)]]));
+          core::pack_dtw_panel<T>(dist_cfg, ys.data(), oob_panels[b]);
+        }
+        auto assign_point = [&](std::size_t point) {
+          thread_local std::vector<double> oob_dists;
+          if (oob_dists.size() < n_panels * W) oob_dists.resize(n_panels * W);
+          const auto x_prep = core::prepare_dtw_query<T>(dist_cfg, series_of(point));
+          for (std::size_t b = 0; b < n_panels; ++b)
+            packed_block(x_prep, oob_panels[b].view(), std::span<double>(oob_dists.data() + b * W, W));
+
+          double best = std::numeric_limits<double>::infinity();
+          index_t label = 0;
+          std::uint64_t calls = 0;
+          for (index_t slot = 0; slot < k; ++slot) {
+            const index_t med = medoids[slot];
+            double raw_d = 0.0;
+            const index_t col = distances.sample_position[static_cast<std::size_t>(med)];
+            if (col >= 0) {
+              raw_d = distances.raw[point * m + static_cast<std::size_t>(col)];
+            } else if (point != static_cast<std::size_t>(med)) {
+              raw_d = oob_dists[static_cast<std::size_t>(col_of_slot[slot])];
+              ++calls;
+            }
+            const double d = core::detail::require_finite_medoid_distance(
+              raw_d, "one_batch_pam", point, slot, med);
+            if (d < best) {
+              best = d;
+              label = slot;
+            }
+          }
+          result.labels[point] = label;
+          point_cost[point] = best;
+          point_evaluations[point] = calls;
+        };
+        run_openmp(assign_point, n, n > 64);
+      } else {
+        std::vector<T> prep_storage;
+        std::vector<std::span<const T>> prep_oob(n_oob);
+        const bool identity_prep =
+          dist_cfg.missing == core::MissingStrategy::Error && dist_cfg.variant.variant == core::DTWVariant::Standard;
+        if (identity_prep) {
+          for (std::size_t u = 0; u < n_oob; ++u)
+            prep_oob[u] = series_of(static_cast<std::size_t>(medoids[oob_slots[u]]));
+        } else {
+          std::vector<std::size_t> offsets(n_oob + 1, 0);
+          for (std::size_t u = 0; u < n_oob; ++u) {
+            const auto xp = core::prepare_dtw_query<T>(
+              dist_cfg, series_of(static_cast<std::size_t>(medoids[oob_slots[u]])));
+            prep_storage.insert(prep_storage.end(), xp.begin(), xp.end());
+            offsets[u + 1] = prep_storage.size();
+          }
+          for (std::size_t u = 0; u < n_oob; ++u)
+            prep_oob[u] = std::span<const T>(prep_storage.data() + offsets[u], offsets[u + 1] - offsets[u]);
+        }
+
+        const std::size_t n_blocks = (n + W - 1) / W;
+        auto assign_block = [&](std::size_t b) {
+          const std::size_t i0 = b * W, count = std::min(W, n - i0);
+          std::array<std::span<const T>, W> ys;
+          for (std::size_t w = 0; w < W; ++w)
+            ys[w] = series_of(i0 + std::min(w, count - 1));
+          thread_local core::PackedLanesPanel<T> panel;
+          core::pack_dtw_panel<T>(dist_cfg, ys.data(), panel);
+          const auto panel_view = panel.view();
+          thread_local std::vector<double> oob_table;
+          if (oob_table.size() < n_oob * W) oob_table.resize(n_oob * W);
+          for (std::size_t u = 0; u < n_oob; ++u)
+            packed_block(prep_oob[u], panel_view, std::span<double>(oob_table.data() + u * W, W));
+
+          for (std::size_t w = 0; w < count; ++w) {
+            const std::size_t point = i0 + w;
+            double best = std::numeric_limits<double>::infinity();
+            index_t label = 0;
+            std::uint64_t calls = 0;
+            for (index_t slot = 0; slot < k; ++slot) {
+              const index_t med = medoids[slot];
+              double raw_d = 0.0;
+              const index_t col = distances.sample_position[static_cast<std::size_t>(med)];
+              if (col >= 0) {
+                raw_d = distances.raw[point * m + static_cast<std::size_t>(col)];
+              } else if (point != static_cast<std::size_t>(med)) {
+                raw_d = oob_table[static_cast<std::size_t>(col_of_slot[slot]) * W + w];
+                ++calls;
+              }
+              const double d = core::detail::require_finite_medoid_distance(
+                raw_d, "one_batch_pam", point, slot, med);
+              if (d < best) {
+                best = d;
+                label = slot;
+              }
+            }
+            result.labels[point] = label;
+            point_cost[point] = best;
+            point_evaluations[point] = calls;
+          }
+        };
+        run_openmp(assign_block, n_blocks, n > 64);
+      }
+    };
+    if (use_f32_lanes)
+      assign_simd([&](std::size_t i) { return prob.data().series_f32(i); }, packed_f32);
+    else
+      assign_simd([&](std::size_t i) { return prob.series(i); }, packed_f64);
+  } else {
+    assign_scalar();
+  }
   distances.evaluations += std::accumulate(point_evaluations.begin(), point_evaluations.end(), std::uint64_t{ 0 });
   // A medoid tied with another medoid (a duplicate series) serves itself, or its
   // own cluster would be published empty. Its own distance is exactly 0, so a

@@ -408,16 +408,19 @@ function test_report_is_the_run_report_and_no_report_makes_none(testCase)
     outdir = [tempname '_report'];
     cleanupDir = onCleanup(@() remove_directory(outdir));
     res = dtwc.cluster(X, 2, 'Name', 'r');
-    verifyClass(testCase, res.Report, 'char');
-    verifyTrue(testCase, startsWith(res.Report, 'DTWC++ run report'), 'Report is not the run report');
+    verifyClass(testCase, res.report, 'char');
+    verifyTrue(testCase, startsWith(res.report, 'DTWC++ run report'), 'report is not the run report');
+    verifyEqual(testCase, res.method, 'pam');
+    verifyTrue(testCase, isnumeric(res.iterations) && isscalar(res.iterations) && res.iterations >= 0);
+    verifyTrue(testCase, islogical(res.converged) && isscalar(res.converged));
     res.save(fullfile(outdir, 'on'));
     written = fileread(fullfile(outdir, 'on', 'r_report.txt'));
     % C++ writes its files in text mode: CRLF line ends on Windows, as dtwc_cl's.
-    verifyEqual(testCase, strrep(written, sprintf('\r\n'), newline), res.Report);
+    verifyEqual(testCase, strrep(written, sprintf('\r\n'), newline), res.report);
 
     silent = dtwc.cluster(X, 2, 'Name', 'r', 'NoReport', true);
-    verifyClass(testCase, silent.Report, 'char');
-    verifyEmpty(testCase, silent.Report);
+    verifyClass(testCase, silent.report, 'char');
+    verifyEmpty(testCase, silent.report);
     silent.save(fullfile(outdir, 'off'));
     verifyEqual(testCase, files_in(fullfile(outdir, 'off')), ...
         {'r_distance_matrix.csv', 'r_labels.csv', 'r_medoids.csv', 'r_silhouettes.csv'});
@@ -492,7 +495,7 @@ function test_an_arrow_ipc_file_streams_under_ram_limit(testCase)
         verifyEqual(testCase, file_bytes(fullfile(outdir, 'streamed', table{1})), ...
                     file_bytes(fullfile(outdir, 'ram', table{1})), table{1});
     end
-    verifyNotEmpty(testCase, streamed.Report);
+    verifyNotEmpty(testCase, streamed.report);
 end
 
 function test_a_bad_value_reads_alike_for_every_input(testCase)
@@ -522,8 +525,8 @@ function test_a_bad_value_reads_alike_for_every_input(testCase)
 end
 
 function test_a_run_writes_no_file_until_it_is_saved(testCase)
-%   dtwc.cluster runs dtwc::run with no output directory (Config::output, which
-%   defaults to ./results where dtwc_cl writes, is cleared): series in memory, a
+%   dtwc.cluster runs dtwc::run with no output directory (Config::output=""
+%   by default): series in memory, a
 %   path C++ reads and a Parquet file parquetread reads leave the working directory
 %   as it was, and Result.save writes the files.
     cwdCleanup = scratch_working_directory(); %#ok<NASGU>
@@ -654,6 +657,31 @@ function test_checkpoint_absent_file_is_false_not_an_error(testCase)
     prob = problem_with(testCase.TestData.X, 'ckpt_absent');
     verifyFalse(testCase, dtwc.load_checkpoint(prob, [tempname '_absent']));
     verifyFalse(testCase, prob.is_distance_matrix_filled());
+end
+
+function test_checkpoint_unknown_field_is_rejected(testCase)
+%   Problem_set_checkpoint rejects unknown struct fields with dtwc:invalidArgument.
+    prob = dtwc.Problem('ckpt_unknown');
+    err = capture_error(@() prob.set_checkpoint(struct('bogus_field', true)));
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifySubstring(testCase, err.message, 'unknown checkpoint option ''bogus_field''');
+end
+
+function test_undefined_score_emits_typed_identifier(testCase)
+%   dtwc::UndefinedScore maps to dtwc:undefinedScore (preceding dtwc:invalidArgument).
+    X = testCase.TestData.X;
+    res = dtwc.cluster(X, 1, 'Method', 'pam');
+    verifyError(testCase, @() res.score('silhouette'), 'dtwc:undefinedScore');
+    verifyError(testCase, @() res.score('davies_bouldin'), 'dtwc:undefinedScore');
+    verifyError(testCase, @() res.score('dunn'), 'dtwc:undefinedScore');
+    verifyError(testCase, @() res.score('calinski_harabasz'), 'dtwc:undefinedScore');
+
+    prob = problem_with(X, 'undef_score');
+    dtwc.fast_pam(prob, 1);
+    verifyError(testCase, @() dtwc.silhouette(prob), 'dtwc:undefinedScore');
+    verifyError(testCase, @() dtwc.davies_bouldin(prob), 'dtwc:undefinedScore');
+    verifyError(testCase, @() dtwc.dunn(prob), 'dtwc:undefinedScore');
+    verifyError(testCase, @() dtwc.calinski_harabasz(prob), 'dtwc:undefinedScore');
 end
 
 % -------------------------------------------------------------------------

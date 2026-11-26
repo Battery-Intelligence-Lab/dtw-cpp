@@ -32,13 +32,15 @@ namespace mip {
 /// solves it in MIP_clustering_byHiGHS, Python hands it to highspy. Column f·N + p
 /// is x[f, p], point p served by medoid f; the diagonal x[f, f] opens f. Row 0 is
 /// Σ_f x[f, f] = k, rows 1..N are Σ_f x[f, p] = 1, then for each f the N − 1 rows
-/// x[f, p] − x[f, f] in [−1, 0], p ≠ f. Every column is integer (integrality 1,
-/// HiGHS's kInteger) in [0, 1] and costs D(p, f) / max(max_distance / 2, 1).
+/// x[f, p] − x[f, f] in (−∞, 0], p ≠ f. Only the N diagonal columns x[f, f] are
+/// binary (integrality 1, HiGHS's kInteger); off-diagonal x[f, p] are continuous
+/// (integrality 0, kContinuous) in [0, 1] because the assignment subproblem is TU
+/// once the diagonal is fixed. Every column costs D(p, f) / scaling_factor.
 struct PMedianModel
 {
   int num_col{}, num_row{};
   std::vector<double> col_cost, col_lower, col_upper, row_lower, row_upper;
-  std::vector<int> a_start, a_index; ///< The constraint matrix row-wise (CSR).
+  std::vector<int> a_start, a_index; ///< The constraint matrix column-wise (CSC).
   std::vector<double> a_value;
   std::vector<int> integrality;
   std::vector<double> start; ///< FastPAM's clustering as a MIP start; empty unless MIPSettings::warm_start.

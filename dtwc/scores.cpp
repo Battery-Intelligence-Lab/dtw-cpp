@@ -15,15 +15,30 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
-#include <map>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace dtwc::scores {
 
 namespace {
+
+constexpr index_t kParallelMinN = 256;
+
+struct PairHash
+{
+  std::size_t operator()(const std::pair<index_t, index_t> &p) const noexcept
+  {
+    const auto a = static_cast<std::uint64_t>(p.first);
+    const auto b = static_cast<std::uint64_t>(p.second);
+    std::uint64_t h = a * UINT64_C(0x9e3779b97f4a7c15);
+    h ^= b + UINT64_C(0x9e3779b97f4a7c15) + (h << 6) + (h >> 2);
+    return static_cast<std::size_t>(h);
+  }
+};
 
 /**
  * @brief Member count of every declared cluster id, validating the labelling.
@@ -120,22 +135,16 @@ void silhouette_of(const T *matrix, const Problem &prob, const std::vector<index
     }
   };
 
-  dtwc::run(oneTask, static_cast<size_t>((Nb + G - 1) / G));
+  const auto blocks = static_cast<size_t>((Nb + G - 1) / G);
+  run_openmp(oneTask, blocks, Nb >= kParallelMinN && blocks > 1);
 }
 
-/// The Davies-Bouldin index of a clustered `prob` with `k_realised` non-empty clusters of sizes `cluster_counts`.
-template <typename T>
-double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector<index_t> &cluster_counts,
-                         index_t k_realised)
+/// Shared Davies-Bouldin computation from precomputed per-cluster scatter and inter-medoid distances.
+template <typename MedoidDist>
+double compute_dbi(const Problem &prob, const std::vector<index_t> &cluster_counts,
+                   index_t k_realised, std::vector<double> &scatter, MedoidDist &&medoid_dist)
 {
   const auto Nc = prob.n_clusters();
-
-  // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
-  std::vector<double> scatter(Nc, 0.0);
-  for (std::size_t i = 0, n = static_cast<std::size_t>(prob.size()); i < n; ++i) {
-    const index_t ci = prob.clusters_ind[i];
-    scatter[ci] += static_cast<double>(matrix[core::tri_index(i, static_cast<std::size_t>(prob.centroids_ind[ci]))]);
-  }
   for (index_t c = 0; c < Nc; ++c) {
     if (cluster_counts[c] > 0)
       scatter[c] /= static_cast<double>(cluster_counts[c]);
@@ -149,8 +158,7 @@ double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector
     double max_ratio = 0.0;
     for (index_t j = 0; j < Nc; ++j) {
       if (i == j || cluster_counts[j] == 0) continue;
-      const auto d_ij = static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(prob.centroids_ind[i]),
-                                                                   static_cast<std::size_t>(prob.centroids_ind[j]))]);
+      const double d_ij = medoid_dist(i, j);
       const double combined_scatter = scatter[i] + scatter[j];
       // M_ij == 0 must NOT skip the pair. Davies & Bouldin (1979) require R_ij to
       // be strictly decreasing in M_ij with R_ij = 0 iff S_i = S_j = 0, so the
@@ -167,6 +175,23 @@ double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector
     dbi += max_ratio;
   }
   return dbi / static_cast<double>(k_realised);
+}
+
+/// The Davies-Bouldin index of a clustered `prob` from its filled packed matrix.
+template <typename T>
+double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector<index_t> &cluster_counts,
+                         index_t k_realised)
+{
+  const auto Nc = prob.n_clusters();
+  std::vector<double> scatter(Nc, 0.0);
+  for (std::size_t i = 0, n = static_cast<std::size_t>(prob.size()); i < n; ++i) {
+    const index_t ci = prob.clusters_ind[i];
+    scatter[ci] += static_cast<double>(matrix[core::tri_index(i, static_cast<std::size_t>(prob.centroids_ind[ci]))]);
+  }
+  return compute_dbi(prob, cluster_counts, k_realised, scatter, [&](index_t i, index_t j) {
+    return static_cast<double>(matrix[core::tri_index(static_cast<std::size_t>(prob.centroids_ind[i]),
+                                                      static_cast<std::size_t>(prob.centroids_ind[j]))]);
+  });
 }
 
 /// The Dunn index of a clustered `prob`.
@@ -197,7 +222,7 @@ double dunn_of(const T *matrix, const Problem &prob)
     block_min[b] = lo;
     block_max[b] = hi;
   };
-  run_openmp(block, static_cast<size_t>(blocks));
+  run_openmp(block, static_cast<size_t>(blocks), N >= kParallelMinN && blocks > 1);
 
   double min_inter = std::numeric_limits<double>::max();
   double max_intra = 0.0;
@@ -210,18 +235,6 @@ double dunn_of(const T *matrix, const Problem &prob)
     return std::numeric_limits<double>::infinity();
 
   return min_inter / max_intra;
-}
-
-/// The inertia of a clustered `prob`: each point's distance to its medoid, summed in point order.
-template <typename T>
-double inertia_of(const T *matrix, const Problem &prob)
-{
-  double total = 0.0;
-  for (std::size_t i = 0, n = static_cast<std::size_t>(prob.size()); i < n; ++i) {
-    const index_t medoid = prob.centroids_ind[prob.clusters_ind[i]];
-    total += static_cast<double>(matrix[core::tri_index(i, static_cast<std::size_t>(medoid))]);
-  }
-  return total;
 }
 
 /// The medoid-adapted Calinski-Harabasz index of a clustered `prob` with `k` non-empty clusters of sizes
@@ -252,7 +265,8 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
       for (index_t g = 0; g < valid; ++g)
         row_sums[static_cast<std::size_t>(first + g)] = sums[g];
     };
-    dtwc::run(sum_group, static_cast<std::size_t>((N + G - 1) / G));
+    const auto blocks = static_cast<std::size_t>((N + G - 1) / G);
+    run_openmp(sum_group, blocks, N >= kParallelMinN && blocks > 1);
     overall_medoid = std::min_element(row_sums.begin(), row_sums.end()) - row_sums.begin();
   } else {
     double min_row_sum = std::numeric_limits<double>::max();
@@ -350,13 +364,39 @@ double davies_bouldin(Problem &prob)
     "R_ij needs a second cluster j != i, so the index is undefined "
     "for a single realised cluster.");
 
-  prob.fill_distance_matrix();
-  return prob.distance_matrix().visit(
-    [&](const auto *matrix) { return davies_bouldin_of(matrix, prob, cluster_counts, k_realised); });
+  if (prob.is_distance_matrix_filled()) {
+    return prob.distance_matrix().visit(
+      [&](const auto *matrix) { return davies_bouldin_of(matrix, prob, cluster_counts, k_realised); });
+  }
+
+  // Matrix-free O(N + k^2) evaluation via pair_distance.
+  if (prob.data().is_f32())
+    (void)prob.dtw_function_f32();
+  else
+    (void)prob.dtw_function();
+
+  const std::size_t n = static_cast<std::size_t>(prob.size());
+  std::vector<double> point_dist(n, 0.0);
+  auto compute_point = [&](std::size_t i) {
+    const auto medoid = static_cast<std::size_t>(prob.centroids_ind[prob.clusters_ind[i]]);
+    point_dist[i] = (i == medoid) ? 0.0 : prob.pair_distance(i, medoid);
+  };
+  run_openmp(compute_point, n, prob.size() >= kParallelMinN);
+
+  const auto Nc = prob.n_clusters();
+  std::vector<double> scatter(static_cast<std::size_t>(Nc), 0.0);
+  for (std::size_t i = 0; i < n; ++i)
+    scatter[static_cast<std::size_t>(prob.clusters_ind[i])] += point_dist[i];
+
+  return compute_dbi(prob, cluster_counts, k_realised, scatter, [&](index_t i, index_t j) {
+    const auto mi = static_cast<std::size_t>(prob.centroids_ind[i]);
+    const auto mj = static_cast<std::size_t>(prob.centroids_ind[j]);
+    return (mi == mj) ? 0.0 : prob.pair_distance(mi, mj);
+  });
 }
 
 /**
- * @brief Computes the Dunn Index for a clustering.
+ * @brief Computes the Dunn Index for a clustered `prob`.
  *
  * Dunn = min(inter-cluster distance) / max(intra-cluster diameter).
  * Higher values indicate better-separated, more compact clusters.
@@ -394,8 +434,7 @@ double dunn(Problem &prob)
 double inertia(Problem &prob)
 {
   prob.require_clustered("inertia");
-  prob.fill_distance_matrix();
-  return prob.distance_matrix().visit([&](const auto *matrix) { return inertia_of(matrix, prob); });
+  return prob.find_total_cost();
 }
 
 /**
@@ -450,8 +489,8 @@ double adjusted_rand(const std::vector<index_t> &labels_true,
   const auto n = static_cast<index_t>(labels_true.size());
 
   // Contingency table keyed by the label pair: any two labels count apart.
-  std::map<index_t, index_t> a_counts, b_counts;
-  std::map<std::pair<index_t, index_t>, index_t> contingency;
+  std::unordered_map<index_t, index_t> a_counts, b_counts;
+  std::unordered_map<std::pair<index_t, index_t>, index_t, PairHash> contingency;
 
   for (std::size_t i = 0; i < labels_true.size(); ++i) {
     a_counts[labels_true[i]]++;
@@ -463,15 +502,15 @@ double adjusted_rand(const std::vector<index_t> &labels_true,
   auto c2 = [](index_t x) -> index_t { return x * (x - 1) / 2; };
 
   index_t sum_cij2 = 0;
-  for (auto &kv : contingency)
+  for (const auto &kv : contingency)
     sum_cij2 += c2(kv.second);
 
   index_t sum_ai2 = 0;
-  for (auto &kv : a_counts)
+  for (const auto &kv : a_counts)
     sum_ai2 += c2(kv.second);
 
   index_t sum_bj2 = 0;
-  for (auto &kv : b_counts)
+  for (const auto &kv : b_counts)
     sum_bj2 += c2(kv.second);
 
   index_t cn2 = c2(n);
@@ -510,8 +549,8 @@ double normalized_mutual_info(const std::vector<index_t> &labels_true,
   const double inv_n = 1.0 / static_cast<double>(labels_true.size());
 
   // Contingency table keyed by the label pair: any two labels count apart.
-  std::map<index_t, index_t> a_counts, b_counts;
-  std::map<std::pair<index_t, index_t>, index_t> contingency;
+  std::unordered_map<index_t, index_t> a_counts, b_counts;
+  std::unordered_map<std::pair<index_t, index_t>, index_t, PairHash> contingency;
 
   for (std::size_t i = 0; i < labels_true.size(); ++i) {
     a_counts[labels_true[i]]++;
@@ -521,23 +560,23 @@ double normalized_mutual_info(const std::vector<index_t> &labels_true,
 
   // Marginal entropies
   double H_true = 0.0;
-  for (auto &kv : a_counts) {
+  for (const auto &kv : a_counts) {
     double p = static_cast<double>(kv.second) * inv_n;
     H_true -= p * std::log(p);
   }
 
   double H_pred = 0.0;
-  for (auto &kv : b_counts) {
+  for (const auto &kv : b_counts) {
     double p = static_cast<double>(kv.second) * inv_n;
     H_pred -= p * std::log(p);
   }
 
   // Mutual information
   double MI = 0.0;
-  for (auto &kv : contingency) {
+  for (const auto &kv : contingency) {
     double p_ij = static_cast<double>(kv.second) * inv_n;
-    double p_i = static_cast<double>(a_counts[kv.first.first]) * inv_n;
-    double p_j = static_cast<double>(b_counts[kv.first.second]) * inv_n;
+    double p_i = static_cast<double>(a_counts.find(kv.first.first)->second) * inv_n;
+    double p_j = static_cast<double>(b_counts.find(kv.first.second)->second) * inv_n;
     MI += p_ij * std::log(p_ij / (p_i * p_j));
   }
 

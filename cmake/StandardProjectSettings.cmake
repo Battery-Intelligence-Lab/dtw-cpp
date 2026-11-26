@@ -194,8 +194,8 @@ option(DTWC_REPRODUCIBLE_BUILD
 if(DTWC_REPRODUCIBLE_BUILD)
   if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(
-      $<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.>
-      $<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_BINARY_DIR}=./build>)
+      $<$<COMPILE_LANGUAGE:C,CXX>:${DTWC_GNU_FLAG_PREFIX}-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.>
+      $<$<COMPILE_LANGUAGE:C,CXX>:${DTWC_GNU_FLAG_PREFIX}-ffile-prefix-map=${CMAKE_BINARY_DIR}=./build>)
     message(STATUS "Reproducible build: -ffile-prefix-map enabled")
   else()
     message(STATUS "Reproducible build: not supported on ${CMAKE_CXX_COMPILER_ID} (no-op)")

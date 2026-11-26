@@ -53,22 +53,20 @@ T softmin_gamma_unchecked(
   T a, T b, T c, const core::detail::SoftGammaScale<T> &scale) noexcept
 {
   const T minimum = std::min(a, std::min(b, c));
+  constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
 
   // Retain the original reciprocal-multiply operation order for ordinary
   // gamma values. At the valid denormal boundary the reciprocal overflows;
   // normalise the denominator before scaling so -freciprocal-math cannot turn
   // the fallback back into 0 * Inf. frexp(gamma)=fraction*2^exponent.
   // At least one of {a, b, c} equals `minimum`, where exp(-0) == 1 is IEEE-754 exact.
-  if (!scale.finite_reciprocal) {
-    const T ea = (a == minimum) ? T(1) : std::exp(-scale.scaled(a - minimum));
-    const T eb = (b == minimum) ? T(1) : std::exp(-scale.scaled(b - minimum));
-    const T ec = (c == minimum) ? T(1) : std::exp(-scale.scaled(c - minimum));
-    return minimum - scale.gamma * std::log(ea + eb + ec);
-  }
-  const T ea = (a == minimum) ? T(1) : std::exp(-(a - minimum) * scale.inv_gamma);
-  const T eb = (b == minimum) ? T(1) : std::exp(-(b - minimum) * scale.inv_gamma);
-  const T ec = (c == minimum) ? T(1) : std::exp(-(c - minimum) * scale.inv_gamma);
-  return minimum - scale.gamma * std::log(ea + eb + ec);
+  const auto term = [&](T v) noexcept -> T {
+    if (v == minimum) return T(1);
+    const T s = scale.scaled(v - minimum);
+    return s >= kCutoff ? T(0) : std::exp(-s);
+  };
+  const T sum = term(a) + term(b) + term(c);
+  return sum == T(1) ? minimum : minimum - scale.gamma * std::log(sum);
 }
 
 /// soft_dtw_gradient's forward/backward matrices, one pair per T: reached here so that
@@ -183,38 +181,48 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   // values, w_q = exp(-(q - m)/gamma) / sum, m their minimum. The weights lie in
   // [0, 1] and sum to 1, and no local cost is subtracted from a cumulative one. A
   // first-row or first-column cell has one predecessor, weight 1.
+  constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
   std::fill_n(e_buf.begin(), mx * my, T{0});
   E(mx - 1, my - 1) = T(1);
-  for (std::size_t j = my; j-- > 0;) {
-    for (std::size_t i = mx; i-- > 0;) {
+  for (std::size_t j = my - 1; j >= 1; --j) {
+    for (std::size_t i = mx - 1; i >= 1; --i) {
       const T e = E(i, j);
-      if (i == 0 && j == 0) continue;
-      if (i == 0) { E(0, j - 1) += e; continue; }
-      if (j == 0) { E(i - 1, 0) += e; continue; }
       const T up = C(i - 1, j), left = C(i, j - 1), diag = C(i - 1, j - 1);
       const T m = std::min(up, std::min(left, diag)); // its weight is exp(-0) == 1
-      const T w_up = (up == m) ? T(1) : std::exp(gamma_scale.scaled(m - up));
-      const T w_left = (left == m) ? T(1) : std::exp(gamma_scale.scaled(m - left));
-      const T w_diag = (diag == m) ? T(1) : std::exp(gamma_scale.scaled(m - diag));
+      const auto weight = [&](T val) noexcept -> T {
+        if (val == m) return T(1);
+        const T s = gamma_scale.scaled(val - m);
+        return s >= kCutoff ? T(0) : std::exp(-s);
+      };
+      const T w_up = weight(up);
+      const T w_left = weight(left);
+      const T w_diag = weight(diag);
       const T share = e / (w_up + w_left + w_diag);
       E(i - 1, j) += share * w_up;
       E(i, j - 1) += share * w_left;
       E(i - 1, j - 1) += share * w_diag;
     }
+    E(0, j - 1) += E(0, j);
   }
+  for (std::size_t i = mx - 1; i >= 1; --i)
+    E(i - 1, 0) += E(i, 0);
 
   // Gradient w.r.t. x[i]:
   // d/dx[i] soft_dtw = sum_j E(i,j) * d/dx[i] |x[i] - y[j]|
   //                   = sum_j E(i,j) * sign(x[i] - y[j])
+  // Column-major outer-j / inner-i keeps E(i,j), x[i], and grad[i] at unit stride.
   std::vector<T> grad(mx, T(0));
-  for (std::size_t i = 0; i < mx; ++i) {
-    T g = T(0);
-    for (std::size_t j = 0; j < my; ++j) {
-      T diff = x[i] - y[j];
-      T sign_val = (diff > T(0)) ? T(1) : ((diff < T(0)) ? T(-1) : T(0));
-      g += E(i, j) * sign_val;
+  const T *xp = x.data();
+  T *gp = grad.data();
+  const T *ep = e_buf.data();
+  for (std::size_t j = 0; j < my; ++j) {
+    const T yj = y[j];
+    const T *ej = ep + j * mx;
+    for (std::size_t i = 0; i < mx; ++i) {
+      const T diff = xp[i] - yj;
+      const T sign_val = (diff > T(0)) ? T(1) : ((diff < T(0)) ? T(-1) : T(0));
+      gp[i] += ej[i] * sign_val;
     }
-    grad[i] = g;
   }
 
   return grad;

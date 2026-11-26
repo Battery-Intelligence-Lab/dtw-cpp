@@ -5,7 +5,7 @@
  *
  * @details The command line, a TOML or YAML config file, Python keywords and
  * MATLAB name-value pairs are four spellings of one Config. Its member
- * initialisers are dtwc_cl's defaults. The settings that describe the
+ * initialisers are the library's defaults (dtwc_cl sets `output` to "./results"). The settings that describe the
  * clustering (distance, method, solver, device) reach a Problem through
  * apply(); the file options (input, output, checkpoint, ...) are run()'s, in
  * cli/run.hpp, and the text forms (cli::bind, parse_config, to_config_text)
@@ -87,7 +87,7 @@ struct Config
   std::string checkpoint;                ///< `--checkpoint` directory
   int checkpoint_interval = 0;           ///< `--checkpoint-interval` (0 = at the end only)
   // Output
-  std::string output = "./results";      ///< `--output` ("" = write nothing)
+  std::string output;                    ///< `--output` ("" = write nothing; dtwc_cl defaults to "./results")
   std::string name;                      ///< `--name` ("" = the input's file or folder name)
   bool verbose = false;                  ///< `--verbose`
   /// `--no-report` makes it false: no run report, neither Result::report()'s text nor `<name>_report.txt`.

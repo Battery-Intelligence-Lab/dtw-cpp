@@ -149,8 +149,8 @@ private:
  * the assignment into its caller.
  */
 template <bool F32, typename Reader>
-static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptions &opts, const Reader &reader,
-                                                 const ClaraPlan &plan)
+core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptions &opts, const Reader &reader,
+                                          const ClaraPlan &plan)
 {
   validate_streaming_clara_plan(plan, "fast_clara");
   if (prob.device().first == Device::CPU_GPU) throw dtwc::detail::hybrid_streamed_refusal();
@@ -255,70 +255,89 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   const size_t share = (limit - fixed) / (overlap ? times + 1 : times); // a batch's, and on a GPU its staging's
   const int per_batch = reader.row_groups_per_batch(share, F32);
 
-  std::vector<std::vector<index_t>> labels(samples.size()); // each sized in place: a prototype would add n_points
-  for (auto &sample_labels : labels) sample_labels.resize(n_points);
-  std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
+  auto run_pass = [&]<typename LabelT>() -> core::ClusteringResult {
+    std::vector<std::vector<LabelT>> labels(samples.size()); // each sized in place: a prototype would add n_points
+    for (auto &sample_labels : labels) sample_labels.resize(n_points);
+    std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
 #ifndef DTWC_HAS_CUDA
-  say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
+    say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
 #endif
 
-  // The reader and `check` are used by one thread at a time: the decoding one while a batch decodes and is checked
-  // (its first row known, as the batches before it are), the team only after the last batch.
-  RowCheck check(prob.distance());
-  const auto decode = [&reader, &check, &prob](int rg, int count, index_t first_row) {
-    if constexpr (Reader::decodes_with_team) {
-      (void)first_row;
-      std::vector<RowCheck> pieces(static_cast<std::size_t>(count), RowCheck(prob.distance()));
-      const auto piece_check = [&pieces](std::size_t j, const Data &piece, index_t first) {
-        pieces[j].rows(piece, [first](std::size_t i) { return first + static_cast<index_t>(i); });
-      };
-      Data batch = reader.template read_row_groups<T>(rg, count, piece_check);
-      for (const RowCheck &piece : pieces) check.merge(piece);
-      return batch;
-    } else {
-      (void)prob;
-      Data batch = reader.template read_row_groups<T>(rg, count);
-      check.rows(batch, [first_row](std::size_t i) { return first_row + static_cast<index_t>(i); });
-      return batch;
-    }
-  };
-  const auto policy = overlap ? std::launch::async : std::launch::deferred;
-  const int total_rg = reader.num_row_groups();
-  std::future<Data> next = std::async(policy, decode, 0, std::min(per_batch, total_rg), index_t{ 0 });
-  index_t first = 0;
-  for (int rg = 0; rg < total_rg; rg += per_batch) {
-    {
-      const Data batch = next.get();
-      if (rg + per_batch < total_rg)
-        next = std::async(policy, decode, rg + per_batch, std::min(per_batch, total_rg - rg - per_batch),
-                          first + batch.size());
-      // The batch is loaded: the assignment reads it, never the reader.
+    // The reader and `check` are used by one thread at a time: the decoding one while a batch decodes and is checked
+    // (its first row known, as the batches before it are), the team only after the last batch.
+    RowCheck check(prob.distance());
+    const auto decode = [&reader, &check, &prob](int rg, int count, index_t first_row) {
+      if constexpr (Reader::decodes_with_team) {
+        (void)first_row;
+        std::vector<RowCheck> pieces(static_cast<std::size_t>(count), RowCheck(prob.distance()));
+        const auto piece_check = [&pieces](std::size_t j, const Data &piece, index_t first) {
+          pieces[j].rows(piece, [first](std::size_t i) { return first + static_cast<index_t>(i); });
+        };
+        Data batch = reader.template read_row_groups<T>(rg, count, piece_check);
+        for (const RowCheck &piece : pieces) check.merge(piece);
+        return batch;
+      } else {
+        (void)prob;
+        Data batch = reader.template read_row_groups<T>(rg, count);
+        check.rows(batch, [first_row](std::size_t i) { return first_row + static_cast<index_t>(i); });
+        return batch;
+      }
+    };
+    const auto policy = overlap ? std::launch::async : std::launch::deferred;
+    const int total_rg = reader.num_row_groups();
+    std::future<Data> next = std::async(policy, decode, 0, std::min(per_batch, total_rg), index_t{ 0 });
+    index_t first = 0;
+    for (int rg = 0; rg < total_rg; rg += per_batch) {
+      {
+        const Data batch = next.get();
+        if (rg + per_batch < total_rg)
+          next = std::async(policy, decode, rg + per_batch, std::min(per_batch, total_rg - rg - per_batch),
+                            first + batch.size());
+        // The batch is loaded: the assignment reads it, never the reader.
 #ifdef DTWC_HAS_CUDA
-      if (on_gpu) {
-        std::vector<std::span<const double>> medoid_series;
-        medoid_series.reserve(medoids.size());
-        for (std::size_t j = 0; j < medoids.size(); ++j) medoid_series.push_back(medoid_data.series(j));
-        assign_on_gpu(prob, batch, first, medoid_series, medoids, labels, costs, share);
-      } else
+        if constexpr (std::is_same_v<LabelT, index_t>) {
+          if (on_gpu) {
+            std::vector<std::span<const double>> medoid_series;
+            medoid_series.reserve(medoids.size());
+            for (std::size_t j = 0; j < medoids.size(); ++j) medoid_series.push_back(medoid_data.series(j));
+            assign_on_gpu(prob, batch, first, medoid_series, medoids, labels, costs, share);
+          } else {
+            assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
+                             [&](index_t block_first, std::size_t n, std::span<double> best) {
+                               assign_points_cpu<T>(
+                                 block_first, n, best, medoids, labels, prob.distance(), pair,
+                                 [&](index_t p) { return series_at(batch, p - first); },
+                                 [&](index_t j) { return series_at(medoid_data, j); });
+                             });
+          }
+        } else
 #endif
-        assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
-                         [&](index_t block_first, std::size_t n, std::span<double> best) {
-                           assign_points_cpu<T>(
-                             block_first, n, best, medoids, labels, prob.distance(), pair,
-                             [&](index_t p) { return series_at(batch, p - first); },
-                             [&](index_t j) { return series_at(medoid_data, j); });
-                         });
-      first += batch.size();
+          assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
+                           [&](index_t block_first, std::size_t n, std::span<double> best) {
+                             assign_points_cpu<T>(
+                               block_first, n, best, medoids, labels, prob.distance(), pair,
+                               [&](index_t p) { return series_at(batch, p - first); },
+                               [&](index_t j) { return series_at(medoid_data, j); });
+                           });
+        first += batch.size();
+      }
+      // A team's threads freed the batch's pieces (into their own arenas on glibc; Windows' heap keeps them committed):
+      // returned to the system before the next.
+      if constexpr (Reader::decodes_with_team) core::release_free_memory();
     }
-    // A team's threads freed the batch's pieces (into their own arenas on glibc; Windows' heap keeps them committed):
-    // returned to the system before the next.
-    if constexpr (Reader::decodes_with_team) core::release_free_memory();
-  }
-  // The end phase is priced assuming batch memory returned to the OS (glibc otherwise retains freed arena pages).
-  if constexpr (!Reader::decodes_with_team) core::release_free_memory();
-  check.band();
+    // The end phase is priced assuming batch memory returned to the OS (glibc otherwise retains freed arena pages).
+    if constexpr (!Reader::decodes_with_team) core::release_free_memory();
+    check.band();
 
-  auto result = clara_winner(pams, medoids, labels, costs);
+    return clara_winner(pams, medoids, labels, costs);
+  };
+
+  core::ClusteringResult result =
+    (!on_gpu && opts.n_clusters <= 256)
+      ? run_pass.template operator()<std::uint8_t>()
+      : ((!on_gpu && opts.n_clusters <= 65536)
+           ? run_pass.template operator()<std::uint16_t>()
+           : run_pass.template operator()<index_t>());
   prob.set_result(result);
   return result;
 }

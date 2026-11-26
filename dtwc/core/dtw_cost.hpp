@@ -231,35 +231,11 @@ struct SpanMVNanAwareSquaredL2Cost {
 
 // ===========================================================================
 // NaN-propagating cost functors (AROW missing-data strategy)
-// When either operand is NaN, the cost is NaN — the AROW Cell policy
-// interprets this as a "missing pair" signal and propagates the diagonal
-// predecessor with zero additional cost.
+// Univariate AROW uses SpanL1Cost / SpanSquaredL2Cost directly (IEEE-754
+// arithmetic propagates NaN into AROWCell, which triggers diagonal carry).
+// Multivariate AROW skips missing channels and returns NaN only when all
+// channels at (row, col) lack a comparable pair.
 // ===========================================================================
-
-template <typename T>
-struct SpanAROWL1Cost {
-  const T* x;
-  const T* y;
-  T operator()(std::size_t row, std::size_t col) const noexcept {
-    const T a = x[row];
-    const T b = y[col];
-    if (is_missing(a) || is_missing(b)) return std::numeric_limits<T>::quiet_NaN();
-    return std::abs(a - b);
-  }
-};
-
-template <typename T>
-struct SpanAROWSquaredL2Cost {
-  const T* x;
-  const T* y;
-  T operator()(std::size_t row, std::size_t col) const noexcept {
-    const T a = x[row];
-    const T b = y[col];
-    if (is_missing(a) || is_missing(b)) return std::numeric_limits<T>::quiet_NaN();
-    const T d = a - b;
-    return d * d;
-  }
-};
 
 /// Multivariate AROW L1 cost. Signals "missing pair" (returns NaN) only when
 /// no channel pair is comparable — i.e. every channel has at least one NaN

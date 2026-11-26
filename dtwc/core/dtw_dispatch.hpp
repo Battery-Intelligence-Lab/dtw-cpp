@@ -60,8 +60,9 @@ inline double soft_dtw_divergence(double xy, double xx, double yy) noexcept
 /// The brute-force fill's block function: x and W = core::dtw_lanes<T> series in
 /// `ys`, none empty, of any lengths (both unconstrained and Sakoe-Chiba banded);
 /// their W distances out, each agreeing with resolve_dtw_fn's function within the
-/// FMA route bound. Active for univariate Standard DTW, DDTW, and
-/// MissingStrategy::Interpolate; empty otherwise (callers fall back to pair-by-pair).
+/// FMA route bound. Active for univariate Standard DTW, DDTW, ADTW, WDTW, and
+/// MissingStrategy::{ZeroCost, AROW, Interpolate}; empty otherwise (callers fall
+/// back to pair-by-pair).
 template <typename T>
 std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
 resolve_dtw_block_fn(const DistanceConfig &config);

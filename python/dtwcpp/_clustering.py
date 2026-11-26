@@ -93,8 +93,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         own distances (onebatch, clara, tadpole) are refused.
     variant : str, default="standard"
         DTW variant: ``"standard"``, ``"ddtw"``, ``"wdtw"``, ``"adtw"``,
-        ``"softdtw"``, ``"msm"`` or ``"twe"``. The estimator has no
-        ``sdtw_gamma`` parameter, so ``"softdtw"`` runs at the default gamma.
+        ``"softdtw"``, ``"msm"`` or ``"twe"``.
     band : int, default=-1
         Sakoe-Chiba band width. ``-1`` for full (unconstrained) DTW.
     max_iter : int, default=100
@@ -102,7 +101,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
     n_init : int, default=1
         Seeded restarts (PAM, kmedoids): restart ``i`` uses the seed
         ``random_state + i`` and the lowest cost is kept, on one distance matrix.
-    wdtw_g, adtw_penalty, msm_c, twe_nu, twe_lambda : float
+    wdtw_g, adtw_penalty, sdtw_gamma, msm_c, twe_nu, twe_lambda : float
         The variant parameters (each read only by its variant).
     mv_mode : str, default="dependent"
         Multivariate combination mode when ``ndim > 1``: ``"dependent"``
@@ -141,9 +140,9 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
 
     def __init__(self, n_clusters=3, method="pam", variant="standard", band=-1,
                  max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
-                 msm_c=1.0, twe_nu=0.001, twe_lambda=1.0, mv_mode="dependent",
-                 missing_strategy="error", metric="l1", batch_size=-1,
-                 random_state=None, device=None, fallback=False):
+                 sdtw_gamma=1.0, msm_c=1.0, twe_nu=0.001, twe_lambda=1.0,
+                 mv_mode="dependent", missing_strategy="error", metric="l1",
+                 batch_size=-1, random_state=None, device=None, fallback=False):
         self.n_clusters = n_clusters
         self.method = method
         self.variant = variant
@@ -152,6 +151,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         self.n_init = n_init
         self.wdtw_g = wdtw_g
         self.adtw_penalty = adtw_penalty
+        self.sdtw_gamma = sdtw_gamma
         self.msm_c = msm_c
         self.twe_nu = twe_nu
         self.twe_lambda = twe_lambda
@@ -171,8 +171,8 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         return {
             "variant": self.variant, "band": self.band, "metric": self.metric,
             "missing_strategy": self.missing_strategy, "wdtw_g": self.wdtw_g,
-            "adtw_penalty": self.adtw_penalty, "msm_c": self.msm_c,
-            "twe_nu": self.twe_nu, "twe_lambda": self.twe_lambda,
+            "adtw_penalty": self.adtw_penalty, "sdtw_gamma": self.sdtw_gamma,
+            "msm_c": self.msm_c, "twe_nu": self.twe_nu, "twe_lambda": self.twe_lambda,
         }
 
     def _config(self, device):

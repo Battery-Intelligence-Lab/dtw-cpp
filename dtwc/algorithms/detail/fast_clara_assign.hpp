@@ -23,6 +23,7 @@
 #include <limits>
 #include <random>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -59,8 +60,8 @@ inline std::vector<index_t> sample_union(const std::vector<std::vector<index_t>>
  * Point p to its nearest medoid of one sample: `label` and `best`. medoids[m] is the sample's medoid in slot m and
  * distance(m) p's distance to it, whichever route computed it; a point is at 0 from itself.
  */
-template <typename Distance>
-void assign_point(index_t p, std::span<const index_t> medoids, index_t &label, double &best,
+template <typename Distance, typename LabelT>
+void assign_point(index_t p, std::span<const index_t> medoids, LabelT &label, double &best,
                   const Distance &distance)
 {
   const auto k = static_cast<index_t>(medoids.size());
@@ -82,7 +83,7 @@ void assign_point(index_t p, std::span<const index_t> medoids, index_t &label, d
     }
   }
 
-  label = best_label;
+  label = static_cast<LabelT>(best_label);
   best = best_dist;
 }
 
@@ -93,9 +94,9 @@ void assign_point(index_t p, std::span<const index_t> medoids, index_t &label, d
  * is the lowest point's, at its lowest sample. `parallel` false: on the calling thread alone (a block of cpu+gpu's
  * pass, inside its one parallel region).
  */
-template <typename RowOf>
+template <typename RowOf, typename LabelT>
 void assign_points(index_t first, std::size_t n, std::span<double> best, std::span<const index_t> medoids,
-                   std::vector<std::vector<index_t>> &labels, const RowOf &row_of, bool parallel = true)
+                   std::vector<std::vector<LabelT>> &labels, const RowOf &row_of, bool parallel = true)
 {
   const std::size_t samples = labels.size(), k = medoids.size() / samples;
   auto assign = [&](std::size_t i) {
@@ -129,15 +130,25 @@ inline std::vector<double> &assign_table()
   return table;
 }
 
-template <typename T, typename Pair, typename PointOf, typename MedoidOf>
+/// Thread-local packed panel buffer reused across blocks in assign_points_cpu.
+template <typename T>
+inline core::PackedLanesPanel<T> &assign_panel()
+{
+  thread_local core::PackedLanesPanel<T> panel;
+  return panel;
+}
+
+template <typename T, typename Pair, typename PointOf, typename MedoidOf, typename LabelT>
 void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std::span<const index_t> medoids,
-                       std::vector<std::vector<index_t>> &labels, const core::DistanceConfig &distance,
+                       std::vector<std::vector<LabelT>> &labels, const core::DistanceConfig &distance,
                        const Pair &pair, const PointOf &point, const MedoidOf &medoid, bool parallel = true)
 {
   const std::size_t slots = medoids.size(), samples = labels.size(), k = slots / samples;
-  // Deduplicate identical medoid indices across the `samples` subsamples so repeated medoids
-  // copy their distance row in O(1) instead of recomputing DTW.
+  // Deduplicate identical medoid indices across the `samples` subsamples once outside the block loop.
   std::vector<std::size_t> first_slot(slots);
+  std::vector<std::size_t> unique_slots;
+  std::vector<std::size_t> slot_to_unique(slots);
+  unique_slots.reserve(slots);
   for (std::size_t j = 0; j < slots; ++j) {
     first_slot[j] = j;
     for (std::size_t prev = 0; prev < j; ++prev) {
@@ -146,7 +157,14 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
         break;
       }
     }
+    if (first_slot[j] == j) {
+      slot_to_unique[j] = unique_slots.size();
+      unique_slots.push_back(j);
+    } else {
+      slot_to_unique[j] = slot_to_unique[first_slot[j]];
+    }
   }
+  const std::size_t n_unique = unique_slots.size();
 
   const auto packed_block = core::resolve_dtw_packed_block_fn<T>(distance);
   const auto block = core::resolve_dtw_block_fn<T>(distance);
@@ -184,6 +202,75 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
 
   // static: GCC 13 asks the inner lambda below to capture a local it reads.
   static constexpr std::size_t W = core::dtw_lanes<T>;
+
+  bool all_medoids_nonempty = true;
+  for (std::size_t u = 0; u < n_unique; ++u) {
+    if (medoid(static_cast<index_t>(unique_slots[u])).empty()) {
+      all_medoids_nonempty = false;
+      break;
+    }
+  }
+
+  // When there are at least W unique medoids, pre-pack the unique medoids once into
+  // L1-resident panels instead of packing all N series block by block.
+  if (core::dtw_lanes_packed && packed_block && n_unique >= W && all_medoids_nonempty) {
+    const std::size_t n_panels = (n_unique + W - 1) / W;
+    std::vector<core::PackedLanesPanel<T>> medoid_panels(n_panels);
+    for (std::size_t b = 0; b < n_panels; ++b) {
+      const std::size_t u0 = b * W;
+      const std::size_t count = std::min(W, n_unique - u0);
+      std::array<std::span<const T>, W> ys;
+      for (std::size_t w = 0; w < W; ++w)
+        ys[w] = medoid(static_cast<index_t>(unique_slots[u0 + std::min(w, count - 1)]));
+      core::pack_dtw_panel<T>(distance, ys.data(), medoid_panels[b]);
+    }
+    const std::size_t table_stride = n_panels * W;
+    auto assign_one = [&](std::size_t i) {
+      const index_t p = first + static_cast<index_t>(i);
+      const auto x = point(p);
+      std::vector<double> &table = assign_table();
+      if (table.size() < table_stride) table.resize(table_stride);
+      double *const t = table.data();
+      if (!x.empty()) {
+        const auto x_prep = core::prepare_dtw_query<T>(distance, x);
+        for (std::size_t b = 0; b < n_panels; ++b)
+          packed_block(x_prep, medoid_panels[b].view(), std::span<double>(t + b * W, W));
+      } else {
+        for (std::size_t u = 0; u < n_unique; ++u)
+          t[u] = pair(x, medoid(static_cast<index_t>(unique_slots[u])));
+      }
+      for (std::size_t s = 0; s < samples; ++s) {
+        const std::size_t *const map = slot_to_unique.data() + s * k;
+        assign_point(p, medoids.subspan(s * k, k), labels[s][static_cast<std::size_t>(p)], best[s * n + i],
+                     [t, map](index_t m) { return t[map[static_cast<std::size_t>(m)]]; });
+      }
+    };
+    run_openmp(assign_one, n, parallel && n > 64);
+    return;
+  }
+
+  // Hoist prepare_dtw_query for unique medoids outside the block loop.
+  const bool identity_prep =
+    distance.missing == core::MissingStrategy::Error && distance.variant.variant == core::DTWVariant::Standard;
+  std::vector<T> prep_storage;
+  std::vector<std::span<const T>> prep_medoids(n_unique);
+  if (core::dtw_lanes_packed && packed_block) {
+    if (identity_prep) {
+      for (std::size_t u = 0; u < n_unique; ++u)
+        prep_medoids[u] = medoid(static_cast<index_t>(unique_slots[u]));
+    } else {
+      std::vector<std::size_t> offsets(n_unique + 1, 0);
+      for (std::size_t u = 0; u < n_unique; ++u) {
+        const auto x = medoid(static_cast<index_t>(unique_slots[u]));
+        const auto xp = core::prepare_dtw_query<T>(distance, x);
+        prep_storage.insert(prep_storage.end(), xp.begin(), xp.end());
+        offsets[u + 1] = prep_storage.size();
+      }
+      for (std::size_t u = 0; u < n_unique; ++u)
+        prep_medoids[u] = std::span<const T>(prep_storage.data() + offsets[u], offsets[u + 1] - offsets[u]);
+    }
+  }
+
   auto assign_block = [&](std::size_t b) {
     const std::size_t i0 = b * W, count = std::min(W, n - i0);
     std::array<std::span<const T>, W> ys;
@@ -198,7 +285,7 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
     double *const t = table.data();
 
     if (core::dtw_lanes_packed && packed_block && shortest > 0) {
-      core::PackedLanesPanel<T> panel;
+      core::PackedLanesPanel<T> &panel = assign_panel<T>();
       core::pack_dtw_panel<T>(distance, ys.data(), panel);
       const auto panel_view = panel.view();
       for (std::size_t j = 0; j < slots; ++j) {
@@ -206,11 +293,11 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
           std::copy_n(t + first_slot[j] * W, W, t + j * W);
           continue;
         }
-        const auto x = medoid(static_cast<index_t>(j));
-        if (!x.empty())
-          packed_block(core::prepare_dtw_query<T>(distance, x), panel_view, std::span<double>(t + j * W, W));
+        const auto xp = prep_medoids[slot_to_unique[j]];
+        if (!xp.empty())
+          packed_block(xp, panel_view, std::span<double>(t + j * W, W));
         else
-          for (std::size_t w = 0; w < count; ++w) t[j * W + w] = pair(ys[w], x);
+          for (std::size_t w = 0; w < count; ++w) t[j * W + w] = pair(ys[w], xp);
       }
     } else {
       for (std::size_t j = 0; j < slots; ++j) {
@@ -263,9 +350,10 @@ void assign_in_blocks(index_t first, std::size_t n, std::vector<core::detail::Or
  * The first sample with the least objective (strict <; each checked finite, in sample order): its labels move into
  * the result, with its medoids (slots s * k .. s * k + k - 1 of `medoids`) and its PAM's iterations and converged flag.
  */
+template <typename LabelT>
 inline core::ClusteringResult clara_winner(const std::vector<core::ClusteringResult> &pams,
                                            std::span<const index_t> medoids,
-                                           std::vector<std::vector<index_t>> &labels,
+                                           std::vector<std::vector<LabelT>> &labels,
                                            const std::vector<core::detail::OrderedMedoidObjective> &costs)
 {
   std::size_t winner = 0;
@@ -279,7 +367,10 @@ inline core::ClusteringResult clara_winner(const std::vector<core::ClusteringRes
   }
   const std::size_t k = medoids.size() / costs.size();
   core::ClusteringResult result;
-  result.labels = std::move(labels[winner]);
+  if constexpr (std::is_same_v<LabelT, index_t>)
+    result.labels = std::move(labels[winner]);
+  else
+    result.labels.assign(labels[winner].begin(), labels[winner].end());
   result.medoid_indices.assign(medoids.begin() + static_cast<std::ptrdiff_t>(winner * k),
                                medoids.begin() + static_cast<std::ptrdiff_t>((winner + 1) * k));
   result.total_cost = least;

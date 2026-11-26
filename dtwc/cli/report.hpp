@@ -54,6 +54,7 @@ struct RunReport
     std::size_t series = 0, values = 0, ndim = 1, bytes = 0;
     std::size_t shortest = 0, longest = 0; ///< in time steps; longest 0: not known (a stream's)
     bool streamed = false;
+    core::Precision precision = core::Precision::Float64;
   };
 
   /// What the clustering returned.

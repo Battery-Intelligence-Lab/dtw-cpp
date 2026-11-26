@@ -66,7 +66,7 @@ def _clustering(labels, medoids, cost):
 
 def test_a_csv_runs_as_dtwc_cl_runs_it_and_writes_nothing(dtwc_cl, tmp_path, monkeypatch):
     """A path runs as dtwc_cl runs it: labels, medoids, cost, method, iterations. The run writes no file (Config's
-    output, "./results" by default, is cleared) and changes no setting of the caller's Config: the same Config then
+    output is "" by default) and changes no setting of the caller's Config: the same Config then
     runs the file's series in memory, which a Config holding the path as its input would refuse."""
     csv = _READER / "clara_256.csv"
     _, cli = _cli(dtwc_cl, ["-i", str(csv), "-k", "3", "-m", "pam", "--name", "t", "-o", str(tmp_path / "cli")])

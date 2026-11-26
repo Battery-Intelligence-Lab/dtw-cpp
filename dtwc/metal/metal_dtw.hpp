@@ -28,6 +28,8 @@
 #include "../core/gpu_dtw_common.hpp"
 
 #include <cstddef>
+#include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -64,6 +66,13 @@ bool metal_available();
 /// Get Metal device info string (GPU name, core count, unified memory size).
 std::string metal_device_info();
 
+/// Series i of an entry's series, its Float64 values where they lie (a view's or owned); it does not throw.
+using SeriesAt = std::function<std::span<const double>(std::size_t)>;
+
+/// A loop on the caller's threads: for_each(count, task) calls task(i) once for every i in [0, count); task(i) writes
+/// only its own slots and does not throw.
+using ParallelFor = std::function<void(std::size_t count, const std::function<void(std::size_t)> &task)>;
+
 /// Fill @p out with the DTW distance of every pair of @p series on the default
 /// Metal device. Every refusal (FP64, no device, all series empty, a scratch
 /// buffer that cannot be allocated) comes before @p out is touched; then @p out
@@ -72,6 +81,14 @@ std::string metal_device_info();
 MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
     const MetalDistMatOptions &opts, core::DistanceMatrix &out);
+
+/// The same fill of the @p n_series series series(i), read where they lie (a
+/// view's or owned: no copy of them is made): @p parallel stages FP64->FP32
+/// inputs and widens FP32->FP64 outputs in parallel.
+MetalDistMatResult compute_distance_matrix_metal(
+    std::size_t n_series, const SeriesAt &series,
+    const MetalDistMatOptions &opts, const ParallelFor &parallel,
+    core::DistanceMatrix &out);
 
 } // namespace dtwc::metal
 
