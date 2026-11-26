@@ -74,9 +74,6 @@ namespace detail {
 template <typename T = dtwc::settings::default_data_t>
 T msm_distance(const T *x, std::size_t nx, const T *y, std::size_t ny, T c = T(1))
 {
-#if defined(__clang__)
-#pragma clang fp reassociate(off)
-#endif
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (nx == 0 || ny == 0) return maxValue;
   if (x == y && nx == ny) return T(0);

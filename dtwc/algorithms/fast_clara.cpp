@@ -368,6 +368,93 @@ std::string describe(const core::HybridSplit &split, std::size_t n_points)
   return text.str();
 }
 
+namespace detail {
+
+  template <typename CheckOpt>
+  inline void check_remaining_series(CheckOpt &check, std::size_t checked, std::size_t n_points)
+  {
+    if (!check) return;
+    check->check(checked, n_points - checked);
+    check->finish();
+  }
+
+  template <typename CheckOpt>
+  struct FastClaraPassState
+  {
+    const Problem &prob;
+    const CLARAOptions &opts;
+    const std::vector<core::ClusteringResult> &pams;
+    std::span<const index_t> medoids;
+    std::vector<core::detail::OrderedMedoidObjective> &costs;
+    CheckOpt &check;
+    std::optional<core::HybridSplit> &split;
+    std::size_t n_points;
+    std::size_t n_samples;
+    Device device;
+    bool gpu;
+  };
+
+  template <typename LabelT, typename CheckOpt, typename Pair, typename PairF32>
+  static core::ClusteringResult fast_clara_assign_pass(
+    FastClaraPassState<CheckOpt> &state, const Pair *pair, const PairF32 *pair_f32)
+  {
+    const auto &data = state.prob.data();
+    std::vector<std::vector<LabelT>> labels(state.n_samples, std::vector<LabelT>(state.n_points));
+    const auto in_blocks = [&](const auto &assign) {
+      assign_in_blocks(0, state.n_points, state.costs, [&](index_t first, std::size_t n, std::span<double> best) {
+        const std::size_t next = static_cast<std::size_t>(first) + n;
+        if (state.check) {
+          state.check->check(static_cast<std::size_t>(first), n);
+          if (state.check->marked()) check_remaining_series(state.check, next, state.n_points);
+        }
+        try {
+          assign(first, n, best);
+        } catch (...) {
+          check_remaining_series(state.check, next, state.n_points);
+          throw;
+        }
+      });
+    };
+    if (pair_f32) {
+      in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
+        assign_points_cpu<float>(
+          first, n, best, state.medoids, labels, state.prob.distance(), *pair_f32,
+          [&](index_t p) { return data.series_f32(static_cast<std::size_t>(p)); },
+          [&](index_t j) { return data.series_f32(static_cast<std::size_t>(state.medoids[static_cast<std::size_t>(j)])); });
+      });
+    } else {
+#ifdef DTWC_HAS_CUDA
+      if (state.gpu) {
+        // The series and the medoids are read where they lie, a view's or owned: no copy of them is made.
+        std::vector<std::span<const double>> medoid_series;
+        medoid_series.reserve(state.medoids.size());
+        for (const index_t medoid : state.medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(medoid)));
+        if (state.device == Device::CPU_GPU) {
+          state.split = assign_hybrid(state.prob, data, medoid_series, state.medoids, labels, state.costs, state.opts, *pair);
+          if (state.prob.verbose()) std::cout << "FastCLARA " << describe(*state.split, state.n_points) << '\n';
+        } else {
+          assign_on_gpu_typed(
+            state.prob, static_cast<std::size_t>(data.size()), [&data](std::size_t i) { return data.series(i); },
+            0, medoid_series, state.medoids, labels, state.costs, state.opts.gpu_staging_bytes, true);
+        }
+      } else
+#else
+      say_cpu_assignment(state.prob, state.n_points, state.n_samples, static_cast<std::size_t>(state.opts.n_clusters));
+#endif
+        in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
+          assign_points_cpu<data_t>(
+            first, n, best, state.medoids, labels, state.prob.distance(), *pair,
+            [&](index_t p) { return data.series(static_cast<std::size_t>(p)); },
+            [&](index_t j) { return data.series(static_cast<std::size_t>(state.medoids[static_cast<std::size_t>(j)])); });
+        });
+    }
+
+    if (state.check) state.check->finish();
+    return clara_winner(state.pams, state.medoids, labels, state.costs);
+  }
+
+} // namespace detail
+
 core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 {
   detail::validate_clara_request(prob, opts);
@@ -403,14 +490,9 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   // The pass stops at the first entirely-NaN series marked (Interpolate), whose distances throw, and at an error the
   // PAMs or a block's assignment raise on values the check takes (a distance that overflows): the series from
   // `checked` on are checked and finish() runs, so a refusal of dtw_function()'s check comes before that error.
-  const auto check_rest = [&](std::size_t checked) {
-    if (!check) return;
-    check->check(checked, n_points - checked);
-    check->finish();
-  };
   if (check) {
     check->check_rows(detail::sample_union(samples));
-    if (check->marked()) check_rest(0); // before the PAMs, whose fills would refuse it first
+    if (check->marked()) detail::check_remaining_series(check, 0, n_points); // before the PAMs, whose fills would refuse it first
   }
   std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
   std::vector<core::ClusteringResult> pams;
@@ -422,75 +504,22 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 #endif
     pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, copies, medoids);
   } catch (...) {
-    check_rest(0);
+    detail::check_remaining_series(check, 0, n_points);
     throw;
   }
 
   // One pass: every point against the medoids of every sample. Use compact labels (uint8_t/uint16_t) when k fits.
   std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
   std::optional<core::HybridSplit> split;
-  const auto &data = prob.data();
-  auto run_pass = [&]<typename LabelT>() -> core::ClusteringResult {
-    std::vector<std::vector<LabelT>> labels(samples.size(), std::vector<LabelT>(n_points));
-    const auto in_blocks = [&](const auto &assign) {
-      detail::assign_in_blocks(0, n_points, costs, [&](index_t first, std::size_t n, std::span<double> best) {
-        const std::size_t next = static_cast<std::size_t>(first) + n;
-        if (check) {
-          check->check(static_cast<std::size_t>(first), n);
-          if (check->marked()) check_rest(next);
-        }
-        try {
-          assign(first, n, best);
-        } catch (...) {
-          check_rest(next);
-          throw;
-        }
-      });
-    };
-    if (pair_f32) {
-      in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
-        detail::assign_points_cpu<float>(
-          first, n, best, medoids, labels, prob.distance(), *pair_f32,
-          [&](index_t p) { return data.series_f32(static_cast<std::size_t>(p)); },
-          [&](index_t j) { return data.series_f32(static_cast<std::size_t>(medoids[static_cast<std::size_t>(j)])); });
-      });
-    } else {
-#ifdef DTWC_HAS_CUDA
-      if (gpu) {
-        // The series and the medoids are read where they lie, a view's or owned: no copy of them is made.
-        std::vector<std::span<const double>> medoid_series;
-        medoid_series.reserve(medoids.size());
-        for (const index_t medoid : medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(medoid)));
-        if (device == Device::CPU_GPU) {
-          split = detail::assign_hybrid(prob, data, medoid_series, medoids, labels, costs, opts, *pair);
-          if (prob.verbose()) std::cout << "FastCLARA " << describe(*split, n_points) << '\n';
-        } else {
-          detail::assign_on_gpu_typed(
-            prob, static_cast<std::size_t>(data.size()), [&data](std::size_t i) { return data.series(i); },
-            0, medoid_series, medoids, labels, costs, opts.gpu_staging_bytes, true);
-        }
-      } else
-#else
-      detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
-#endif
-        in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
-          detail::assign_points_cpu<data_t>(
-            first, n, best, medoids, labels, prob.distance(), *pair,
-            [&](index_t p) { return data.series(static_cast<std::size_t>(p)); },
-            [&](index_t j) { return data.series(static_cast<std::size_t>(medoids[static_cast<std::size_t>(j)])); });
-        });
-    }
-
-    if (check) check->finish();
-    return detail::clara_winner(pams, medoids, labels, costs);
+  detail::FastClaraPassState<decltype(check)> pass_state{
+    prob, opts, pams, medoids, costs, check, split, n_points, samples.size(), device, gpu
   };
-
   core::ClusteringResult result =
     opts.n_clusters <= 256
-      ? run_pass.template operator()<std::uint8_t>()
+      ? detail::fast_clara_assign_pass<std::uint8_t>(pass_state, pair, pair_f32)
       : (opts.n_clusters <= 65536
-           ? run_pass.template operator()<std::uint16_t>()
-           : run_pass.template operator()<index_t>());
+           ? detail::fast_clara_assign_pass<std::uint16_t>(pass_state, pair, pair_f32)
+           : detail::fast_clara_assign_pass<index_t>(pass_state, pair, pair_f32));
   result.hybrid = split;
   // The sample_size >= N branch above delegates to fast_pam, which publishes too.
   prob.set_result(result);

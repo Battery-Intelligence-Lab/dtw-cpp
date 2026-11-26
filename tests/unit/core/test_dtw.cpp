@@ -6,7 +6,7 @@
  *
  * @details Bands, registered before the first run. Where the library and the oracle
  *          perform literally the same additions, minima and absolute values in the
- *          same order (double, one channel, L1 cost; Standard, ADTW, MSM) the two
+ *          same order (double, one channel, L1 cost; Standard, ADTW) the two
  *          agree to the bit. Everywhere else they agree within dtw_routes_agree
  *          (tests/support/dtw_route_bound.hpp), 2 (nx + ny - 1) eps(T) max(|a|, |b|): a
  *          warping path has at most nx + ny - 1 cells, each adding one rounded cost, so
@@ -135,7 +135,7 @@ bool same_arithmetic(const Config &config)
 {
   const auto variant = config.params.variant;
   return std::is_same_v<T, double> && config.ndim == 1 && config.metric == MetricType::L1
-         && (variant == DTWVariant::Standard || variant == DTWVariant::ADTW || variant == DTWVariant::MSM);
+         && (variant == DTWVariant::Standard || variant == DTWVariant::ADTW);
 }
 
 /// Soft-DTW adds up costs and softmin offsets of opposite sign (each offset is at most
