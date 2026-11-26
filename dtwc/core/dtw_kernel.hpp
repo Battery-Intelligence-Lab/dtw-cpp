@@ -65,6 +65,22 @@ namespace dtwc::core {
 // (__std_min_d). The nesting makes the comparisons min_element makes, so the
 // result is unchanged, NaN ordering included.
 
+#if defined(_MSC_VER)
+#define DTWC_LANES_RESTRICT __restrict
+#elif defined(__GNUC__) || defined(__clang__)
+#define DTWC_LANES_RESTRICT __restrict__
+#else
+#define DTWC_LANES_RESTRICT
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#define DTWC_KERNEL_FORCE_INLINE __attribute__((always_inline)) inline
+#elif defined(_MSC_VER)
+#define DTWC_KERNEL_FORCE_INLINE __forceinline
+#else
+#define DTWC_KERNEL_FORCE_INLINE inline
+#endif
+
 /// Standard DTW recurrence: min(diag, up, left) + cost.
 struct StandardCell
 {
@@ -73,6 +89,17 @@ struct StandardCell
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
     return std::min(std::min(diag, up), left) + cost;
+  }
+  template <typename T>
+  T combine_interior(T diag, T up, T left, T cost,
+                     std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return std::min(std::min(diag, up), left) + cost;
+  }
+  template <typename T>
+  T boundary(T prev, T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return prev + cost;
   }
   template <typename T>
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -90,11 +117,65 @@ struct ADTWCell
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
-    return std::min(std::min(diag, up + penalty), left + penalty) + cost;
+    const T u = up + penalty;
+    const T l = left + penalty;
+    const T m1 = (u < diag) ? u : diag;
+    const T m2 = (l < m1) ? l : m1;
+    return m2 + cost;
+  }
+  T combine_interior(T diag, T up, T left, T cost,
+                     std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return combine(diag, up, left, cost, 0, 0);
+  }
+  T boundary(T prev, T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return (prev + penalty) + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
     return cost;
+  }
+};
+
+/// WDTW cell policy for SIMD lane kernels: broadcasts weights[|short_idx - long_idx|]
+/// across all lanes at each (short_idx, long_idx) step.
+template <typename T>
+struct WDTWCell
+{
+  const T *DTWC_LANES_RESTRICT weights;
+  T row_weight(std::size_t short_idx, std::size_t long_idx) const noexcept
+  {
+    const std::size_t d = (short_idx > long_idx) ? (short_idx - long_idx) : (long_idx - short_idx);
+    return weights[d];
+  }
+  T combine_w(T diag, T up, T left, T cost, T w) const noexcept
+  {
+    const T m1 = (up < diag) ? up : diag;
+    const T m2 = (left < m1) ? left : m1;
+    return m2 + w * cost;
+  }
+  T boundary_w(T prev, T cost, T w) const noexcept
+  {
+    return prev + w * cost;
+  }
+  T combine(T diag, T up, T left, T cost,
+            std::size_t short_idx, std::size_t long_idx) const noexcept
+  {
+    return combine_w(diag, up, left, cost, row_weight(short_idx, long_idx));
+  }
+  T combine_interior(T diag, T up, T left, T cost,
+                     std::size_t short_idx, std::size_t long_idx) const noexcept
+  {
+    return combine_w(diag, up, left, cost, row_weight(short_idx, long_idx));
+  }
+  T boundary(T prev, T cost, std::size_t short_idx, std::size_t long_idx) const noexcept
+  {
+    return boundary_w(prev, cost, row_weight(short_idx, long_idx));
+  }
+  T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return weights[0] * cost;
   }
 };
 
@@ -118,7 +199,7 @@ namespace detail {
         gamma_fraction = std::frexp(gamma, &gamma_exponent);
     }
 
-    T scaled(T delta) const noexcept
+    DTWC_KERNEL_FORCE_INLINE T scaled(T delta) const noexcept
     {
       return finite_reciprocal
                ? delta * inv_gamma
@@ -146,18 +227,21 @@ struct SoftCell
 
   explicit SoftCell(T value) noexcept : gamma(value), scale(value) {}
 
-  T combine(T diag, T up, T left, T cost,
+  DTWC_KERNEL_FORCE_INLINE T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
     constexpr T maxValue = std::numeric_limits<T>::max();
+    constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
     T m = maxValue;
     if (diag < m) m = diag;
     if (up < m) m = up;
     if (left < m) m = left;
     if (m == maxValue) return maxValue;
 
-    const auto contribution = [&](T predecessor) noexcept {
-      return predecessor == m ? T(1) : std::exp(-scale.scaled(predecessor - m));
+    const auto contribution = [&](T predecessor) noexcept -> T {
+      if (predecessor == m) return T(1);
+      const T s = scale.scaled(predecessor - m);
+      return s >= kCutoff ? T(0) : std::exp(-s);
     };
     // diag, left, up: on dtw_kernel_linear (up = dp[i, j-1], left = dp[i-1, j])
     // the order soft_dtw has always summed in; another order moves a float32
@@ -167,6 +251,28 @@ struct SoftCell
     if (left != maxValue) acc += contribution(left);
     if (up != maxValue) acc += contribution(up);
     return (acc == T(1) ? m : m - gamma * std::log(acc)) + cost;
+  }
+  DTWC_KERNEL_FORCE_INLINE T combine_interior(T diag, T up, T left, T cost,
+                     std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
+    T m = diag;
+    if (up < m) m = up;
+    if (left < m) m = left;
+
+    const auto contribution = [&](T predecessor) noexcept -> T {
+      if (predecessor == m) return T(1);
+      const T s = scale.scaled(predecessor - m);
+      return s >= kCutoff ? T(0) : std::exp(-s);
+    };
+    T acc = contribution(diag);
+    acc += contribution(left);
+    acc += contribution(up);
+    return (acc == T(1) ? m : m - gamma * std::log(acc)) + cost;
+  }
+  T boundary(T prev, T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return prev + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
@@ -186,14 +292,27 @@ struct AROWCell
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
     constexpr T maxValue = std::numeric_limits<T>::max();
-    if (std::isnan(cost)) { // NaN -> missing pair.
-      if (diag != maxValue) return diag;
-      if (up != maxValue) return up;
-      if (left != maxValue) return left;
-      return T(0);
-    }
-    const T m = std::min(std::min(diag, up), left);
-    return (m == maxValue) ? maxValue : m + cost;
+    const T m1 = (up < diag) ? up : diag;
+    const T m2 = (left < m1) ? left : m1;
+    const T non_missing = (m2 == maxValue) ? maxValue : (m2 + cost);
+    const T missing_val = (diag != maxValue) ? diag
+                        : (up != maxValue)   ? up
+                        : (left != maxValue) ? left
+                                             : T(0);
+    return std::isnan(cost) ? missing_val : non_missing;
+  }
+  template <typename T>
+  T combine_interior(T diag, T up, T left, T cost,
+                     std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    const T m1 = (up < diag) ? up : diag;
+    const T m2 = (left < m1) ? left : m1;
+    return std::isnan(cost) ? diag : (m2 + cost);
+  }
+  template <typename T>
+  T boundary(T prev, T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return std::isnan(cost) ? prev : (prev + cost);
   }
   template <typename T>
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -251,45 +370,53 @@ namespace detail {
 
   /// dtw_kernel_linear with the early-abandon test known at compile time.
   template <bool Abandon, typename T, typename Cost, typename Cell>
-  T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T early_abandon)
+  T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell_in, T early_abandon)
   {
     const Cost cost = cost_in; // in registers: see the file comment
+    const Cell cell = cell_in;
     constexpr T maxValue = std::numeric_limits<T>::max();
     if (n_short == 0 || n_long == 0) return maxValue;
 
     std::vector<T> &short_buf = linear_short_buf<T>();
-    short_buf.resize(n_short);
+    if (short_buf.size() < n_short) short_buf.resize(n_short);
     T *short_side = short_buf.data(); // hoisted out of the loops
 
     // First column (long_idx = 0): accumulate along short axis, no diag/left.
     short_side[0] = cell.seed(cost(0, 0), 0, 0);
-    for (std::size_t i = 1; i < n_short; ++i)
-      short_side[i] = cell.combine(maxValue, short_side[i - 1], maxValue, cost(i, 0), i, 0);
-
     // A column whose minimum exceeds the threshold abandons the pair.
     const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
+
+    if (n_short == 1) {
+      T acc = short_side[0];
+      for (std::size_t j = 1; j < n_long; ++j) {
+        if constexpr (std::is_same_v<Cell, SoftCell<T>>)
+          acc = cell.boundary(acc, cost(0, j), 0, j);
+        else
+          acc = cell.combine(maxValue, maxValue, acc, cost(0, j), 0, j);
+        if (abandons(acc)) return maxValue;
+      }
+      return acc;
+    }
+
+    for (std::size_t i = 1; i < n_short; ++i)
+      short_side[i] = cell.boundary(short_side[i - 1], cost(i, 0), i, 0);
 
     // Columns j and j + 1 per pass: two chains of min-then-add side by side, where
     // one column is one chain whose latency, not the core, sets the pace. Each cell
     // gets the neighbours, in the same roles, that the one-column loop below gives
     // it, and the pair is abandoned iff some column's minimum exceeds the threshold.
-    // The library's -fassociative-math may still regroup a chain of adds: on a
-    // one-row matrix a pass's two cells form one, and clang moved ADTW's
-    // left + penalty by an ulp in float there, so a one-row matrix stays on the
-    // one-column loop. Elsewhere each cell's value also feeds the next row, and the
-    // results matched the one-column loop's bit for bit (Apple clang 21).
     std::size_t j = 1;
-    for (; n_short > 1 && j + 1 < n_long; j += 2) {
+    for (; j + 1 < n_long; j += 2) {
       T diag = short_side[0];
-      T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
-      T next_left = cell.combine(maxValue, maxValue, left, cost(0, j + 1), 0, j + 1);
+      T left = cell.boundary(short_side[0], cost(0, j), 0, j);
+      T next_left = cell.boundary(left, cost(0, j + 1), 0, j + 1);
       short_side[0] = next_left;
       T row_min = left, next_row_min = next_left;
 
       for (std::size_t i = 1; i < n_short; ++i) {
-        const T old_up = short_side[i];                                            // dp[i, j-1]
-        const T here = cell.combine(diag, old_up, left, cost(i, j), i, j);         // dp[i, j]
-        next_left = cell.combine(left, here, next_left, cost(i, j + 1), i, j + 1); // dp[i, j+1]
+        const T old_up = short_side[i];                                                     // dp[i, j-1]
+        const T here = cell.combine_interior(diag, old_up, left, cost(i, j), i, j);         // dp[i, j]
+        next_left = cell.combine_interior(left, here, next_left, cost(i, j + 1), i, j + 1); // dp[i, j+1]
         diag = old_up;
         left = here;
         short_side[i] = next_left;
@@ -305,14 +432,14 @@ namespace detail {
       T diag = short_side[0];
       // First row of new column: no up, no diag (they'd be from out-of-bounds
       // previous column/row). Only `left` (short_side[0] == dp[0, j-1]) is valid.
-      T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
+      T left = cell.boundary(short_side[0], cost(0, j), 0, j);
       short_side[0] = left;
       T row_min = left;
 
       for (std::size_t i = 1; i < n_short; ++i) {
         const T old_up = short_side[i]; // dp[i, j-1]
         // dp[i, j]; carried as the next cell's left (dp[i-1, j]) instead of reloaded.
-        left = cell.combine(diag, old_up, left, cost(i, j), i, j);
+        left = cell.combine_interior(diag, old_up, left, cost(i, j), i, j);
         diag = old_up;
         short_side[i] = left;
         if constexpr (Abandon) row_min = std::min(row_min, left);
@@ -347,9 +474,10 @@ namespace detail {
   /// dtw_kernel_banded with the early-abandon test known at compile time.
   template <bool Abandon, typename T, typename Cost, typename Cell>
   T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
-               Cost cost_in, Cell cell, T early_abandon)
+               Cost cost_in, Cell cell_in, T early_abandon)
   {
     const Cost cost = cost_in; // in registers: see the file comment
+    const Cell cell = cell_in;
     constexpr T maxValue = std::numeric_limits<T>::max();
     if (n_short == 0 || n_long == 0) return maxValue;
     if (band < 0)
@@ -375,7 +503,7 @@ namespace detail {
     {
       const auto hi = dtw_band_bounds(band, 0, n_long).second;
       for (std::size_t i = 1; i < hi; ++i) {
-        col[i] = cell.combine(maxValue, maxValue, col[i - 1], cost(0, i), 0, i);
+        col[i] = cell.boundary(col[i - 1], cost(0, i), 0, i);
       }
       if (hi < n_long) col[hi] = maxValue;
     }
@@ -391,7 +519,7 @@ namespace detail {
 
       if (low == 0) {
         // Row 0 of new column: only `left` (col[0] from previous j-step).
-        col[0] = cell.combine(maxValue, maxValue, col[0], cost(j, 0), j, 0);
+        col[0] = cell.boundary(col[0], cost(j, 0), j, 0);
         row_min = col[0];
       }
 
@@ -480,14 +608,6 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 /// where the per-pair kernel returns NaN, for a pair with no finite distance.
 /// Elsewhere this is StandardCell: x86's fmin is three instructions
 /// (minpd, cmpunordpd, blendvpd) where its min is one.
-#if defined(_MSC_VER)
-#define DTWC_LANES_RESTRICT __restrict
-#elif defined(__GNUC__) || defined(__clang__)
-#define DTWC_LANES_RESTRICT __restrict__
-#else
-#define DTWC_LANES_RESTRICT
-#endif
-
 #if defined(__aarch64__) || defined(_M_ARM64)
 struct LanesCell : StandardCell
 {
@@ -642,8 +762,10 @@ void pack_lanes_panel(const std::span<const T> *ys, PackedLanesPanel<T> &panel)
 /// AVX2/NEON/WASM), cutting L1D load/store traffic on s[] by 2x-4x with zero register spills.
 template <typename T, typename Dist, typename Cell>
 std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const PackedLanesView<T> &panel,
-                                                    int band, Dist dist, Cell cell)
+                                                    int band, Dist dist_in, Cell cell_in)
 {
+  const Dist dist = dist_in;
+  const Cell cell = cell_in;
   constexpr std::size_t W = dtw_lanes<T>;
   constexpr T maxValue = std::numeric_limits<T>::max();
   const T *DTWC_LANES_RESTRICT x = xs.data();
@@ -673,21 +795,37 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
     const std::size_t tail_count = ny_max - (ny_min - 1);
     if (y_buf.size() < tail_count) y_buf.resize(tail_count);
   }
-  const Row *Y = panel.rows;
+  const Row *DTWC_LANES_RESTRICT Y = panel.rows;
   Row *end_rows = ragged_tail ? y_buf.data() : nullptr;
   Row *DTWC_LANES_RESTRICT s = s_buf.data();
 
   // Column 0 (y[0]). The rows above its band hold maxValue: the band only moves
   // up, so a later column first meets such a row as an unreachable `up`.
+  constexpr bool has_row_weight = requires(const Cell &c) { c.row_weight(std::size_t{ 0 }, std::size_t{ 0 }); };
   const std::size_t hi0 = dtw_lanes_band_bounds(band, 0, nx).second;
   {
     T y0[W];
     for (std::size_t w = 0; w < W; ++w) y0[w] = Y[0].v[w];
-    for (std::size_t w = 0; w < W; ++w) s[0].v[w] = cell.seed(dist(x[0], y0[w]), 0, 0);
+    T *DTWC_LANES_RESTRICT s0 = s[0].v;
+    const T x0 = x[0];
+    if constexpr (has_row_weight) {
+      const T w00 = cell.row_weight(0, 0);
+      for (std::size_t w = 0; w < W; ++w) s0[w] = w00 * dist(x0, y0[w]);
+    } else {
+      for (std::size_t w = 0; w < W; ++w) s0[w] = cell.seed(dist(x0, y0[w]), 0, 0);
+    }
     for (std::size_t i = 1; i < hi0; ++i) {
       const T xi = x[i];
-      for (std::size_t w = 0; w < W; ++w)
-        s[i].v[w] = cell.combine(maxValue, s[i - 1].v[w], maxValue, dist(xi, y0[w]), i, 0);
+      T *DTWC_LANES_RESTRICT si = s[i].v;
+      const T *DTWC_LANES_RESTRICT sim1 = s[i - 1].v;
+      if constexpr (has_row_weight) {
+        const T wi0 = cell.row_weight(i, 0);
+        for (std::size_t w = 0; w < W; ++w)
+          si[w] = cell.boundary_w(sim1[w], dist(xi, y0[w]), wi0);
+      } else {
+        for (std::size_t w = 0; w < W; ++w)
+          si[w] = cell.boundary(sim1[w], dist(xi, y0[w]), i, 0);
+      }
     }
   }
   for (std::size_t i = hi0; i < nx; ++i) s[i] = kUnreachable;
@@ -710,30 +848,64 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
       y3[w] = Y[j + 3].v[w];
     }
     const T x0 = x[0];
-    for (std::size_t w = 0; w < W; ++w) {
-      const T s0 = s[0].v[w];
-      diag0[w] = s0;
-      l0[w] = cell.combine(maxValue, maxValue, s0, dist(x0, y0[w]), 0, j);
-      l1[w] = cell.combine(maxValue, maxValue, l0[w], dist(x0, y1[w]), 0, j + 1);
-      l2[w] = cell.combine(maxValue, maxValue, l1[w], dist(x0, y2[w]), 0, j + 2);
-      l3[w] = cell.combine(maxValue, maxValue, l2[w], dist(x0, y3[w]), 0, j + 3);
-      s[0].v[w] = l3[w];
-    }
-    for (std::size_t i = 1; i < nx; ++i) {
-      const T xi = x[i];
-      T *DTWC_LANES_RESTRICT si = s[i].v;
+    T *DTWC_LANES_RESTRICT s0 = s[0].v;
+    if constexpr (has_row_weight) {
+      const T w00 = cell.row_weight(0, j), w01 = cell.row_weight(0, j + 1);
+      const T w02 = cell.row_weight(0, j + 2), w03 = cell.row_weight(0, j + 3);
       for (std::size_t w = 0; w < W; ++w) {
-        const T up0 = si[w];
-        const T n0 = cell.combine(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
-        const T n1 = cell.combine(l0[w], n0, l1[w], dist(xi, y1[w]), i, j + 1);
-        const T n2 = cell.combine(l1[w], n1, l2[w], dist(xi, y2[w]), i, j + 2);
-        const T n3 = cell.combine(l2[w], n2, l3[w], dist(xi, y3[w]), i, j + 3);
-        diag0[w] = up0;
-        l0[w] = n0;
-        l1[w] = n1;
-        l2[w] = n2;
-        l3[w] = n3;
-        si[w] = n3;
+        const T old_s0 = s0[w];
+        diag0[w] = old_s0;
+        l0[w] = cell.boundary_w(old_s0, dist(x0, y0[w]), w00);
+        l1[w] = cell.boundary_w(l0[w], dist(x0, y1[w]), w01);
+        l2[w] = cell.boundary_w(l1[w], dist(x0, y2[w]), w02);
+        l3[w] = cell.boundary_w(l2[w], dist(x0, y3[w]), w03);
+        s0[w] = l3[w];
+      }
+      for (std::size_t i = 1; i < nx; ++i) {
+        const T xi = x[i];
+        const T wi0 = cell.row_weight(i, j), wi1 = cell.row_weight(i, j + 1);
+        const T wi2 = cell.row_weight(i, j + 2), wi3 = cell.row_weight(i, j + 3);
+        T *DTWC_LANES_RESTRICT si = s[i].v;
+        for (std::size_t w = 0; w < W; ++w) {
+          const T up0 = si[w];
+          const T n0 = cell.combine_w(diag0[w], up0, l0[w], dist(xi, y0[w]), wi0);
+          const T n1 = cell.combine_w(l0[w], n0, l1[w], dist(xi, y1[w]), wi1);
+          const T n2 = cell.combine_w(l1[w], n1, l2[w], dist(xi, y2[w]), wi2);
+          const T n3 = cell.combine_w(l2[w], n2, l3[w], dist(xi, y3[w]), wi3);
+          diag0[w] = up0;
+          l0[w] = n0;
+          l1[w] = n1;
+          l2[w] = n2;
+          l3[w] = n3;
+          si[w] = n3;
+        }
+      }
+    } else {
+      for (std::size_t w = 0; w < W; ++w) {
+        const T old_s0 = s0[w];
+        diag0[w] = old_s0;
+        l0[w] = cell.boundary(old_s0, dist(x0, y0[w]), 0, j);
+        l1[w] = cell.boundary(l0[w], dist(x0, y1[w]), 0, j + 1);
+        l2[w] = cell.boundary(l1[w], dist(x0, y2[w]), 0, j + 2);
+        l3[w] = cell.boundary(l2[w], dist(x0, y3[w]), 0, j + 3);
+        s0[w] = l3[w];
+      }
+      for (std::size_t i = 1; i < nx; ++i) {
+        const T xi = x[i];
+        T *DTWC_LANES_RESTRICT si = s[i].v;
+        for (std::size_t w = 0; w < W; ++w) {
+          const T up0 = si[w];
+          const T n0 = cell.combine_interior(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
+          const T n1 = cell.combine_interior(l0[w], n0, l1[w], dist(xi, y1[w]), i, j + 1);
+          const T n2 = cell.combine_interior(l1[w], n1, l2[w], dist(xi, y2[w]), i, j + 2);
+          const T n3 = cell.combine_interior(l2[w], n2, l3[w], dist(xi, y3[w]), i, j + 3);
+          diag0[w] = up0;
+          l0[w] = n0;
+          l1[w] = n1;
+          l2[w] = n2;
+          l3[w] = n3;
+          si[w] = n3;
+        }
       }
     }
   }
@@ -746,24 +918,50 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
       y1[w] = Y[j + 1].v[w];
     }
     const T x0 = x[0];
-    for (std::size_t w = 0; w < W; ++w) {
-      const T s0 = s[0].v[w];
-      diag0[w] = s0;
-      l0[w] = cell.combine(maxValue, maxValue, s0, dist(x0, y0[w]), 0, j);
-      l1[w] = cell.combine(maxValue, maxValue, l0[w], dist(x0, y1[w]), 0, j + 1);
-      s[0].v[w] = l1[w];
-    }
-    for (std::size_t i = 1; i < nx; ++i) {
-      const T xi = x[i];
-      T *DTWC_LANES_RESTRICT si = s[i].v;
+    T *DTWC_LANES_RESTRICT s0 = s[0].v;
+    if constexpr (has_row_weight) {
+      const T w00 = cell.row_weight(0, j), w01 = cell.row_weight(0, j + 1);
       for (std::size_t w = 0; w < W; ++w) {
-        const T up0 = si[w];
-        const T n0 = cell.combine(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
-        const T n1 = cell.combine(l0[w], n0, l1[w], dist(xi, y1[w]), i, j + 1);
-        diag0[w] = up0;
-        l0[w] = n0;
-        l1[w] = n1;
-        si[w] = n1;
+        const T old_s0 = s0[w];
+        diag0[w] = old_s0;
+        l0[w] = cell.boundary_w(old_s0, dist(x0, y0[w]), w00);
+        l1[w] = cell.boundary_w(l0[w], dist(x0, y1[w]), w01);
+        s0[w] = l1[w];
+      }
+      for (std::size_t i = 1; i < nx; ++i) {
+        const T xi = x[i];
+        const T wi0 = cell.row_weight(i, j), wi1 = cell.row_weight(i, j + 1);
+        T *DTWC_LANES_RESTRICT si = s[i].v;
+        for (std::size_t w = 0; w < W; ++w) {
+          const T up0 = si[w];
+          const T n0 = cell.combine_w(diag0[w], up0, l0[w], dist(xi, y0[w]), wi0);
+          const T n1 = cell.combine_w(l0[w], n0, l1[w], dist(xi, y1[w]), wi1);
+          diag0[w] = up0;
+          l0[w] = n0;
+          l1[w] = n1;
+          si[w] = n1;
+        }
+      }
+    } else {
+      for (std::size_t w = 0; w < W; ++w) {
+        const T old_s0 = s0[w];
+        diag0[w] = old_s0;
+        l0[w] = cell.boundary(old_s0, dist(x0, y0[w]), 0, j);
+        l1[w] = cell.boundary(l0[w], dist(x0, y1[w]), 0, j + 1);
+        s0[w] = l1[w];
+      }
+      for (std::size_t i = 1; i < nx; ++i) {
+        const T xi = x[i];
+        T *DTWC_LANES_RESTRICT si = s[i].v;
+        for (std::size_t w = 0; w < W; ++w) {
+          const T up0 = si[w];
+          const T n0 = cell.combine_interior(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
+          const T n1 = cell.combine_interior(l0[w], n0, l1[w], dist(xi, y1[w]), i, j + 1);
+          diag0[w] = up0;
+          l0[w] = n0;
+          l1[w] = n1;
+          si[w] = n1;
+        }
       }
     }
   }
@@ -776,27 +974,57 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
     for (std::size_t w = 0; w < W; ++w) y[w] = Y[j].v[w];
     std::size_t i = lo;
     if (lo == 0) {
-      for (std::size_t w = 0; w < W; ++w) {
-        diag[w] = s[0].v[w];
-        left[w] = cell.combine(maxValue, maxValue, s[0].v[w], dist(x[0], y[w]), 0, j);
-        s[0].v[w] = left[w];
+      const T x0 = x[0];
+      T *DTWC_LANES_RESTRICT s0 = s[0].v;
+      if constexpr (has_row_weight) {
+        const T w0j = cell.row_weight(0, j);
+        for (std::size_t w = 0; w < W; ++w) {
+          const T old_s0 = s0[w];
+          diag[w] = old_s0;
+          const T l = cell.boundary_w(old_s0, dist(x0, y[w]), w0j);
+          left[w] = l;
+          s0[w] = l;
+        }
+      } else {
+        for (std::size_t w = 0; w < W; ++w) {
+          const T old_s0 = s0[w];
+          diag[w] = old_s0;
+          const T l = cell.boundary(old_s0, dist(x0, y[w]), 0, j);
+          left[w] = l;
+          s0[w] = l;
+        }
       }
       i = 1;
     } else if (lo < nx) {
+      const T *DTWC_LANES_RESTRICT slo = s[lo - 1].v;
       for (std::size_t w = 0; w < W; ++w)
-        diag[w] = s[lo - 1].v[w];           // dp[lo-1, j-1], inside the previous column's band
+        diag[w] = slo[w];                  // dp[lo-1, j-1], inside the previous column's band
       std::copy_n(kUnreachable.v, W, left); // dp[lo-1, j], outside this column's band
     } else {
       s[nx - 1] = kUnreachable; // row nx - 1 has left the Sakoe-Chiba band
     }
-    for (; i < hi; ++i) {
-      const T xi = x[i];
-      T *DTWC_LANES_RESTRICT si = s[i].v;
-      for (std::size_t w = 0; w < W; ++w) {
-        const T up = si[w]; // dp[i, j-1]
-        left[w] = cell.combine(diag[w], up, left[w], dist(xi, y[w]), i, j);
-        diag[w] = up;
-        si[w] = left[w];
+    if constexpr (has_row_weight) {
+      for (; i < hi; ++i) {
+        const T xi = x[i];
+        const T wij = cell.row_weight(i, j);
+        T *DTWC_LANES_RESTRICT si = s[i].v;
+        for (std::size_t w = 0; w < W; ++w) {
+          const T up = si[w]; // dp[i, j-1]
+          left[w] = cell.combine_w(diag[w], up, left[w], dist(xi, y[w]), wij);
+          diag[w] = up;
+          si[w] = left[w];
+        }
+      }
+    } else {
+      for (; i < hi; ++i) {
+        const T xi = x[i];
+        T *DTWC_LANES_RESTRICT si = s[i].v;
+        for (std::size_t w = 0; w < W; ++w) {
+          const T up = si[w]; // dp[i, j-1]
+          left[w] = cell.combine(diag[w], up, left[w], dist(xi, y[w]), i, j);
+          diag[w] = up;
+          si[w] = left[w];
+        }
       }
     }
     if (ragged_tail && j >= ny_min - 1) end_rows[j - (ny_min - 1)] = s[nx - 1];
@@ -828,5 +1056,6 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
 }
 
 #undef DTWC_LANES_RESTRICT
+#undef DTWC_KERNEL_FORCE_INLINE
 
 } // namespace dtwc::core

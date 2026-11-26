@@ -194,3 +194,30 @@ TEST_CASE("DistanceMatrix to_full_matrix", "[DistanceMatrix]")
     for (size_t j = 0; j < 3; ++j)
       if (i != j) REQUIRE_THAT(at(i, j), WithinAbs(at(j, i), 1e-12));
 }
+
+TEST_CASE("for_each_point matches DistanceMatrix::get across all three phases and tail blocks",
+          "[DistanceMatrix][for_each_point]")
+{
+  constexpr dtwc::index_t N = 29;
+  for (const auto width : { Precision::Float64, Precision::Float32 }) {
+    DistanceMatrix dm(static_cast<size_t>(N), width);
+    for (size_t i = 0; i < static_cast<size_t>(N); ++i)
+      for (size_t j = 0; j <= i; ++j)
+        dm.set(i, j, static_cast<double>(i * 100 + j) + 0.25);
+
+    dm.visit([&](const auto *packed) {
+      for (dtwc::index_t a = 0; a < N; a += 8) {
+        dtwc::index_t seen = 0;
+        for_each_point<8>(packed, N, a, [&](dtwc::index_t o, const double *v) {
+          REQUIRE(o == seen);
+          for (size_t g = 0; g < 8; ++g) {
+            const size_t row = std::min(static_cast<size_t>(a) + g, static_cast<size_t>(N - 1));
+            REQUIRE(v[g] == dm.get(row, static_cast<size_t>(o)));
+          }
+          ++seen;
+        });
+        REQUIRE(seen == N);
+      }
+    });
+  }
+}

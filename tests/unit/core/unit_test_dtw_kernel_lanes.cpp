@@ -312,3 +312,76 @@ TEST_CASE("fill_distance_matrix: DDTW and Interpolate SIMD lanes agree with per-
     CHECK(bad == 0);
   }
 }
+
+TEST_CASE("fill_distance_matrix: ADTW, WDTW, ZeroCost, and AROW SIMD lanes agree with per-pair oracle",
+          "[lanes][fill]")
+{
+  constexpr std::size_t N = 2 * dtwc::core::dtw_lanes<double> + 5;
+  const std::vector<std::size_t> equal_lengths(N, 40);
+  std::vector<std::size_t> mixed_lengths;
+  mixed_lengths.reserve(N);
+  for (std::size_t i = 0; i < N; ++i) mixed_lengths.push_back(i % 2 ? 44 : 40);
+
+  auto check_prob = [](dtwc::Problem &prob, const std::vector<std::size_t> &lens) {
+    const std::size_t n = lens.size();
+    std::vector<double> want(n * n, 0.0);
+    for (std::size_t i = 0; i < n; ++i)
+      for (std::size_t j = i + 1; j < n; ++j)
+        want[i * n + j] = prob.dtw_function()(prob.series(i), prob.series(j));
+    prob.fill_distance_matrix();
+    const auto &m = prob.distance_matrix();
+    int bad = 0;
+    for (std::size_t i = 0; i < n; ++i)
+      for (std::size_t j = i + 1; j < n; ++j)
+        bad += !dtw_routes_agree<double>(m.get(i, j), want[i * n + j], lens[i], lens[j]);
+    CHECK(bad == 0);
+  };
+
+  SECTION("ADTW unbanded and banded")
+  {
+    for (const int band : { -1, 5 }) {
+      dtwc::Problem prob("adtw_lanes");
+      prob.set_data(walks<double>(mixed_lengths));
+      prob.set_variant({ .variant = dtwc::core::DTWVariant::ADTW, .adtw_penalty = 0.75 });
+      prob.set_band(band);
+      check_prob(prob, mixed_lengths);
+    }
+  }
+
+  SECTION("WDTW equal-length and mixed-length")
+  {
+    for (const auto &lens : { equal_lengths, mixed_lengths }) {
+      for (const int band : { -1, 5 }) {
+        dtwc::Problem prob("wdtw_lanes");
+        prob.set_data(walks<double>(lens));
+        prob.set_variant({ .variant = dtwc::core::DTWVariant::WDTW, .wdtw_g = 0.15 });
+        prob.set_band(band);
+        check_prob(prob, lens);
+      }
+    }
+  }
+
+  SECTION("ZeroCost and AROW with missing NaNs")
+  {
+    auto data = walks<double>(mixed_lengths);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (std::size_t i = 0; i < N; i += 3) {
+      data.p_vec[i][0] = nan;
+      data.p_vec[i][10] = nan;
+      data.p_vec[i][11] = nan;
+      data.p_vec[i].back() = nan;
+    }
+    for (const auto strat : { dtwc::core::MissingStrategy::ZeroCost, dtwc::core::MissingStrategy::AROW }) {
+      for (const int band : { -1, 6 }) {
+        for (const auto metric : { MetricType::L1, MetricType::SquaredL2 }) {
+          dtwc::Problem prob("missing_lanes");
+          prob.set_data(data);
+          prob.set_missing_strategy(strat);
+          prob.set_band(band);
+          prob.set_metric(metric);
+          check_prob(prob, mixed_lengths);
+        }
+      }
+    }
+  }
+}

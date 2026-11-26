@@ -58,6 +58,13 @@ namespace detail {
     return { prev_buf, curr_buf };
   }
 
+  template <typename T>
+  std::vector<T> &twe_step_buf()
+  {
+    thread_local std::vector<T> step_buf;
+    return step_buf;
+  }
+
 } // namespace detail
 
 /// TWE distance (pointer + length). Univariate, unbanded, exact; nu, lambda > 0, unchecked.
@@ -76,40 +83,48 @@ T twe_distance(const T *x, std::size_t nx, const T *y, std::size_t ny,
 
   const T del_add = nu + lambda;
   const T two_nu = T(2) * nu;
-  auto add = [](T u, T v) noexcept { return u == maxValue ? maxValue : u + v; };
 
   // Rolling buffers over the padded shorter axis (size nb+1).
   // Grown without shrinking so warmed worker threads neither reallocate nor re-zero prev_buf.
   auto [prev_buf, curr_buf] = detail::twe_rows<T>();
+  std::vector<T> &step_y_buf = detail::twe_step_buf<T>();
   if (prev_buf.size() < nb + 1) prev_buf.resize(nb + 1);
   if (curr_buf.size() < nb + 1) curr_buf.resize(nb + 1);
+  if (step_y_buf.size() < nb + 1) step_y_buf.resize(nb + 1);
   T *prev = prev_buf.data();
   T *curr = curr_buf.data();
+  T *step_y = step_y_buf.data();
 
-  // Padded row i = 0: D[0][0] = 0, rest +inf. Written into `curr` so the
-  // first swap below moves it into `prev` (matches the MSM kernel pattern).
-  curr[0] = T(0);
-  for (std::size_t j = 1; j <= nb; ++j) curr[j] = maxValue;
+  for (std::size_t j = 2; j <= nb; ++j)
+    step_y[j] = std::abs(b[j - 2] - b[j - 1]) + del_add;
 
-  T ai_prev = T(0);
-  for (std::size_t i = 1; i <= na; ++i) {
+  // Padded row i = 1: D[0][0] = 0, D[0][j>0] = D[i>0][0] = +inf.
+  // Only match is finite at (1, 1); for j >= 2 only delete_y is finite.
+  curr[1] = std::abs(a[0] - b[0]);
+  for (std::size_t j = 2; j <= nb; ++j)
+    curr[j] = curr[j - 1] + step_y[j];
+
+  T ai_prev = a[0];
+  for (std::size_t i = 2; i <= na; ++i) {
     std::swap(prev, curr);
     const T ai = a[i - 1];
     const T step_x = std::abs(ai_prev - ai) + del_add;
-    T left = maxValue; // D[i][j-1], carried; D[i][0] = +inf for i > 0
-    curr[0] = left;
-    T bj_prev = T(0);
-    for (std::size_t j = 1; j <= nb; ++j) {
+    const std::ptrdiff_t si = static_cast<std::ptrdiff_t>(i);
+    // Column j = 1: D[i][0] = D[i-1][0] = +inf, so only delete_x is finite.
+    T left = prev[1] + step_x;
+    curr[1] = left;
+    // Interior i >= 2, j >= 2: all three predecessors are finite (no maxValue guards).
+    for (std::size_t j = 2; j <= nb; ++j) {
+      const T bj_prev = b[j - 2];
       const T bj = b[j - 1];
-      const T del_x = add(prev[j], step_x);
-      const T del_y = add(left, std::abs(bj_prev - bj) + del_add);
-      const std::size_t idx_diff = (i >= j) ? (i - j) : (j - i);
-      const T match = add(prev[j - 1],
-                          std::abs(ai - bj) + std::abs(ai_prev - bj_prev)
-                            + two_nu * static_cast<T>(idx_diff));
+      const T del_x = prev[j] + step_x;
+      const T del_y = left + step_y[j];
+      const std::ptrdiff_t idx_diff = std::abs(si - static_cast<std::ptrdiff_t>(j));
+      const T match = prev[j - 1]
+                      + (std::abs(ai - bj) + std::abs(ai_prev - bj_prev)
+                         + two_nu * static_cast<T>(idx_diff));
       left = std::min(std::min(del_x, del_y), match); // std::min({...}) is a call on the MSVC STL
       curr[j] = left;
-      bj_prev = bj;
     }
     ai_prev = ai;
   }
