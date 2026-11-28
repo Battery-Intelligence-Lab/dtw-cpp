@@ -479,8 +479,15 @@ static void dtw_regtile_kernel_body(
   const long pair_idx  = (long)tg_idx * (long)pairs_per_tg + (long)simd_id + pair_offset;
   if (pair_idx >= num_pairs) return;
 
-  long si0 = 0, sj0 = 0;
-  if (simd_lane == 0) decode_pair(pair_idx, N_series, si0, sj0);
+  // Lane 0 decodes the pair and broadcasts it. MSL's SIMD-group functions take no 64-bit type, so the
+  // two series indices cross as int, which holds them because N_series is an int.
+  int si0 = 0, sj0 = 0;
+  if (simd_lane == 0) {
+    long a_idx, b_idx;
+    decode_pair(pair_idx, N_series, a_idx, b_idx);
+    si0 = (int)a_idx;
+    sj0 = (int)b_idx;
+  }
   const long si = simd_broadcast_first(si0);
   const long sj = simd_broadcast_first(sj0);
   const int ni = lengths[si];
