@@ -7,7 +7,9 @@ function tests = test_distance
 %   The values are tests/python/test_distance.py's, derived there.
 
 %> @file test_distance.m
+%> @brief dtwc.distance.dtw, the one distance entry, against values worked out by hand.
 %> @author Volkan Kumtepeli
+%> @date 01 Oct 2026
     tests = functiontests(localfunctions);
 end
 

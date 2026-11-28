@@ -1,3 +1,8 @@
+# @file test_cli_single_thread.cmake
+# @brief CLI integration test verifying single-thread OpenMP warning behaviour.
+# @author Volkan Kumtepeli
+# @date 28 Sep 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # dtwc_cl run with OMP_NUM_THREADS=1 on a multicore host must say, once, that

@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Top-level CMake build configuration for DTWC++ libraries, CLI, tests, and bindings.
+# @author Volkan Kumtepeli
+# @date 18 Aug 2022
+
 cmake_minimum_required(VERSION 3.26)
 
 # Read the full PEP 440 release string from the single source of truth. CMake's

@@ -12,7 +12,9 @@
  *          function and the facade agree on every pair within dtw_routes_agree
  *          (tests/support/dtw_route_bound.hpp).
  *          The table of refusals has one row per rule of core::validate.
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Oct 2026
  */
 
 #include <dtwc.hpp>

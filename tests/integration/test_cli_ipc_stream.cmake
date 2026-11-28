@@ -1,4 +1,8 @@
+# @file test_cli_ipc_stream.cmake
+# @brief CLI integration test verifying streamed FastCLARA parity on Arrow IPC files.
 # @author Volkan Kumtepeli
+# @date 01 Nov 2026
+
 #
 # The real dtwc_cl on Arrow IPC files streamed a record batch at a time under --ram-limit: FastCLARA's labels,
 # medoids and total cost are the in-RAM run's and the CSV twin's, and the route is the one the build prices. Fixtures:

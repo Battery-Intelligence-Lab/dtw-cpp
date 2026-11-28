@@ -18,7 +18,9 @@
  *            - kDecodePairMSL: Metal Shading Language source (integer-only,
  *              64-bit `long`). MSL has no FP64, so it uses an exact integer
  *              square-root seed instead; it produces bit-identical (i, j).
+ *
  * @author Volkan Kumtepeli
+ * @date 07 Jul 2026
  */
 #pragma once
 

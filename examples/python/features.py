@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file features.py
+## @brief Summary-feature extraction for the feature-based clustering baseline.
+## @author Volkan Kumtepeli
+## @date 24 Nov 2026
 """Summary-feature extraction for the feature-based clustering baseline.
 
 When DTW finds only weak structure (low silhouette, conflicting partitions

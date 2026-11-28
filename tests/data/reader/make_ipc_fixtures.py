@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file make_ipc_fixtures.py
+## @brief Write the Arrow IPC reader fixtures beside this script, with pyarrow 23.0.1.
+## @author Volkan Kumtepeli
+## @date 21 Oct 2026
 """Write the Arrow IPC reader fixtures beside this script, with pyarrow 23.0.1.
 
 The C++ reader (tests/unit/io/test_arrow_ipc.cpp), Python (tests/python/test_io.py) and MATLAB

@@ -16,6 +16,25 @@ INPUT                  = ./dtwc \
                          ./README.md
 RECURSIVE              = YES
 EXCLUDE                = ./dtwc/extern
+FILE_PATTERNS          = *.c \
+                         *.cc \
+                         *.cxx \
+                         *.cpp \
+                         *.c++ \
+                         *.dox \
+                         *.cu \
+                         *.cuh \
+                         *.h \
+                         *.hh \
+                         *.hxx \
+                         *.hpp \
+                         *.h++ \
+                         *.m \
+                         *.mm \
+                         *.py \
+                         *.md
+EXTENSION_MAPPING      = cu=C++ \
+                         cuh=C++
 USE_MDFILE_AS_MAINPAGE = ./README.md
 HTML_HEADER            = ./docs/header.html
 HTML_EXTRA_STYLESHEET  = ./docs/doxygen-awesome.css \
@@ -27,6 +46,18 @@ FORMULA_FONTSIZE       = 12
 USE_MATHJAX            = YES
 MATHJAX_VERSION        = MathJax_3
 GENERATE_LATEX         = NO
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = DTWC_HAS_CUDA \
+                         DTWC_HAS_METAL \
+                         DTWC_HAS_PARQUET \
+                         DTWC_HAS_ARROW \
+                         DTWC_ENABLE_HIGHS \
+                         DTWC_ENABLE_GUROBI \
+                         DTWC_HAS_MMAP \
+                         DTWC_HAS_CPUINFO \
+                         DTWC_ALWAYS_INLINE=inline \
+                         DTWC_KERNEL_FORCE_INLINE=inline
 HAVE_DOT               = YES
 DOT_NUM_THREADS        = 2
 UML_LOOK               = YES

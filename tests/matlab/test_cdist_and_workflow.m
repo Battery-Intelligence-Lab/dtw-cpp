@@ -7,7 +7,9 @@ function tests = test_cdist_and_workflow
 %   is asked for, and none otherwise.
 
 %> @file test_cdist_and_workflow.m
+%> @brief MATLAB tests for dtwc.distance.cdist and for the files dtwc.cluster writes.
 %> @author Volkan Kumtepeli
+%> @date 13 Nov 2026
     tests = functiontests(localfunctions);
 end
 

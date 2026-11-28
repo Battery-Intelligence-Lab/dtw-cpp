@@ -67,8 +67,9 @@ namespace dtwc {
  * direction only (zero local cost), preventing free stretching through
  * missing regions.
  *
- * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair),
- *              which may contain NaN for missing values.
+ * @tparam X First series type: contiguous range of float or double (core::SeriesPair),
+ *           which may contain NaN for missing values.
+ * @tparam Y Second series type: contiguous range of the same element type as @p X (core::SeriesPair).
  * @param x First series.
  * @param y Second series.
  * @param band Fixed Sakoe-Chiba diagonal half-width in samples. Negative

@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Standalone consumer CMake project importing DTWC++ via find_package or CPM.
+# @author Volkan Kumtepeli
+# @date 03 Apr 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 project(MY_AWESOME_PROJECT VERSION "0.0.1"

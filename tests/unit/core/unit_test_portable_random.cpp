@@ -1,7 +1,9 @@
 /**
  * @file unit_test_portable_random.cpp
  * @brief Cross-library regression tests for portable seeded sampling.
+ *
  * @author Volkan Kumtepeli
+ * @date 12 Jul 2026
  */
 
 #include <core/portable_random.hpp>

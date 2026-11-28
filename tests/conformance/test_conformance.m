@@ -18,7 +18,9 @@ function tests = test_conformance
 %    with a loud notice, matching test_contract_parity.m.)
 
 %> @file test_conformance.m
+%> @brief MATLAB route of the cross-language conformance fixture.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     tests = functiontests(localfunctions);
 end
 

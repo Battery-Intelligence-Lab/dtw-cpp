@@ -1,3 +1,8 @@
+# @file test_cli_loud_failures.cmake
+# @brief CLI integration test asserting non-zero exit and clear diagnostics on I/O failures.
+# @author Volkan Kumtepeli
+# @date 24 Sep 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # A failure must not exit 0. Drives the real dtwc_cl

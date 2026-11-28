@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file verify_results.py
+## @brief Verify DTWC++ clustering output against UCR ground-truth class labels.
+## @author Volkan Kumtepeli
+## @date 09 Apr 2026
 """Verify DTWC++ clustering output against UCR ground-truth class labels.
 
 Computes Adjusted Rand Index (ARI) between true class labels from a UCR TSV

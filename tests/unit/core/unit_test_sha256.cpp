@@ -1,6 +1,9 @@
 /**
+ * @brief Unit tests for the internal SHA-256 implementation against NIST vectors.
  * @file unit_test_sha256.cpp
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 #include <core/sha256.hpp>
 

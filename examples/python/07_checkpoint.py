@@ -10,6 +10,7 @@ version, N, SHA-256 of the data and distance settings, value width, rows
 written) and the packed lower triangle of doubles, NaN for uncomputed entries.
 A memory-mapped matrix (Problem.use_mmap_distance_matrix) uses the same file.
 @author Volkan Kumtepeli
+@date 03 Apr 2026
 """
 
 import numpy as np

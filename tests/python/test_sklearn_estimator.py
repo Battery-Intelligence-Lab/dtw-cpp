@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_sklearn_estimator.py
+## @brief DTWClustering: the scikit-learn contract (raw series and metric="precomputed"), and the distance it fits and predicts with, against a Problem configured alike.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """DTWClustering: the scikit-learn contract (raw series and metric="precomputed"),
 and the distance it fits and predicts with, against a Problem configured alike."""
 

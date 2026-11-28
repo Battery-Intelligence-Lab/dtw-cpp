@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_checkpoint_options.py
+## @brief Problem.checkpoint parity with C++ automatic mid-fill checkpointing.
+## @author Volkan Kumtepeli
+## @date 02 Sep 2026
 """Problem.checkpoint parity with C++ automatic mid-fill checkpointing.
 
 Mirrors ``dtwc::Problem::checkpoint`` (dtwc/Problem.hpp) and the validation

@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Source and header registration for CSV, Arrow IPC, and Parquet readers/writers.
+# @author Volkan Kumtepeli
+# @date 01 Oct 2026
+
 target_sources(dtwc_core
   PRIVATE
     arrow_c_data.cpp

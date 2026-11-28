@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file check_ipo_inlining.py
+## @brief Report whether Problem::dist_by_ind survives as an out-of-line call inside the FastPAM SWAP kernels of a linked binary (ledger A-06 / core map Q10).
+## @author Volkan Kumtepeli
+## @date 22 Sep 2026
 """Report whether Problem::dist_by_ind survives as an out-of-line call inside
 the FastPAM SWAP kernels of a linked binary (ledger A-06 / core map Q10).
 

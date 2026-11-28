@@ -9,7 +9,9 @@ function tests = test_tier1_route_parity
 %   Run with: results = runtests('test_tier1_route_parity');
 
 %> @file test_tier1_route_parity.m
+%> @brief MATLAB Tier-1 delegates routing and I/O semantics to C++.
 %> @author Volkan Kumtepeli
+%> @date 02 Sep 2026
     tests = functiontests(localfunctions);
 end
 

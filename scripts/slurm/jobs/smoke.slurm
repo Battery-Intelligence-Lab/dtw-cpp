@@ -6,6 +6,10 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=logs/smoke_%j.out
 #SBATCH --error=logs/smoke_%j.err
+# @file smoke.slurm
+# @brief SLURM batch script running DTWC++ CPU, GPU, and checkpoint smoke checks.
+# @author Volkan Kumtepeli
+# @date 06 Oct 2026
 #
 # DTWC++ smoke test on the UCR data `slurm_remote.sh upload` sends. MODE, which
 # `slurm_remote.sh submit-smoke <mode>` exports, picks the test:

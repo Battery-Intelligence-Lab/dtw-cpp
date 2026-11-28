@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_nonfinite_input.py
+## @brief FX-15: the bindings that take series reject NaN and +-inf, naming the series and position; finite answers are unchanged.
+## @author Volkan Kumtepeli
+## @date 24 Sep 2026
 """FX-15: the bindings that take series reject NaN and +-inf, naming the series
 and position; finite answers are unchanged.
 

@@ -9,7 +9,9 @@
  *          hand-computed bound values, admissibility against an independent
  *          full-matrix DP on longer random series, and the prefix / ragged
  *          envelope contract of the Envelope entry points.
+ *
  * @author Volkan Kumtepeli
+ * @date 28 Sep 2026
  */
 
 #include <core/lower_bound_impl.hpp>

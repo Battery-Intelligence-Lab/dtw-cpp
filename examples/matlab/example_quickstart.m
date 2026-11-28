@@ -1,6 +1,7 @@
 ﻿%> @file example_quickstart.m
 %> @brief DTWC++ Quickstart Example -- DTW distance, distance matrix, and clustering.
 %> @author Volkan Kumtepeli
+%> @date 03 Apr 2026
 %% DTWC++ Quickstart Example
 % Compute DTW distance, build a distance matrix, and cluster time series.
 %
@@ -16,7 +17,6 @@ d = dtwc.distance.dtw(x, y);
 fprintf('DTW distance (sin vs cos): %.4f\n', d);
 
 % Banded DTW -- constrain warping to speed up computation
-% @author Volkan Kumtepeli
 d_banded = dtwc.distance.dtw(x, y, 'Band', 10);
 fprintf('DTW distance (band=10):    %.4f\n', d_banded);
 

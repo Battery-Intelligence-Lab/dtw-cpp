@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Source and header registration for core DTW kernels, SIMD lanes, and distance matrix storage.
+# @author Volkan Kumtepeli
+# @date 01 Oct 2026
+
 target_sources(dtwc_core
   PRIVATE
     distance_matrix.cpp

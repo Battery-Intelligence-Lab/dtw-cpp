@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file preprocess.py
+## @brief Preprocessing helpers for time-series clustering with DTW.
+## @author Volkan Kumtepeli
+## @date 24 Nov 2026
 """Preprocessing helpers for time-series clustering with DTW.
 
 Use this module when your raw signal has artefacts that confuse DTW:

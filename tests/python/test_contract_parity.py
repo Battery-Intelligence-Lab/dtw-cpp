@@ -3,7 +3,9 @@
 @brief API contract tests for the Python surface: diagnostics, error hierarchy,
        device/hybrid refusals, and public signature defaults.
 @author Volkan Kumtepeli
+@date 07 Jul 2026
 """
+
 import inspect
 import re
 

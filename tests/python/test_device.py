@@ -2,7 +2,9 @@
 @file test_device.py
 @brief Tests for friendly device names ('gpu'/'hpc') and the global device() setter.
 @author Volkan Kumtepeli
+@date 30 Jun 2026
 """
+
 import numpy as np
 import pytest
 

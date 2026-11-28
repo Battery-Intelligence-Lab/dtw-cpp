@@ -24,7 +24,9 @@ function tests = test_mex_input_validation
 %    with a loud notice -- MATLAB cannot be run in the CI/build environment.)
 
 %> @file test_mex_input_validation.m
+%> @brief Regression tests for dtwc_mex entry-point guards.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     tests = functiontests(localfunctions);
 end
 

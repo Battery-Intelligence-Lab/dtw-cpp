@@ -3,7 +3,9 @@
 %   Run with: results = runtests('test_dtwc');
 
 %> @file test_dtwc.m
+%> @brief Unit tests for the dtwc MATLAB package.
 %> @author Volkan Kumtepeli
+%> @date 29 Mar 2026
     tests = functiontests(localfunctions);
 end
 

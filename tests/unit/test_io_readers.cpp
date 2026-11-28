@@ -10,7 +10,7 @@
  * which every build reads, is tests/unit/io/test_arrow_ipc.cpp's.
  *
  * @author Volkan Kumtepeli
- * @date 2026-07-07
+ * @date 07 Jul 2026
  */
 
 #include <catch2/catch_template_test_macros.hpp>

@@ -18,6 +18,7 @@
 
 namespace dtwc {
 
+/// Chainable configuration builder for loading time series datasets from CSV/TSV files or folders.
 class DataLoader
 {
   index_t start_col_{ 0 };
@@ -38,20 +39,29 @@ public:
     n_data(Ndata_);
   }
 
+  /// Get the zero-based starting column index.
   auto startColumn() const noexcept { return start_col_; }
+  /// Get the zero-based starting row index.
   auto startRow() const noexcept { return start_row_; }
+  /// Get the maximum number of series to read (-1 = all).
   auto n_data() const noexcept { return Ndata; }
+  /// Get the field delimiter character.
   auto delimiter() const noexcept { return delim; }
+  /// Get the configured input file or directory path.
   const std::filesystem::path &path() const noexcept { return data_path; }
+  /// Get the verbosity level.
   auto verbosity() const noexcept { return verbose; }
+  /// Get the target storage precision for loaded series.
   auto dtype() const noexcept { return dtype_; }
 
+  /// Set zero-based starting column index (returns `*this` for chaining).
   DataLoader &start_column(index_t N)
   {
     start_col_ = N;
     return *this;
   }
 
+  /// Set zero-based starting row index (returns `*this` for chaining).
   DataLoader &start_row(index_t N)
   {
     start_row_ = N;
@@ -66,6 +76,7 @@ public:
     return *this;
   }
 
+  /// Set explicit field delimiter character, overriding extension inference (returns `*this` for chaining).
   DataLoader &delimiter(char delim_)
   {
     delim = delim_;
@@ -89,6 +100,7 @@ public:
     return *this;
   }
 
+  /// Set verbosity level (returns `*this` for chaining).
   DataLoader &verbosity(int N)
   {
     verbose = N;

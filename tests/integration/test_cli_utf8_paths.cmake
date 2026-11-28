@@ -1,3 +1,8 @@
+# @file test_cli_utf8_paths.cmake
+# @brief CLI integration test verifying UTF-8 path handling outside Windows ANSI code pages.
+# @author Volkan Kumtepeli
+# @date 08 Oct 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # dtwc_cl must read the file it was named and write where it was told when the

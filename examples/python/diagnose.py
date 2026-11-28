@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file diagnose.py
+## @brief Sanity-check helpers for clustering results.
+## @author Volkan Kumtepeli
+## @date 24 Nov 2026
 """Sanity-check helpers for clustering results.
 
 Catches the silent failure modes of a clustering:

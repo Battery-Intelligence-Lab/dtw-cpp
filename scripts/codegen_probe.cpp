@@ -1,6 +1,9 @@
 /**
+ * @brief Codegen probe instantiating DTWC++ hot-loop kernels for vectorisation and call audits.
  * @file codegen_probe.cpp
+ *
  * @author Volkan Kumtepeli
+ * @date 22 Sep 2026
  */
 // Codegen probe for the DTW hot paths (ledger X-04).
 //

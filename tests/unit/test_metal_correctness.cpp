@@ -6,7 +6,7 @@
  *          looser than CUDA FP64 but still tight enough to catch kernel bugs.
  *
  * @author Volkan Kumtepeli
- * @date 2026-04-12
+ * @date 12 Apr 2026
  */
 
 #include <catch2/catch_test_macros.hpp>

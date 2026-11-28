@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Source and header registration for DTWC++ clustering and barycentre algorithms.
+# @author Volkan Kumtepeli
+# @date 01 Oct 2026
+
 target_sources(dtwc_core
   PRIVATE
     fast_pam.cpp

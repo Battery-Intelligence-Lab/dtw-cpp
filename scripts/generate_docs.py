@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file generate_docs.py
+## @brief Generate Hugo pages from DTWC++ documentation single sources of truth.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """Generate Hugo pages from DTWC++ documentation single sources of truth.
 
 The UCR page is a release-safe projection of the committed benchmark ledger; the

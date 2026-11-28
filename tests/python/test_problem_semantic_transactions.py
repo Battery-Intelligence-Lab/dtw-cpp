@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_problem_semantic_transactions.py
+## @brief Phase 8 M48: Python Problem semantic setters are transactional.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """Phase 8 M48: Python Problem semantic setters are transactional."""
 
 import re

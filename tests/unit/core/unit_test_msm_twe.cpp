@@ -23,7 +23,7 @@
  *          series (2026-07-08).
  *
  * @author Volkan Kumtepeli
- * @date 2026-07-08
+ * @date 08 Jul 2026
  */
 
 #include <core/msm.hpp>

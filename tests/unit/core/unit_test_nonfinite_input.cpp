@@ -18,7 +18,9 @@
  *
  * These entry points used to hand non-finite input straight to the
  * kernels and return NaN, the unreachable max() or an ordinary-looking number.
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Sep 2026
  */
 
 #include <base/error.hpp>

@@ -3,6 +3,7 @@
 @brief An Arrow struct array is read from its own offset, length and validity: a slice gives its rows and no others,
        and a null row is refused as a null list is.
 @author Volkan Kumtepeli
+@date 21 Nov 2026
 """
 
 import pytest

@@ -11,7 +11,9 @@
  *            is one predecessor and no stretching to forbid, so a missing pair there takes it
  *            (the diagonal does not exist) at zero cost.
  *          An empty series, or a band narrower than the length difference, is infinity.
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Oct 2026
  */
 
 #pragma once

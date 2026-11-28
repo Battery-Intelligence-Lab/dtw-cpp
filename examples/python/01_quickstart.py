@@ -1,8 +1,9 @@
-﻿"""
+"""
 @file 01_quickstart.py
 @brief DTWC++ Quick Start — DTW distance and clustering in 10 lines.
 @details Install: pip install dtwcpp
 @author Volkan Kumtepeli
+@date 03 Apr 2026
 """
 
 import numpy as np

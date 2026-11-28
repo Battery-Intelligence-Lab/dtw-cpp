@@ -7,8 +7,11 @@ function tests = test_help_text
 %   follows the help block, parted from it by a blank line.
 %
 %   Run with: results = runtests('test_help_text');
-%
-%   @author Volkan Kumtepeli
+
+%> @file test_help_text.m
+%> @brief Verify MATLAB help output for every public dtwc symbol begins with usage text.
+%> @author Volkan Kumtepeli
+%> @date 09 Nov 2026
 tests = functiontests(localfunctions);
 end
 

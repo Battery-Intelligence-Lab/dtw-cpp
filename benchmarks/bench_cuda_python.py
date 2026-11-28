@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file bench_cuda_python.py
+## @brief Benchmark: CPU vs CUDA distance matrix computation via Python bindings.
+## @author Volkan Kumtepeli
+## @date 02 Apr 2026
 """Benchmark: CPU vs CUDA distance matrix computation via Python bindings."""
 
 import json

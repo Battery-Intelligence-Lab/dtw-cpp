@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# @file build-arc.sh
+# @brief Configure and build DTWC++ profiles on Oxford ARC SLURM cluster nodes.
+# @author Volkan Kumtepeli
+# @date 09 Apr 2026
+
 # Build DTWC++ on Oxford ARC SLURM clusters
 #
 # Usage:   source scripts/slurm/build-arc.sh [profile]

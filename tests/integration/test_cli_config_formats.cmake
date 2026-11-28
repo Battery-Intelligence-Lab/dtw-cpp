@@ -1,3 +1,8 @@
+# @file test_cli_config_formats.cmake
+# @brief CLI integration test verifying TOML/YAML config loading and CLI precedence.
+# @author Volkan Kumtepeli
+# @date 02 Sep 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # --config accepts TOML or YAML through CLI11's own config interface, so CLI11

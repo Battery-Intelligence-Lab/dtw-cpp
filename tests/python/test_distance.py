@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_distance.py
+## @brief dtwcpp.distance.dtw, the one distance entry, against values worked out by hand.
+## @author Volkan Kumtepeli
+## @date 01 Oct 2026
 """dtwcpp.distance.dtw, the one distance entry, against values worked out by hand.
 
 Every variant x metric x missing-data strategy that C++ computes (Standard with

@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief CMake build targets for standalone DTWC++ C++ usage examples.
+# @author Volkan Kumtepeli
+# @date 03 Apr 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 add_executable(example_Kmedoids_single Kmedoids_single.cpp)

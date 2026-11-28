@@ -2,7 +2,9 @@
 % Run with: matlab -batch "addpath('build/bin','bindings/matlab'); run('benchmarks/bench_cross_language.m')"
 
 %> @file bench_cross_language.m
+%> @brief Cross-language MATLAB benchmark comparing DTWC++ MEX distance and clustering speed.
 %> @author Volkan Kumtepeli
+%> @date 03 Apr 2026
 fprintf('=================================================================\n');
 fprintf('DTWC++ MATLAB Benchmark\n');
 fprintf('=================================================================\n');

@@ -12,7 +12,9 @@
  * backend that checks "every medoid is in its own cluster" throws on a valid
  * optimum. The oracle is the definition: each medoid carries its own slot, so no
  * cluster is empty.
+ *
  * @author Volkan Kumtepeli
+ * @date 28 Sep 2026
  */
 
 #include <dtwc.hpp>

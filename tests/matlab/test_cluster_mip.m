@@ -5,7 +5,9 @@ function tests = test_cluster_mip
 %   exact MIP backend throws when no MIP solver is compiled in.
 
 %> @file test_cluster_mip.m
+%> @brief Contract test for dtwc.cluster(..., 'Method', 'mip').
 %> @author Volkan Kumtepeli
+%> @date 02 Sep 2026
     tests = functiontests(localfunctions);
 end
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file check_site_links.py
+## @brief Validate every local href/src in a built Hugo site.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """Validate every local href/src in a built Hugo site."""
 
 from __future__ import annotations

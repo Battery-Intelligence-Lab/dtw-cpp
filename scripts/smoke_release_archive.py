@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file smoke_release_archive.py
+## @brief Unpack a DTWC++ release archive outside the checkout and run its CLI (each build of it on Windows).
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """Unpack a DTWC++ release archive outside the checkout and run its CLI (each build of it on Windows)."""
 
 from __future__ import annotations

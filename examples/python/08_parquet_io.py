@@ -10,6 +10,7 @@ Demonstrates:
 
 Requires: pyarrow  (uv add pyarrow)
 @author Volkan Kumtepeli
+@date 08 Apr 2026
 """
 
 import tempfile

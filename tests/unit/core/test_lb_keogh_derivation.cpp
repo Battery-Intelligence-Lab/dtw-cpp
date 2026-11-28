@@ -7,7 +7,9 @@
  * Exact DTW costs are obtained by recursively enumerating every monotone path;
  * this oracle deliberately shares no DP recurrence or rolling storage with the
  * production kernel.
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Oct 2026
  */
 
 #include <algorithms/tadpole.hpp>

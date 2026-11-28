@@ -20,7 +20,9 @@
  *          includes the heap's freed blocks the allocator keeps, which could hold smaller ones (a CSV of 48 KB rows
  *          then read under it on Linux, 2026-11-03). In a build with Parquet a third case checks that Arrow's
  *          out-of-memory status becomes std::bad_alloc where the reader meets it.
+ *
  * @author Volkan Kumtepeli
+ * @date 03 Nov 2026
  */
 
 #include <dtwc.hpp>

@@ -1,7 +1,6 @@
 """
 @file test_single_thread_warning.py
 @brief No-silent-fallback on the Python compute path (Task 3.6, review H1).
-@author Volkan Kumtepeli
 
 Before the compute paths warned themselves, a build with OpenMP present but only 1 usable thread (OMP_NUM_THREADS=1,
 common on SLURM/containers) ran SILENTLY single-threaded. This test reproduces
@@ -12,6 +11,8 @@ stderr. Subprocess because the warning is process-once.
 Skipped unless the extension was built with OpenMP AND the host is multicore
 (the runtime single-thread warning is intentionally suppressed on a genuine
 single-core host — no crying wolf).
+@author Volkan Kumtepeli
+@date 07 Jul 2026
 """
 
 import os

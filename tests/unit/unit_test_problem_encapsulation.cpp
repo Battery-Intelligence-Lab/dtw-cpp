@@ -1,6 +1,9 @@
 /**
+ * @brief Unit tests verifying Problem state encapsulation and invariant enforcement.
  * @file unit_test_problem_encapsulation.cpp
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Jul 2026
  */
 #include <dtwc.hpp>
 

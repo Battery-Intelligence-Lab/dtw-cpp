@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# @file slurm_remote.sh
+# @brief Developer SLURM remote submission wrapper for source checkouts on Oxford ARC.
+# @author Volkan Kumtepeli
+# @date 09 Apr 2026
+
 # Developer entry point for the SLURM wrapper, run from a source checkout.
 #
 # upload, build, submit-smoke and the fixed benchmark jobs send this checkout's

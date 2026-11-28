@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file bench_cross_language.py
+## @brief Cross-language benchmark: Python bindings vs C++ baseline.
+## @author Volkan Kumtepeli
+## @date 03 Apr 2026
 """Cross-language benchmark: Python bindings vs C++ baseline.
 
 Run with: uv run benchmarks/bench_cross_language.py

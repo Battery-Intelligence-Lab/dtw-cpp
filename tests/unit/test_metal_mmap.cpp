@@ -8,7 +8,7 @@
  *        the Metal strategy and confirms the numbers match the CPU reference.
  *
  * @author Volkan Kumtepeli
- * @date 2026-04-12
+ * @date 12 Apr 2026
  */
 
 #include <catch2/catch_test_macros.hpp>

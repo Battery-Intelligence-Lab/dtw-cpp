@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# @file build_libomp_macos.sh
+# @brief Build LLVM libomp for macOS deployment targets older than the build host.
+# @author Volkan Kumtepeli
+# @date 24 Sep 2026
+
 # Build LLVM's OpenMP runtime (libomp) for an older macOS than the build host.
 #
 # The CLI archive and the macOS wheel both bundle the libomp they link against.

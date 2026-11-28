@@ -1,7 +1,9 @@
 /**
  * @file unit_test_soft_dtw_hotpath.cpp
  * @brief Scratch reuse of the Soft-DTW gradient.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #include <soft_dtw.hpp>

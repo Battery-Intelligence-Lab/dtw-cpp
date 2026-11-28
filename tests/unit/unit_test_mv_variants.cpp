@@ -1,7 +1,9 @@
 /**
  * @file unit_test_mv_variants.cpp
  * @brief Unit tests for multivariate WDTW and ADTW wrapper overloads.
+ *
  * @author Volkan Kumtepeli
+ * @date 02 Apr 2026
  */
 
 #include <dtwc.hpp>

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file bench_cross_library.py
+## @brief Cross-library DTW benchmark: dtwcpp vs dtaidistance vs tslearn vs aeon.
+## @author Volkan Kumtepeli
+## @date 29 Mar 2026
 """
 Cross-library DTW benchmark: dtwcpp vs dtaidistance vs tslearn vs aeon.
 

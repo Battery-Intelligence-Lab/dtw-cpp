@@ -6,7 +6,9 @@
  *        twins; a record batch larger than the limit, and a limit below the union beside its
  *        decode, refused before any batch is decoded; a streamed run's Result: its score and distance matrix refused,
  *        its save dtwc_cl's files. Fixtures: tests/data/reader/make_ipc_fixtures.py.
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Nov 2026
  */
 
 #include <Problem.hpp>

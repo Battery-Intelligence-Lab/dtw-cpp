@@ -8,9 +8,8 @@
  *   dtwc_cl --config config.toml          (or config.yaml: the same keys)
  *   dtwc_cl --config config.toml --print-config > job.toml
  *
- * @authors Volkan Kumtepeli
- * @authors Becky Perriment
- * 
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  * @date 29 Mar 2026
  */
 

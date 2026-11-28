@@ -17,7 +17,9 @@
  *          roundings of eps / 2 per cell, 1.5 eps, which c = 2 covers.
  *
  *          A check whose two sides run the same code stays bitwise.
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Oct 2026
  */
 
 #pragma once

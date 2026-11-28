@@ -1,6 +1,6 @@
 /**
  * @file Method.hpp
- * @brief Method enum for classification method.
+ * @brief Method enum for clustering method.
  * @author Volkan Kumtepeli
  * @author Becky Perriment
  * @date 11 Dec 2023
@@ -15,7 +15,7 @@ namespace dtwc {
 /// The clustering method, as Problem::cluster(), dtwc::run and `--method` take it.
 /// v1.0.0's values keep their numbers: new values go at the end.
 enum class Method {
-  Kmedoids, ///< Kmedoids (Lloyd) heuristic classification
+  Kmedoids, ///< Kmedoids (Lloyd) heuristic clustering
   MIP,      ///< Mixed integer programming — solver-backed exact (Gurobi/HiGHS)
   LRCore,   ///< LR-core exact: Erlenkotter dual + reduced-cost fixing + y-branching (dense RAM or packed/mapped .dtwm)
   /**

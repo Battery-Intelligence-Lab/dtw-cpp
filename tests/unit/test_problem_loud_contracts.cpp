@@ -15,7 +15,9 @@
  *     quota) left a truncated result file behind a reported success.
  *     RLIMIT_FSIZE reproduces it in-process, restored on scope exit: a forked
  *     child would enter OpenMP again, which libgomp does not support after fork.
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Sep 2026
  */
 
 #include <dtwc.hpp>

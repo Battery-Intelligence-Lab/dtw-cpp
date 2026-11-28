@@ -1,3 +1,8 @@
+# @file test_fast_clara_assignment_contract.cmake
+# @brief CLI integration test verifying streamed FastCLARA assignment objectives and stream rejections.
+# @author Volkan Kumtepeli
+# @date 24 Jul 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 foreach(required_var IN ITEMS

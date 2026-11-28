@@ -6,6 +6,10 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=logs/ucr_benchmark_cpu_%j.out
 #SBATCH --error=logs/ucr_benchmark_cpu_%j.err
+# @file ucr_benchmark_cpu.slurm
+# @brief SLURM batch script running the 128-dataset UCR Archive benchmark on CPU.
+# @author Volkan Kumtepeli
+# @date 09 Apr 2026
 #
 # DTWC++ full UCR benchmark — CPU (Lloyd k-medoids)
 #

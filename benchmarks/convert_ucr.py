@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file convert_ucr.py
+## @brief Convert UCR TSV files to Parquet format for DTWC++ benchmarking.
+## @author Volkan Kumtepeli
+## @date 09 Apr 2026
 """Convert UCR TSV files to Parquet format for DTWC++ benchmarking.
 
 Reads *_TRAIN.tsv and *_TEST.tsv from a UCR dataset directory, strips the

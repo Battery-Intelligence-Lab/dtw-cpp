@@ -10,7 +10,9 @@
  *          `std::mt19937` is bit-exact by the standard; the integer-to-double
  *          conversion below replaces the standard uniform real distribution,
  *          whose mapping is implementation-defined.
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Jul 2026
  */
 
 #pragma once

@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_conformance.py
+## @brief Python + CLI routes of the cross-language conformance fixture.
+## @author Volkan Kumtepeli
+## @date 07 Jul 2026
 """Python + CLI routes of the cross-language conformance fixture.
 
 The permanent cross-language parity gate. Two live routes assert

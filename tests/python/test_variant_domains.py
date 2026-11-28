@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_variant_domains.py
+## @brief Phase 8 M34: binding-level DTW variant parameter domains.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """Phase 8 M34: binding-level DTW variant parameter domains."""
 
 import re

@@ -6,8 +6,9 @@
  * It includes creating a clock object, loading data, setting up the problem parameters,
  * and executing clustering algorithms.
  *
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  * @date 04 Nov 2022
- * @author Volkan Kumtepeli, Becky Perriment
  */
 
 #include <dtwc.hpp>

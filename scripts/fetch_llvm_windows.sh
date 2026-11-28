@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# @file fetch_llvm_windows.sh
+# @brief Download and SHA-256 verify LLVM Windows release binaries for clang-cl wheels.
+# @author Volkan Kumtepeli
+# @date 08 Oct 2026
+
 # Fetch LLVM's official Windows x64 release, unmodified, for the clang-cl builds.
 #
 # The Windows wheels are compiled by its clang-cl and linked by its lld-link, and they

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file plot_benchmarks.py
+## @brief Plot DTWC++ benchmark results from Google Benchmark JSON output.
+## @author Volkan Kumtepeli
+## @date 28 Mar 2026
 """
 Plot DTWC++ benchmark results from Google Benchmark JSON output.
 

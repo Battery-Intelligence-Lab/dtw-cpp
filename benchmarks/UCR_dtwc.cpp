@@ -1,7 +1,9 @@
 /**
  * @file UCR_dtwc.cpp
  * @brief Benchmark runner over the UCR 2018 time-series archive.
- * @authors Volkan Kumtepeli, Becky Perriment
+ *
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  * @date 17 Aug 2022
  */
 

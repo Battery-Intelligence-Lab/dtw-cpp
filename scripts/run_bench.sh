@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# @file run_bench.sh
+# @brief Run a Google Benchmark binary and strip host_name metadata from its JSON output.
+# @author Volkan Kumtepeli
+# @date 12 Apr 2026
+
 # Google Benchmark wrapper that strips the hostname from the JSON output.
 #
 # Runs the given benchmark binary with --benchmark_out=<file> (if not already

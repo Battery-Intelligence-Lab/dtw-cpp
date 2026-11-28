@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file make_parquet_fixtures.py
+## @brief Write the Parquet reader fixtures beside this script: one file per layout of the column rule.
+## @author Volkan Kumtepeli
+## @date 07 Oct 2026
 """Write the Parquet reader fixtures beside this script: one file per layout of the column rule.
 
 The C++ reader (tests/unit/test_io_readers.cpp), Python (tests/python/test_io.py) and MATLAB

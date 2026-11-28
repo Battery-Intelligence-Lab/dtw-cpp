@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_version_ssot.py
+## @brief Release-version single-source-of-truth regression tests.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """Release-version single-source-of-truth regression tests."""
 
 import importlib.metadata

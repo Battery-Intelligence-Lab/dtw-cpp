@@ -1,3 +1,8 @@
+# @file test_cli_rejects_unknown_option.cmake
+# @brief CLI integration test verifying removed options fail with the offending flag named.
+# @author Volkan Kumtepeli
+# @date 02 Sep 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # The hand-rolled --yaml-config loader was removed (TOML via --config is the one

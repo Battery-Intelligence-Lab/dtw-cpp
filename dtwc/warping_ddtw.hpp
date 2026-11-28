@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file warping_ddtw.hpp
  * @brief Derivative Dynamic Time Warping (DDTW) functions.
  *
@@ -105,18 +105,27 @@ void derivative_transform_mv_inplace(std::span<const data_t> x, size_t ndim,
 
   dx.resize(x.size());
 
-  for (size_t d = 0; d < ndim; ++d) {
-    // Boundary: first point
-    dx[0 * ndim + d] = x[1 * ndim + d] - x[0 * ndim + d];
+  // Boundary: first time step
+  for (size_t d = 0; d < ndim; ++d)
+    dx[d] = x[ndim + d] - x[d];
 
-    // Interior points
-    for (size_t i = 1; i + 1 < n; ++i) {
-      dx[i * ndim + d] = ((x[i * ndim + d] - x[(i - 1) * ndim + d])
-                        + (x[(i + 1) * ndim + d] - x[(i - 1) * ndim + d]) / data_t(2)) / data_t(2);
+  // Interior time steps (unit-stride over channels d)
+  for (size_t i = 1; i + 1 < n; ++i) {
+    const size_t base = i * ndim;
+    const size_t prev = base - ndim;
+    const size_t next = base + ndim;
+    for (size_t d = 0; d < ndim; ++d) {
+      dx[base + d] = ((x[base + d] - x[prev + d])
+                    + (x[next + d] - x[prev + d]) / data_t(2)) / data_t(2);
     }
+  }
 
-    // Boundary: last point
-    dx[(n - 1) * ndim + d] = x[(n - 1) * ndim + d] - x[(n - 2) * ndim + d];
+  // Boundary: last time step
+  {
+    const size_t last = (n - 1) * ndim;
+    const size_t prev = last - ndim;
+    for (size_t d = 0; d < ndim; ++d)
+      dx[last + d] = x[last + d] - x[prev + d];
   }
 }
 
@@ -163,10 +172,12 @@ std::pair<std::vector<T> &, std::vector<T> &> derivative_bufs()
  * @details Computes the derivative transform of both input series, then
  *          calls dtwBanded on the derivative series.
  *
- * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair).
+ * @tparam X First series type: contiguous range of float or double (core::SeriesPair).
+ * @tparam Y Second series type: contiguous range of the same element type as @p X (core::SeriesPair).
  * @param x First time series.
  * @param y Second time series.
  * @param band Sakoe-Chiba band width. Use -1, the default, for full (unconstrained) DTW.
+ * @param metric Pointwise distance metric (default: L1).
  * @return The DDTW distance.
  */
 template <typename X, typename Y>

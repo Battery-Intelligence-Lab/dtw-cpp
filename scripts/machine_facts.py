@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file machine_facts.py
+## @brief Describe the machine and the build a benchmark ran on.
+## @author Volkan Kumtepeli
+## @date 22 Sep 2026
 """Describe the machine and the build a benchmark ran on.
 
 Benchmark numbers are only meaningful next to the machine that produced them, and a

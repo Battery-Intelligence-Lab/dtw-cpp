@@ -1,6 +1,9 @@
 /**
+ * @brief Minimal consumer CMake example exercising DTWC++ DTW clustering and timing.
  * @file main.cpp
+ *
  * @author Volkan Kumtepeli
+ * @date 03 Apr 2026
  */
 #include "dtwc.hpp"
 #include <cstdlib>

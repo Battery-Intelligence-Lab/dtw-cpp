@@ -1,4 +1,8 @@
-# @author Volkan Kumtepeli
+## @file random_centroid.py
+## @brief Select and cache deterministic random initial medoids for UCR benchmarks.
+## @author Volkan Kumtepeli
+## @date 28 Mar 2026
+
 import pandas as pd
 import numpy as np
 import random

@@ -7,6 +7,10 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=logs/ucr_benchmark_gpu_%j.out
 #SBATCH --error=logs/ucr_benchmark_gpu_%j.err
+# @file ucr_benchmark_gpu.slurm
+# @brief SLURM batch script running the 128-dataset UCR Archive benchmark on CUDA GPU.
+# @author Volkan Kumtepeli
+# @date 09 Apr 2026
 #
 # DTWC++ full UCR benchmark — GPU (Lloyd k-medoids, CUDA distance matrix)
 #

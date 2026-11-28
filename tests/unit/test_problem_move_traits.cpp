@@ -6,7 +6,9 @@
  * dispatchers, the WDTW weight map — may throw. A move assignment declared
  * noexcept turned such a throw into std::terminate. The trait is pinned at
  * compile time; the case below checks that moving still carries the state.
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Sep 2026
  */
 
 #include <dtwc.hpp>

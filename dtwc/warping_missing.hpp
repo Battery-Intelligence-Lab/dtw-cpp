@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file warping_missing.hpp
  * @brief DTW with missing data (ZeroCost strategy) — thin wrappers over the
  *        unified core::dtw_kernel_*.

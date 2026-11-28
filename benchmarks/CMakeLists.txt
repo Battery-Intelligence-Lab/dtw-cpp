@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief CMake build definitions for DTWC++ Google Benchmark targets.
+# @author Volkan Kumtepeli
+# @date 28 Mar 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # Google Benchmark microbenchmarks

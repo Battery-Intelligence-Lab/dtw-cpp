@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# @author Volkan Kumtepeli
+## @file codegen_report.py
+## @brief Codegen report for the DTW hot paths (X-04).
+## @author Volkan Kumtepeli
+## @date 22 Sep 2026
 """Codegen report for the DTW hot paths (X-04).
 
 Answers one question with evidence instead of opinion: *which loops does the

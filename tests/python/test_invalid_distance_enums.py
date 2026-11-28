@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_invalid_distance_enums.py
+## @brief M47 preregistration for binding-side selector conversion and publication.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """M47 preregistration for binding-side selector conversion and publication."""
 
 import pytest

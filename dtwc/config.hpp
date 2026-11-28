@@ -33,6 +33,7 @@
 
 namespace dtwc {
 
+/// Complete configuration for a clustering or distance run (shared across CLI, TOML/YAML, C++, Python, and MATLAB).
 struct Config
 {
   // Input and storage

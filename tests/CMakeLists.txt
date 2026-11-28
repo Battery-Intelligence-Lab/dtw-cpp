@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief CTest target discovery, unit executables, CLI contract tests, and MATLAB suite registration.
+# @author Volkan Kumtepeli
+# @date 05 Dec 2022
+
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp")
 
 # A DP cell makes no call: codegen_report.py compiles the probe (the univariate and multivariate kernels) to assembly

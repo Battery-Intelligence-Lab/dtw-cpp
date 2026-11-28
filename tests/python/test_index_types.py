@@ -5,6 +5,7 @@
 C++ holds labels, medoids and counts as index_t (std::int64_t). The bindings hand the
 vectors out as np.int64 arrays (a copy each time) and read the counts as 64-bit.
 @author Volkan Kumtepeli
+@date 30 Sep 2026
 """
 
 import importlib.util

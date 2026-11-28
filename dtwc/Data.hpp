@@ -40,6 +40,7 @@ std::string made_name(I i)
   return "series_" + std::to_string(i);
 }
 
+/// Container for time series data in float64 or float32 precision, as owned vectors or non-owning views.
 struct Data
 {
   std::vector<std::vector<data_t>> p_vec; //!< Float64 series (default)

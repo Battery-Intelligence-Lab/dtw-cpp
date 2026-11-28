@@ -4,7 +4,9 @@
  *        file and Python's keywords all fill, run on series already in memory.
  *
  * Build with -DDTWC_BUILD_EXAMPLES=ON; with testing on, ctest runs it (example_tier1).
+ *
  * @author Volkan Kumtepeli
+ * @date 06 Oct 2026
  */
 
 #include <dtwc.hpp>

@@ -1,7 +1,9 @@
 /**
  * @file unit_test_multivariate_dtw.cpp
  * @brief Unit tests for multivariate DTW functions and derivative_transform_mv.
+ *
  * @author Volkan Kumtepeli
+ * @date 02 Apr 2026
  */
 
 #include <dtwc.hpp>

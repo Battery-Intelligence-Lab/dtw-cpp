@@ -6,7 +6,9 @@
  * @details Every case runs in every build: GPU builds check the selected
  * backend, a build without one checks the verbatim no-GPU DeviceError. Oracle for
  * the messages: the literal strings below.
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Sep 2026
  */
 
 #include <dtwc.hpp>

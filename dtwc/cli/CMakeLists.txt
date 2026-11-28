@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Source and header registration for DTWC++ CLI parsing, runner, and report targets.
+# @author Volkan Kumtepeli
+# @date 01 Oct 2026
+
 target_sources(dtwc_cli
   PRIVATE
     config.cpp

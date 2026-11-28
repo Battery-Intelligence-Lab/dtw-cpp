@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Source and header registration for HiGHS, Gurobi, and Lagrangian root MIP solvers.
+# @author Volkan Kumtepeli
+# @date 17 Dec 2023
+
 cmake_minimum_required(VERSION 3.26)
 add_library(mip-solvers OBJECT)
 set_target_properties(mip-solvers PROPERTIES POSITION_INDEPENDENT_CODE ON)

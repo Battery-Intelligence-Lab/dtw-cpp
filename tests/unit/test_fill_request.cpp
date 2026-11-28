@@ -9,7 +9,9 @@
  * Device::GPU in set_device). Oracles: the length difference is computed here
  * from the input; distances come from the CPU kernels; a refused value's text is
  * require_finite's, at the series a serial scan in index order finds first.
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Sep 2026
  */
 
 #include <dtwc.hpp>

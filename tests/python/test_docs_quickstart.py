@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file test_docs_quickstart.py
+## @brief The Python quickstart printed in the Hugo site must remain executable.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """The Python quickstart printed in the Hugo site must remain executable."""
 
 import runpy

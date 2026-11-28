@@ -19,7 +19,9 @@ function summary = f19_problem_writeback_oracle(route, profile, version)
 %   exact path selection and fresh-artifact provenance.
 
 %> @file f19_problem_writeback_oracle.m
+%> @brief Prove MATLAB result writeback is core-owned.
 %> @author Volkan Kumtepeli
+%> @date 24 Jul 2026
     if nargin ~= 3
         error('dtwc:f19WritebackOracle', ...
             'Expected route, profile, and version arguments.');

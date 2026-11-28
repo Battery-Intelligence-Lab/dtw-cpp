@@ -7,7 +7,9 @@ function tests = test_contract_parity
 %   Run with: results = runtests('test_contract_parity');
 
 %> @file test_contract_parity.m
+%> @brief MATLAB contract tests for the Tier-1 and Tier-2 API.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     tests = functiontests(localfunctions);
 end
 

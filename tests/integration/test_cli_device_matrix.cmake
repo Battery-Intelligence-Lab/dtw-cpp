@@ -1,3 +1,8 @@
+# @file test_cli_device_matrix.cmake
+# @brief CLI integration test exercising dtwc_cl across methods, devices, and --print-config.
+# @author Volkan Kumtepeli
+# @date 27 Sep 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # dtwc::run's method x device table through the real dtwc_cl, and

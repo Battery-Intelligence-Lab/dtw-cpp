@@ -1,7 +1,9 @@
 /**
  * @file unit_test_dtw_function_semantics.cpp
  * @brief Regression tests for Problem's matrix-free DTW dispatcher accessors.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #include <dtwc.hpp>

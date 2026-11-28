@@ -1,9 +1,13 @@
+# @file test_cli_report.cmake
+# @brief CLI integration test verifying run report output and result invariance with --no-report.
+# @author Volkan Kumtepeli
+# @date 03 Nov 2026
+
 cmake_minimum_required(VERSION 3.26)
 
 # dtwc_cl's run report, <name>_report.txt, on the real binary: a file of its own, written after the four result files,
 # which are the same bytes with it and without it (--no-report); the run names it on stdout, and --no-report writes
 # and names none. The report's text holds times and the machine's facts: only its first lines are read here.
-# @author Volkan Kumtepeli
 foreach(required_var IN ITEMS CLI INPUT WORK_ROOT)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "missing required -D${required_var}=...")

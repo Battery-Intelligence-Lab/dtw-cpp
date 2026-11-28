@@ -1,11 +1,10 @@
-## @UCR_dtai.py
+## @file UCR_dtai.py
+## @brief Benchmark dtaidistance k-medoids clustering runtime and memory across UCR datasets.
+## @author Volkan Kumtepeli
+## @date 28 Mar 2026
+
 # This script is used for testing timings and memory allocation of the DTAIDistance clustering package using k-medoids.
 # It reads time series data, performs clustering using KMedoids, and records the time and memory usage for each operation.
-#
-# @author Volkan Kumtepeli
-# @author Rebecca Perriment
-# @date 02 Dec 2022
-#
 
 import pandas as pd
 import glob

@@ -1,7 +1,9 @@
 /** @file test_cdist_and_workflow.cpp
  *  @brief Unit tests for cross-collection dtwc::cdist and for the files and the checkpoint
  *         cluster(Dataset, Config) writes.
- *  @author Volkan Kumtepeli
+ *
+ * @author Volkan Kumtepeli
+ * @date 13 Nov 2026
  */
 
 #include <dtwc.hpp>
