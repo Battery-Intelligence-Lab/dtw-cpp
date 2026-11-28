@@ -23,6 +23,6 @@ function report = gpu()
 %> @file gpu.m
 %> @brief GPU-backend self-probe (parity with dtwc::test::gpu / dtwcpp.test.gpu).
 %> @author Volkan Kumtepeli
-
+%> @date 07 Jul 2026
     report = dtwc_mex('test_gpu');
 end

@@ -1,3 +1,8 @@
+# @file PreventInSourceBuilds.cmake
+# @brief Guard disallowing accidental in-source CMake builds.
+# @author Volkan Kumtepeli
+# @date 17 Aug 2022
+
 #
 # This function will prevent in-source builds
 function(AssureOutOfSourceBuilds)

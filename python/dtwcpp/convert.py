@@ -10,7 +10,6 @@ Usage::
     dtwc-convert input.parquet -o output.arrow
     dtwc-convert input.csv -o output.arrow
     dtwc-convert input.parquet -o output.arrow --name-column name
-
 @author Volkan Kumtepeli
 @date 08 Apr 2026
 """
@@ -20,7 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -62,7 +61,7 @@ def _load_parquet(path: Path, columns: list[str] | None, name_col: str | None):
 
     for batch in pf.iter_batches(batch_size=10_000):
         tbl = batch.to_pydict()
-        n_rows = len(next(iter(tbl.values())))
+        n_rows = batch.num_rows
 
         # Extract names
         if name_col and name_col in tbl:
@@ -81,10 +80,10 @@ def _load_parquet(path: Path, columns: list[str] | None, name_col: str | None):
                         f"NULL found in list column '{col_name}' at row {len(all_series)}. "
                         "Fill or drop NULLs before conversion.")
                 series = np.array(val, dtype=np.float64)
-                if np.any(np.isnan(series)):
+                if np.any(~np.isfinite(series)):
                     raise ValueError(
-                        f"NaN found in series at row {len(all_series)}. "
-                        "Fill or drop NaN values before conversion.")
+                        f"NaN or non-finite value found in series at row {len(all_series)}. "
+                        "Fill or drop non-finite values before conversion.")
                 if series.ndim != 1:
                     raise ValueError(f"Expected 1D series, got shape {series.shape}")
                 all_series.append(series)
@@ -92,12 +91,12 @@ def _load_parquet(path: Path, columns: list[str] | None, name_col: str | None):
             # Columnar layout: each column is a timestep, vectorize with numpy
             cols = [np.array(tbl[c], dtype=np.float64) for c in feat_cols]
             matrix = np.column_stack(cols)  # (n_rows, n_cols)
-            # Check for NaN/NULL (None becomes NaN in numpy)
-            if np.any(np.isnan(matrix)):
-                bad = int(np.flatnonzero(np.isnan(matrix).any(axis=1))[0])
+            # Check for NaN/NULL/inf (None becomes NaN in numpy)
+            if np.any(~np.isfinite(matrix)):
+                bad = int(np.flatnonzero((~np.isfinite(matrix)).any(axis=1))[0])
                 raise ValueError(
-                    f"NaN/NULL found in series at row {len(all_series) + bad}. "
-                    "Fill or drop NaN values before conversion.")
+                    f"NaN/NULL or non-finite value found in series at row {len(all_series) + bad}. "
+                    "Fill or drop non-finite values before conversion.")
             all_series.extend(matrix)
 
     return all_series, all_names
@@ -181,10 +180,8 @@ def _write_arrow_ipc(
 
     # Write as single RecordBatch (ensures single chunk for C++ reader)
     batch = pa.record_batch({"name": name_array, "data": data_array}, schema=schema)
-    with pa.OSFile(str(output), "wb") as sink:
-        writer = ipc.new_file(sink, schema)
+    with pa.OSFile(str(output), "wb") as sink, ipc.new_file(sink, schema) as writer:
         writer.write_batch(batch)
-        writer.close()
 
     print(f"Wrote {len(series_list)} series to {output} ({output.stat().st_size / 1e6:.1f} MB)")
 

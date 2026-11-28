@@ -10,6 +10,6 @@ function info = gpu_info()
 %> @file gpu_info.m
 %> @brief One line on this build's GPU backend and its GPU.
 %> @author Volkan Kumtepeli
-
+%> @date 01 Oct 2026
     info = dtwc_mex('gpu_info');
 end

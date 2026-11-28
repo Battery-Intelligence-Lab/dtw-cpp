@@ -30,7 +30,7 @@ function dend = build_dendrogram(prob, varargin)
 %> @file build_dendrogram.m
 %> @brief Build a dendrogram from a Problem.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     p = inputParser;
     addRequired(p, 'prob');
     addParameter(p, 'Linkage', 'average', @(v) ischar(v) || (isstring(v) && isscalar(v)));

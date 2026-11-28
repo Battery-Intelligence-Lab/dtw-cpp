@@ -29,10 +29,11 @@ function g = soft_dtw_gradient(x, y, varargin)
 %> @file soft_dtw_gradient.m
 %> @brief Compute gradient of Soft-DTW w.r.t. first series.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
+    is_vec = @(v) isnumeric(v) && ~isempty(v) && isvector(v);
     p = inputParser;
-    addRequired(p, 'x', @isnumeric);
-    addRequired(p, 'y', @isnumeric);
+    addRequired(p, 'x', is_vec);
+    addRequired(p, 'y', is_vec);
     addParameter(p, 'Gamma', 1.0, @(v) isnumeric(v) && isscalar(v) && v > 0);
     parse(p, x, y, varargin{:});
 

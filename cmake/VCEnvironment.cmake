@@ -1,3 +1,8 @@
+# @file VCEnvironment.cmake
+# @brief Automatic Visual C++ vcvarsall environment setup for Windows builds.
+# @author Volkan Kumtepeli
+# @date 04 Dec 2023
+
 include("${CMAKE_CURRENT_LIST_DIR}/Utilities.cmake")
 
 macro(detect_architecture)

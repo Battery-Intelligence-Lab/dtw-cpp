@@ -33,7 +33,7 @@ function result = fast_clara(prob, k, varargin)
 %> @file fast_clara.m
 %> @brief Run FastCLARA: scalable k-medoids via subsampling + FastPAM.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     p = inputParser;
     addRequired(p, 'prob');
     addRequired(p, 'k', @(v) isnumeric(v) && isscalar(v) && v > 0);

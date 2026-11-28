@@ -19,8 +19,8 @@ HDF5 layout::
     /names      -- (N,) variable-length string dataset
     /distmat    -- (N, N) float64 dataset, gzip-compressed (optional)
     /metadata   -- HDF5 root attributes (band, variant, etc.)
-
 @author Volkan Kumtepeli
+@date 29 Mar 2026
 """
 
 from __future__ import annotations
@@ -137,8 +137,10 @@ def _read_parquet(files, skip_cols, skip_rows, value):
                     raise InvalidInput(f"Parquet reader: column '{field.name}' contains {column.null_count} "
                                        "null(s) (drop or fill nulls before clustering).")
             rows = np.column_stack([column.to_numpy() for column in columns])
-            chunks.append(pa.LargeListArray.from_arrays(np.arange(0, rows.size + 1, len(samples)),
-                                                        pa.array(rows.ravel(), pa.float64()).cast(value)))
+            flat = pa.array(rows.ravel())
+            if flat.type != value:
+                flat = flat.cast(value)
+            chunks.append(pa.LargeListArray.from_arrays(np.arange(0, rows.size + 1, len(samples)), flat))
         first = len(names)
         labels = table.column(label.name).slice(drop).to_pylist() if label else [None] * (table.num_rows - drop)
         names += [f"series_{first + i}" if name is None else name for i, name in enumerate(labels)]

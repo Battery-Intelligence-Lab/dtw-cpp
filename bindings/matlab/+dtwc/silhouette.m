@@ -21,6 +21,6 @@ function s = silhouette(prob)
 %> @file silhouette.m
 %> @brief Compute silhouette scores for each data point.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     s = dtwc_mex('silhouette', prob.get_handle());
 end

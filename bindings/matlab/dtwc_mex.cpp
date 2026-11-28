@@ -54,6 +54,25 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 //  HandleManager: counter-based handle map for shared_ptr<T>
 // =========================================================================
 
+inline size_t &live_mex_handle_count()
+{
+  static size_t count = 0;
+  return count;
+}
+
+inline void on_mex_handle_added()
+{
+  if (live_mex_handle_count()++ == 0) mexLock();
+}
+
+inline void on_mex_handle_removed(size_t n = 1)
+{
+  size_t &total = live_mex_handle_count();
+  if (total == 0) return;
+  total = (n >= total) ? 0 : (total - n);
+  if (total == 0) mexUnlock();
+}
+
 template <typename T>
 class HandleManager
 {
@@ -64,7 +83,8 @@ public:
   static uint64_t create(std::shared_ptr<T> obj)
   {
     uint64_t h = ++counter_;
-    map_[h] = std::move(obj);
+    map_.emplace(h, std::move(obj));
+    on_mex_handle_added();
     return h;
   }
 
@@ -78,12 +98,14 @@ public:
 
   static void destroy(uint64_t h)
   {
-    map_.erase(h);
+    if (map_.erase(h) > 0) on_mex_handle_removed(1);
   }
 
   static void drain()
   {
+    const size_t n = map_.size();
     map_.clear();
+    if (n > 0) on_mex_handle_removed(n);
   }
 };
 
@@ -190,6 +212,13 @@ static void require_char(const mxArray *mx, const char *arg_name)
     throw std::invalid_argument(std::string(arg_name) + " must be a char row vector (string).");
 }
 
+/// Require a 1 x 1 MATLAB struct BEFORE mxGetField accesses.
+static void require_scalar_struct(const mxArray *mx, const char *arg_name)
+{
+  if (mx == nullptr || !mxIsStruct(mx) || mxGetNumberOfElements(mx) != 1)
+    throw std::invalid_argument(std::string(arg_name) + " must be a scalar struct.");
+}
+
 /// MATLAB cell array of numeric vectors -> vector of ragged series, of class
 /// double, or single for T = float. Validates the container is a cell AND every
 /// element is a real, full, non-empty vector of that class BEFORE any data-pointer
@@ -274,16 +303,26 @@ static mxArray *to_row(std::span<const T> values)
   return row;
 }
 
-/// Extract scalar double from mxArray (validates numeric/logical + non-empty).
+/// Extract scalar double from mxArray (validates numeric/logical + real/full + non-empty).
 static double get_scalar(const mxArray *mx, const char *arg_name = "argument")
 {
   if (mx == nullptr || (!mxIsNumeric(mx) && !mxIsLogical(mx)))
     throw std::invalid_argument(std::string(arg_name) + " must be a numeric scalar.");
+  require_real_full(mx, arg_name);
   if (mxIsEmpty(mx))
     throw std::invalid_argument(std::string(arg_name) + " must not be empty.");
   if (mxGetNumberOfElements(mx) != 1)
     throw std::invalid_argument(std::string(arg_name) + " must be a scalar.");
   return mxGetScalar(mx);
+}
+
+/// Extract a boolean scalar, rejecting NaN/Inf so NaN never coerces silently to true.
+static bool get_bool_scalar(const mxArray *mx, const char *arg_name)
+{
+  const double value = get_scalar(mx, arg_name);
+  if (!std::isfinite(value))
+    throw std::invalid_argument(std::string(arg_name) + " must be finite (logical or 0/1), not NaN or Inf.");
+  return value != 0.0;
 }
 
 /// Convert one MATLAB double to `Int` (`int` for the parameters C++ still takes as
@@ -380,8 +419,11 @@ static uint64_t get_handle(const mxArray *mx)
   if (mx == nullptr)
     throw std::invalid_argument("handle argument is missing.");
   if (mxIsUint64(mx)) {
+    require_real_full(mx, "handle");
     if (mxIsEmpty(mx))
       throw std::invalid_argument("handle must not be empty.");
+    if (mxGetNumberOfElements(mx) != 1)
+      throw std::invalid_argument("handle must be a scalar.");
     uint64_t *p = static_cast<uint64_t *>(mxGetData(mx));
     return p[0];
   }
@@ -770,6 +812,7 @@ static mxArray *dendrogram_to_mx(const dtwc::algorithms::Dendrogram &dend)
 /// Reconstruct a C++ Dendrogram from a MATLAB struct
 static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx)
 {
+  require_scalar_struct(mx, "dendrogram");
   dtwc::algorithms::Dendrogram dend;
 
   mxArray *merges_mx = mxGetField(mx, 0, "merges");
@@ -835,9 +878,11 @@ static void cmd_Problem_new(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
   prob->set_verbose(false);
   // Select the device before the handle exists: a rejected name leaks nothing.
   if (nrhs > 2) set_problem_device(*prob, prhs[2], nrhs > 3 ? prhs[3] : nullptr);
-  uint64_t h = HandleManager<dtwc::Problem>::create(prob);
+  mxArray *mx_h = handle_to_mx(0);
+  uint64_t h = HandleManager<dtwc::Problem>::create(std::move(prob));
+  *static_cast<uint64_t *>(mxGetData(mx_h)) = h;
 
-  plhs[0] = handle_to_mx(h);
+  plhs[0] = mx_h;
 }
 
 static void cmd_Problem_delete(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -883,8 +928,12 @@ static dtwc::Data series_data(const mxArray *source, const mxArray *names_mx, co
   // complexity / shape BEFORE any data access.
   // No series (an empty cell, a 0 x L matrix) is a dataset too: cluster() refuses
   // it ("cluster: dataset is empty."), as in C++ and Python.
+  if (source == nullptr)
+    throw std::invalid_argument("data: argument is missing.");
   const bool rows_of_t = std::is_same_v<T, float> ? mxIsSingle(source) : mxIsDouble(source);
-  const bool none = mxIsCell(source) ? mxIsEmpty(source) : rows_of_t && mxGetM(source) == 0;
+  const bool none = (mxGetNumberOfDimensions(source) == 2) && (mxIsCell(source)
+      ? mxIsEmpty(source)
+      : (rows_of_t && !mxIsComplex(source) && !mxIsSparse(source) && mxGetM(source) == 0));
   std::vector<std::vector<T>> series;
   if (!none) series = mxIsCell(source) ? cell_to_series<T>(source) : matrix_to_series<T>(source);
   const size_t N = series.size();
@@ -969,6 +1018,7 @@ static void cmd_Problem_set_n_clusters(int nlhs, mxArray *plhs[], int nrhs, cons
 static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_missing_strategy requires handle and string.");
+  require_char(prhs[2], "missing strategy");
   auto &prob = stored_problem(prhs[1]);
   prob.set_missing_strategy(dtwc::parse_name(
     dtwc::core::missing_strategy_names, get_string(prhs[2]), "missing strategy"));
@@ -983,6 +1033,7 @@ static void cmd_Problem_set_device(int nlhs, mxArray *plhs[], int nrhs, const mx
 static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_variant requires handle and variant string.");
+  require_char(prhs[2], "variant");
   auto &prob = stored_problem(prhs[1]);
   using dtwc::core::DTWVariant;
   const DTWVariant variant = dtwc::parse_name(
@@ -1264,19 +1315,19 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (nrhs < 3) throw std::invalid_argument("Problem_set_mip_settings requires handle and a struct.");
   auto &prob = stored_problem(prhs[1]);
   const mxArray *s = prhs[2];
-  if (!mxIsStruct(s))
-    throw std::invalid_argument(
-      "mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
-      "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes).");
+  require_scalar_struct(
+    s,
+    "mip_settings (fields: mip_gap, time_limit_sec, warm_start, numeric_focus, "
+    "mip_focus, verbose_solver, lr_max_nodes)");
   require_known_struct_fields(s, "mip setting", mip_setting_names);
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap")) m.mip_gap = get_scalar(f, "mip_gap");
   if (mxArray *f = mxGetField(s, 0, "time_limit_sec")) m.time_limit_sec = get_exact_int(f, "time_limit_sec");
-  if (mxArray *f = mxGetField(s, 0, "warm_start")) m.warm_start = (get_scalar(f, "warm_start") != 0.0);
+  if (mxArray *f = mxGetField(s, 0, "warm_start")) m.warm_start = get_bool_scalar(f, "warm_start");
   if (mxArray *f = mxGetField(s, 0, "numeric_focus")) m.numeric_focus = get_exact_int(f, "numeric_focus");
   if (mxArray *f = mxGetField(s, 0, "mip_focus")) m.mip_focus = get_exact_int(f, "mip_focus");
-  if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
+  if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = get_bool_scalar(f, "verbose_solver");
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
     m.lr_max_nodes = get_exact_int<std::int64_t>(f, "lr_max_nodes");
   prob.mip_settings = m;
@@ -1310,10 +1361,7 @@ static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
     throw std::invalid_argument("Problem_set_checkpoint requires handle and a struct.");
   auto &prob = stored_problem(prhs[1]);
   const mxArray *s = prhs[2];
-  if (!mxIsStruct(s))
-    throw std::invalid_argument(
-      "checkpoint must be a struct (fields: directory, "
-      "save_interval, enabled).");
+  require_scalar_struct(s, "checkpoint (fields: directory, save_interval, enabled)");
   require_known_struct_fields(s, "checkpoint option", checkpoint_option_names);
 
   dtwc::CheckpointOptions options = prob.checkpoint;
@@ -1325,7 +1373,7 @@ static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
     options.save_interval =
       get_exact_int(f, "checkpoint.save_interval");
   if (mxArray *f = mxGetField(s, 0, "enabled"))
-    options.enabled = (get_scalar(f, "enabled") != 0.0);
+    options.enabled = get_bool_scalar(f, "enabled");
   prob.checkpoint = options;
 }
 
@@ -1560,8 +1608,10 @@ static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   auto &prob = stored_problem(prhs[1]);
 
   dtwc::algorithms::HierarchicalOptions opts;
-  if (nrhs > 2)
+  if (nrhs > 2) {
+    require_char(prhs[2], "linkage");
     opts.linkage = dtwc::parse_name(dtwc::algorithms::linkage_names, get_string(prhs[2]), "linkage");
+  }
   if (nrhs > 3) opts.max_points = get_exact_int<dtwc::index_t>(prhs[3], "max_points");
 
   auto dend = dtwc::algorithms::build_dendrogram(prob, opts);
@@ -1689,24 +1739,28 @@ static mxArray *execute_mex_run(dtwc::Config &config, const mxArray *source_mx, 
   } else {
     data = series_data<double>(source_mx, names_mx, ndim_mx);
   }
-  const uint64_t handle =
-    HandleManager<dtwc::Result>::create(std::make_shared<dtwc::Result>(dtwc::detail::run(config, std::move(data), {})));
+  auto res_ptr = std::make_shared<dtwc::Result>(dtwc::detail::run(config, std::move(data), {}));
+  const dtwc::Result &result = *res_ptr;
   const std::string name = dtwc::run_name(config);
-  // The Result is stored: from here MATLAB arrays are made, which own nothing of it.
-  const dtwc::Result &result = *HandleManager<dtwc::Result>::get(handle);
+  const std::string method_name(dtwc::name_of(dtwc::method_names, result.method()));
   const char *fields[] = { "handle", "labels", "medoids", "cost", "device", "name", "report",
                            "method", "iterations", "converged" };
+  // Construct the MATLAB output and handle cell before publishing to HandleManager
+  // so any validation/allocation failure never leaves a dangling locked handle.
   mxArray *out = mxCreateStructMatrix(1, 1, 10, fields);
-  mxSetField(out, 0, "handle", handle_to_mx(handle));
+  mxArray *mx_h = handle_to_mx(0);
+  mxSetField(out, 0, "handle", mx_h);
   mxSetField(out, 0, "labels", ivec_to_mx_1based(result.labels()));
   mxSetField(out, 0, "medoids", ivec_to_mx_1based(result.medoids()));
   mxSetField(out, 0, "cost", mxCreateDoubleScalar(result.cost()));
   mxSetField(out, 0, "device", mxCreateString(result.device().c_str()));
   mxSetField(out, 0, "name", mxCreateString(name.c_str()));
   mxSetField(out, 0, "report", mxCreateString(result.report().c_str()));
-  mxSetField(out, 0, "method", mxCreateString(std::string(dtwc::name_of(dtwc::method_names, result.method())).c_str()));
+  mxSetField(out, 0, "method", mxCreateString(method_name.c_str()));
   mxSetField(out, 0, "iterations", mxCreateDoubleScalar(static_cast<double>(result.iterations())));
   mxSetField(out, 0, "converged", mxCreateLogicalScalar(result.converged()));
+  const uint64_t handle = HandleManager<dtwc::Result>::create(std::move(res_ptr));
+  *static_cast<uint64_t *>(mxGetData(mx_h)) = handle;
   return out;
 }
 
@@ -1791,16 +1845,14 @@ static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *pr
   const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 4, "delimiter"));
   const dtwc::Data data = dtwc::read_data(path, skip_cols, skip_rows, delimiter, {}, optional_dtype(nrhs, prhs, 5));
   const auto n = static_cast<size_t>(data.size());
+  const bool want_names = (nlhs > 1);
   plhs[0] = mxCreateCellMatrix(1, n);
-  mxArray *names = mxCreateCellMatrix(1, n);
+  mxArray *names = want_names ? mxCreateCellMatrix(1, n) : nullptr;
   for (size_t i = 0; i < n; ++i) {
     mxSetCell(plhs[0], i, data.is_f32() ? to_row(data.series_f32(i)) : to_row(data.series(i)));
-    mxSetCell(names, i, mxCreateString(std::string(data.name(i)).c_str()));
+    if (want_names) mxSetCell(names, i, mxCreateString(std::string(data.name(i)).c_str()));
   }
-  if (nlhs > 1)
-    plhs[1] = names;
-  else
-    mxDestroyArray(names);
+  if (want_names) plhs[1] = names;
   if (nlhs > 2) plhs[2] = mxCreateDoubleScalar(static_cast<double>(data.ndim));
 }
 
@@ -1854,7 +1906,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
                  int nrhs, const mxArray *prhs[])
 {
   if (first_call) {
-    mexLock(); // Prevent DLL unload while handles exist
     mexAtExit(cleanup_at_exit);
     first_call = false;
   }

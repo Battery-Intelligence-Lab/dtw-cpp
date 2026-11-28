@@ -1,3 +1,8 @@
+# @file StaticAnalyzers.cmake
+# @brief Static analysis (clang-tidy, cppcheck, IWYU) configuration helpers.
+# @author Volkan Kumtepeli
+# @date 17 Aug 2022
+
 macro(dtwc_enable_cppcheck WARNINGS_AS_ERRORS)
   find_program(CPPCHECK cppcheck)
   if(CPPCHECK)

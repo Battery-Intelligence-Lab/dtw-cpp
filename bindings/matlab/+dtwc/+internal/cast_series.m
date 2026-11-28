@@ -8,6 +8,7 @@ function series = cast_series(series, dtype)
 %> @file cast_series.m
 %> @brief Series in memory cast to the class their dtype stores them in.
 %> @author Volkan Kumtepeli
+%> @date 26 Nov 2026
     type = 'double';
     if strcmp(dtype, 'float32')
         type = 'single';

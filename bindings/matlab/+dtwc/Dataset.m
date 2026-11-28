@@ -14,7 +14,7 @@ classdef Dataset < handle
 %> @file Dataset.m
 %> @brief Lazy dataset handle returned by dtwc.load.
 %> @author Volkan Kumtepeli
-
+%> @date 07 Jul 2026
     properties (SetAccess = private)
         Source      % a path, an N x L numeric matrix or a cell of numeric vectors
         SkipCols    % leading fields (a path) or values (in memory) of each series dropped

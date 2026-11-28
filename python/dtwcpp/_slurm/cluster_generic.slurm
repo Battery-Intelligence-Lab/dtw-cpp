@@ -6,6 +6,10 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=logs/cluster_%j.out
 #SBATCH --error=logs/cluster_%j.err
+# @file cluster_generic.slurm
+# @brief SLURM batch script executed by device='hpc' jobs running dtwc_cl.
+# @author Volkan Kumtepeli
+# @date 24 Sep 2026
 #
 # DTWC++ clustering job: dtwc_cl runs the job.toml of a run directory.
 # `slurm_remote.sh submit-job` uploads the directory, publishes this script in

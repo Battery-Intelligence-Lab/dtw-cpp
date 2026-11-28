@@ -1,3 +1,8 @@
+# @file InterproceduralOptimization.cmake
+# @brief Interprocedural optimization (LTO) enablement helper.
+# @author Volkan Kumtepeli
+# @date 04 Dec 2023
+
 macro(dtwc_enable_ipo)
   include(CheckIPOSupported)
   check_ipo_supported(RESULT result OUTPUT output)

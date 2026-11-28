@@ -1,7 +1,6 @@
 """
 @file test.py
 @brief ``dtwcpp.test`` — capability self-introspection.
-@author Volkan Kumtepeli
 
 Thin, dependency-free wrappers over the C++ ``dtwc::test::*`` probes bound in the
 core extension. Both return plain ``dict`` results whose keys are IDENTICAL to the
@@ -15,6 +14,8 @@ Examples
 {'available': True, 'max_threads': 24, 'threads_engaged': 24, 'pass': True, 'reason': ''}
 >>> dtwcpp.test.gpu()['available']
 False
+@author Volkan Kumtepeli
+@date 07 Jul 2026
 """
 
 from dtwcpp._dtwcpp_core import (

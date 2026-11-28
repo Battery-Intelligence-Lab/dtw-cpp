@@ -12,5 +12,6 @@ function nmi = normalized_mutual_info(labels_true, labels_pred)
 %> @file normalized_mutual_info.m
 %> @brief Normalized mutual information.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     nmi = dtwc_mex('normalized_mutual_info', labels_true, labels_pred);
 end

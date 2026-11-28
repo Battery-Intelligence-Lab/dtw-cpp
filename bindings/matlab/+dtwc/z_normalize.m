@@ -21,7 +21,7 @@ function xn = z_normalize(x)
 %> @file z_normalize.m
 %> @brief Z-normalize a time series (zero mean, unit std dev).
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     validateattributes(x, {'numeric'}, {'vector', 'nonempty'}, 'z_normalize', 'x');
     xn = dtwc_mex('z_normalize', double(x(:)'));
 end

@@ -15,7 +15,7 @@
  *          See also `docs/CITATIONS.md` for the full bibliography.
  *
  * @author Volkan Kumtepeli
- * @date 2026-04-12
+ * @date 12 Apr 2026
  */
 
 #pragma once
@@ -47,12 +47,14 @@ inline void validate_metal_precision(GpuPrecision value)
       "Metal computes in FP32, so precision FP64 cannot run");
 }
 
+/// Configuration options for Metal distance-matrix kernels on Apple Silicon.
 struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
-  GpuPrecision precision = GpuPrecision::Auto;
+  GpuPrecision precision = GpuPrecision::Auto; ///< Requested compute precision (Auto resolves to FP32).
 
   // Inherited from DistMatOptionsBase: band, use_squared_l2, verbose
 };
 
+/// Execution statistics returned by Metal DTW batch entry points.
 struct MetalDistMatResult : public dtwc::gpu::DistMatResultBase {
   // All fields (n, gpu_time_sec, pairs_computed, kernel_used) come
   // from DistMatResultBase. `kernel_used`

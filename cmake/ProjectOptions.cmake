@@ -1,3 +1,8 @@
+# @file ProjectOptions.cmake
+# @brief User-configurable CMake cache options, legacy aliases, and compiler/link feature wiring.
+# @author Volkan Kumtepeli
+# @date 04 Dec 2023
+
 # The maintainer options carry the same `DTWC_` prefix
 # as every other cache variable in the project. The lowercase `dtwc_` spellings
 # are still accepted for one release.
@@ -83,6 +88,15 @@ macro(dtwc_local_options)
       $<$<COMPILE_LANGUAGE:CXX>:$<$<CONFIG:RelWithDebInfo>:${_dtwc_fp_flag}>>)
   endforeach()
   unset(_dtwc_fp_flag)
+
+  # Host CPU architecture level (_arch_flag is computed in StandardProjectSettings.cmake).
+  # Attach here rather than directory-scope add_compile_options() so CPM dependencies
+  # do not inherit host-specific -march= flags.
+  if(DEFINED _arch_flag AND NOT "${_arch_flag}" STREQUAL "")
+    target_compile_options(dtwc_options INTERFACE
+      $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_arch_flag}>>
+      $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_arch_flag}>>)
+  endif()
 
   if(DTWC_ENABLE_COMPILER_WARNINGS)
     include(cmake/CompilerWarnings.cmake)

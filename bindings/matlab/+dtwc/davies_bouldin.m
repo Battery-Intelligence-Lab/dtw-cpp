@@ -10,5 +10,6 @@ function db = davies_bouldin(prob)
 %> @file davies_bouldin.m
 %> @brief Davies-Bouldin index.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     db = dtwc_mex('davies_bouldin', prob.get_handle());
 end

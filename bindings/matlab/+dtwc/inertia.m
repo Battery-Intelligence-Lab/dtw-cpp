@@ -21,6 +21,6 @@ function val = inertia(prob)
 %> @file inertia.m
 %> @brief Compute the inertia (total within-cluster distance sum).
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     val = dtwc_mex('inertia', prob.get_handle());
 end

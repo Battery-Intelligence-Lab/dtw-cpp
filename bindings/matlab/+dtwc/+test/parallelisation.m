@@ -19,8 +19,8 @@ function report = parallelisation()
 
 %> @file parallelisation.m
 %> @brief OpenMP parallelisation self-probe (parity with dtwc::test::parallelisation
-%>        / dtwcpp.test.parallelisation).
+%> / dtwcpp.test.parallelisation).
 %> @author Volkan Kumtepeli
-
+%> @date 07 Jul 2026
     report = dtwc_mex('test_parallelisation');
 end

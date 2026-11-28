@@ -9,7 +9,9 @@
     sklearn convention: fit reads an N x N distance matrix, predict and
     transform an M x N one.
 @author Volkan Kumtepeli
+@date 28 Mar 2026
 """
+
 import numpy as np
 from dtwcpp import distance
 from dtwcpp._api import _float64
@@ -200,7 +202,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         """Fit DTW k-medoids; ``y`` is accepted and ignored."""
         import dtwcpp
         from dtwcpp import _dtwcpp_core, _resolve_device
-        from dtwcpp._api import _series
+        from dtwcpp._api import _to_data
         if not isinstance(self.fallback, (bool, np.bool_)):  # not a truth value for _resolve_device or the hpc branch
             raise TypeError(f"fallback must be a bool, got {type(self.fallback).__name__}")
         device = self.device if self.device is not None else dtwcpp.device()
@@ -222,9 +224,9 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         if self._precomputed():
             matrix = _precomputed_matrix(X, square=True)
             # The series are never read: every pair is in the matrix.
-            series = [np.zeros(1) for _ in range(matrix.shape[0])]
+            data = _to_data(np.zeros((matrix.shape[0], 1), dtype=np.float64))
         else:  # NaN and inf are C++'s to judge, by the missing-data strategy
-            series, _ = _series(X)
+            data = _to_data(X)
 
         if backend == "hpc":
             from dtwcpp import _hpc
@@ -235,7 +237,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
                     "matrix is clustered locally (device='cpu').")
             # The keys _config set: an estimator gives all its parameters.
             self.labels_ = _hpc.cluster_on_hpc(
-                load(series), config,
+                load(data), config,
                 ("method", "max_iter", "n_init", "batch_size", "seed", "mv_mode",
                  *self._distance()),
                 device=device)
@@ -246,7 +248,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
             self.n_iter_ = None
             return self
 
-        prob.set_data(series)
+        prob.set_data(data)
         if self._precomputed():
             prob.set_distance_matrix(matrix)
         result = prob.cluster()
@@ -255,13 +257,14 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         self.medoid_indices_ = result.medoid_indices
         self.inertia_ = float(result.total_cost)
         self.n_iter_ = int(result.iterations)
-        self.n_samples_fit_ = len(series)
+        n_samples = data.size
+        self.n_samples_fit_ = n_samples
         if self._precomputed():
             self.cluster_centers_ = None
             self.n_features_in_ = self.n_samples_fit_
         else:
-            self.cluster_centers_ = [series[i].copy() for i in self.medoid_indices_]
-            lengths = {row.size for row in series}
+            self.cluster_centers_ = [np.asarray(data.series(i), dtype=np.float64) for i in self.medoid_indices_]
+            lengths = {data.series_length(i) for i in range(n_samples)}
             self.n_features_in_ = lengths.pop() if len(lengths) == 1 else None
             self._fit_distance_ = self._distance()
         return self

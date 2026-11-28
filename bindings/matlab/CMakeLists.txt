@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief CMake build configuration for the DTWC++ MATLAB MEX module.
+# @author Volkan Kumtepeli
+# @date 29 Mar 2026
+
 # MATLAB MEX bindings for DTWC++
 #
 # Build with: cmake .. -DDTWC_BUILD_MATLAB=ON
@@ -35,7 +40,7 @@ matlab_add_mex(
     # The CLI library, which brings the core: dtwc::run and its run report (CLI11's key table, cpuinfo's facts).
     # Never Arrow C++: MATLAB reads Parquet with parquetread, so a build with DTWC_ENABLE_ARROW=ON stops at configure
     # (CMakeLists.txt); the MEX CI builds with DTWC_ENABLE_YAML=OFF, so no fkYAML.
-    LINK_TO dtwc_cli
+    LINK_TO dtwc_cli project_options
 )
 
 target_compile_features(dtwc_mex PRIVATE cxx_std_20)

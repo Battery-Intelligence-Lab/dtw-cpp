@@ -36,7 +36,7 @@ function D = compute_distance_matrix(X, varargin)
 %> @file compute_distance_matrix.m
 %> @brief Compute pairwise DTW distance matrix using DTWC++.
 %> @author Volkan Kumtepeli
-
+%> @date 29 Mar 2026
     p = inputParser;
     addRequired(p, 'X');
     addParameter(p, 'Band', -1, @(v) isnumeric(v) && isscalar(v));

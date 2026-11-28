@@ -20,7 +20,7 @@ function D = cdist(X, varargin)
 %> @file cdist.m
 %> @brief Cross-collection DTW distance matrix.
 %> @author Volkan Kumtepeli
-
+%> @date 13 Nov 2026
     hasY = false;
     if isempty(varargin)
         Y = [];

@@ -15,5 +15,6 @@ function save_checkpoint(prob, path)
 %> @file save_checkpoint.m
 %> @brief Save a Problem distance-matrix checkpoint.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     dtwc_mex('save_checkpoint', prob.get_handle(), char(path));
 end

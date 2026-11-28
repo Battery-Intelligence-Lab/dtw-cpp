@@ -1,3 +1,8 @@
+# @file CompilerWarnings.cmake
+# @brief Project compiler warning and warnings-as-errors definitions across C, C++, OBJCXX, and CUDA.
+# @author Volkan Kumtepeli
+# @date 17 Aug 2022
+
 # from here:
 #
 # https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md

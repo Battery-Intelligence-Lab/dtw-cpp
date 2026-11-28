@@ -35,7 +35,7 @@ classdef DTWClustering
 %> @file DTWClustering.m
 %> @brief K-medoids clustering with DTW distance via DTWC++.
 %> @author Volkan Kumtepeli
-
+%> @date 29 Mar 2026
     properties
         NClusters = 3
         Method = 'pam'

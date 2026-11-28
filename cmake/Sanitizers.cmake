@@ -1,3 +1,8 @@
+# @file Sanitizers.cmake
+# @brief Address, Leak, UndefinedBehavior, Thread, and Memory sanitizer configuration helper.
+# @author Volkan Kumtepeli
+# @date 17 Aug 2022
+
 function(
   dtwc_enable_sanitizers
   project_name
@@ -58,8 +63,8 @@ function(
   list(JOIN SANITIZERS "," LIST_OF_SANITIZERS)
 
   if(LIST_OF_SANITIZERS)
-    if(NOT MSVC)
-      target_compile_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      target_compile_options(${project_name} INTERFACE $<$<COMPILE_LANGUAGE:C,CXX,OBJCXX>:-fsanitize=${LIST_OF_SANITIZERS}>)
       target_link_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
     else()
       string(FIND "$ENV{PATH}" "$ENV{VSINSTALLDIR}" index_of_vs_install_dir)
@@ -69,7 +74,7 @@ function(
             "Using MSVC sanitizers requires setting the MSVC environment before building the project. Please manually open the MSVC command prompt and rebuild the project."
         )
       endif()
-      target_compile_options(${project_name} INTERFACE /fsanitize=${LIST_OF_SANITIZERS} /Zi)
+      target_compile_options(${project_name} INTERFACE $<$<COMPILE_LANGUAGE:C,CXX,OBJCXX>:/fsanitize=${LIST_OF_SANITIZERS};/Zi>)
       target_compile_definitions(${project_name} INTERFACE _DISABLE_VECTOR_ANNOTATION _DISABLE_STRING_ANNOTATION)
       target_link_options(${project_name} INTERFACE /INCREMENTAL:NO)
     endif()

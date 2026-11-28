@@ -4,7 +4,9 @@
  *
  * The launcher runs the returned path and reports it to the caller as
  * `kernel_used`.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #pragma once
@@ -16,6 +18,7 @@
 
 namespace dtwc::cuda::detail {
 
+/// CUDA kernel dispatch path selected for a batch launch.
 enum class KernelPath {
   WarpTileW1,      ///< register-tiled warp kernel, TILE_W=1 (1-pass L<=32)
   WarpTileW4,      ///< register-tiled warp kernel, TILE_W=4 (1-pass 32<L<=128, multi-pass L>128)

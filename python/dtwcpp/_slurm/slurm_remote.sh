@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# @file slurm_remote.sh
+# @brief Packaged SLURM remote job management helper backing dtwcpp device='hpc'.
+# @author Volkan Kumtepeli
+# @date 24 Sep 2026
+
 # SLURM remote helper behind device='hpc': test the connection, submit a run
 # directory, watch the queue, download results.
 #

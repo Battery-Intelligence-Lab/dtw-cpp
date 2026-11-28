@@ -5,7 +5,9 @@
          stand-ins for ssh, rsync, scp and sbatch, and the job against the
          local dtwc_cl (DTWC_CL_PATH), the oracle for the cluster's binary.
 @author Volkan Kumtepeli
+@date 30 Jun 2026
 """
+
 import os
 from pathlib import Path
 import shlex
@@ -951,10 +953,22 @@ class TestSlurmLastMile:
         is the oracle) fails the job loudly, naming the key, with no labels."""
         binary = tmp_path / "build-test/bin/dtwc_cl"
         binary.parent.mkdir(parents=True)
-        binary.write_text(
-            f'#!/usr/bin/env bash\nexec {shlex.quote(_bash_path(dtwc_cl))} "$@"\n',
-            encoding="utf-8", newline="\n",
-        )
+        bash_bin = _bash_path(dtwc_cl)
+        if os.name == "nt" and bash_bin.startswith("/mnt/") and str(dtwc_cl).lower().endswith(".exe"):
+            shim = (
+                "#!/usr/bin/env bash\n"
+                "args=()\n"
+                'for a in "$@"; do\n'
+                '  case "$a" in\n'
+                '    /mnt/?/*|/mnt/?) args+=("$(wslpath -w "$a")") ;;\n'
+                '    *) args+=("$a") ;;\n'
+                "  esac\n"
+                "done\n"
+                f'exec {shlex.quote(bash_bin)} "${{args[@]}}"\n'
+            )
+        else:
+            shim = f'#!/usr/bin/env bash\nexec {shlex.quote(bash_bin)} "$@"\n'
+        binary.write_text(shim, encoding="utf-8", newline="\n")
         binary.chmod(0o755)
         run = tmp_path / "run"
         run.mkdir()

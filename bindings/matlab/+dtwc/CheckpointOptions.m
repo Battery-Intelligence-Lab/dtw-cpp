@@ -12,6 +12,7 @@ function opts = CheckpointOptions(varargin)
 %> @file CheckpointOptions.m
 %> @brief Checkpoint options struct.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     p = inputParser;
     addParameter(p, 'directory', './checkpoints', @(v) ischar(v) || isstring(v));
     addParameter(p, 'save_interval', 100, @(v) isnumeric(v) && isscalar(v));

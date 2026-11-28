@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Apple Metal Objective-C++ compilation and framework linkage for dtwc_core.
+# @author Volkan Kumtepeli
+# @date 01 Oct 2026
+
 # The header is listed in every build, as every folder's are; the source needs the switch.
 target_sources(dtwc_core PUBLIC FILE_SET HEADERS FILES metal_dtw.hpp)
 if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)

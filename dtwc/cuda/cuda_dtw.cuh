@@ -30,6 +30,7 @@
 
 namespace dtwc::cuda {
 
+/// Configuration options for CUDA distance-matrix and medoid-distance kernels.
 struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   int device_id = 0;                           ///< CUDA device to use
   GpuPrecision precision = GpuPrecision::Auto; ///< Auto: FP32 where FP64 is slow (consumer GPUs)
@@ -47,6 +48,7 @@ using SeriesAt = std::function<std::span<const double>(std::size_t)>;
 /// only row i's slots and does not throw (CUDA code is compiled without OpenMP, so the caller runs it: run_openmp).
 using ParallelFor = std::function<void(std::size_t count, const std::function<void(std::size_t)> &task)>;
 
+/// Execution statistics returned by CUDA DTW batch entry points.
 struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {};
 
 /// Check if CUDA is available (device count > 0).
@@ -69,8 +71,8 @@ std::string cuda_device_info(int device_id = 0);
 /// Why CUDA device @p device_id cannot run the kernels on this machine, "" where it can: no usable GPU, an ordinal past
 /// the last (the runtime's own words, "invalid device ordinal"), a compute capability below 8.0, or a context the device
 /// refuses (an exclusive-mode GPU another process holds). The backend's own query, which a run makes before it reads a
-/// series or allocates a byte. A device it finds usable becomes the calling thread's current device, as every fill makes
-/// it; a refusal leaves the thread's device as it was.
+/// series or allocates a byte. Probing restores the calling thread's current device on both acceptance and refusal (a
+/// subsequent fill is what selects it).
 std::string cuda_device_refusal(int device_id);
 
 /// Fill @p out with the DTW distance of every pair of @p series on the GPU.

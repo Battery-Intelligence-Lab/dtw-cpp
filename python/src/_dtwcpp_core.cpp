@@ -117,6 +117,8 @@ void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb:
   const size_t n = dm.shape(0);
   if (dm.shape(1) != n)
     throw dtwc::InvalidInput("Expected square distance matrix");
+  const auto *data = dm.data();
+  nb::gil_scoped_release release;
   if (n != p.size())
     throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
   // Values written into a mapped matrix would persist in its file under the
@@ -128,7 +130,6 @@ void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb:
       "kept in RAM only; call refresh_distance_matrix() first.");
   auto &mat = p.writable_distance_matrix();
   mat.resize(n);
-  const auto *data = dm.data();
   for (size_t i = 0; i < n; ++i)
     for (size_t j = i; j < n; ++j)
       if (!std::isnan(data[i * n + j])) // resize() left every pair to compute; a NaN entry keeps it so
@@ -319,26 +320,30 @@ NB_MODULE(_dtwcpp_core, m)
   static PyObject *g_exc_solver = nullptr;
   static PyObject *g_exc_device = nullptr;
   static PyObject *g_exc_io = nullptr;
+  if (!g_exc_base) throw nb::python_error();
   {
     auto make_leaf = [](const char *qualname, PyObject *builtin) -> PyObject * {
       PyObject *bases = PyTuple_Pack(2, g_exc_base, builtin);
+      if (!bases) throw nb::python_error();
       PyObject *exc = PyErr_NewException(qualname, bases, nullptr);
-      Py_XDECREF(bases);
+      Py_DECREF(bases);
+      if (!exc) throw nb::python_error();
       return exc;
     };
     g_exc_invalid = make_leaf("dtwcpp.InvalidInput", PyExc_ValueError);
     g_exc_undefined_score =
       PyErr_NewException("dtwcpp.UndefinedScore", g_exc_invalid, nullptr);
+    if (!g_exc_undefined_score) throw nb::python_error();
     g_exc_solver = make_leaf("dtwcpp.SolverError", PyExc_RuntimeError);
     g_exc_device = make_leaf("dtwcpp.DeviceError", PyExc_RuntimeError);
     g_exc_io = make_leaf("dtwcpp.IOError", PyExc_OSError);
   }
-  m.attr("DtwcError") = nb::borrow(g_exc_base);
-  m.attr("InvalidInput") = nb::borrow(g_exc_invalid);
-  m.attr("UndefinedScore") = nb::borrow(g_exc_undefined_score);
-  m.attr("SolverError") = nb::borrow(g_exc_solver);
-  m.attr("DeviceError") = nb::borrow(g_exc_device);
-  m.attr("IOError") = nb::borrow(g_exc_io);
+  m.attr("DtwcError") = nb::steal(g_exc_base);
+  m.attr("InvalidInput") = nb::steal(g_exc_invalid);
+  m.attr("UndefinedScore") = nb::steal(g_exc_undefined_score);
+  m.attr("SolverError") = nb::steal(g_exc_solver);
+  m.attr("DeviceError") = nb::steal(g_exc_device);
+  m.attr("IOError") = nb::steal(g_exc_io);
 
   nb::register_exception_translator(
     [](const std::exception_ptr &p, void * /*payload*/) {
@@ -825,6 +830,7 @@ NB_MODULE(_dtwcpp_core, m)
                   }
                   return dtwc::Data(std::move(series), std::move(names), ndim); }, "rows"_a, "names"_a, "ndim"_a = 1, "dtype"_a = std::string("float64"), "Construct Data from a sequence of contiguous 1-D float64 NumPy arrays without Python list conversion.")
     .def_prop_rw("p_vec", [](const dtwc::Data &d) {
+                   nb::gil_scoped_release release;
                    if (!d.is_view() || d.is_f32()) return d.p_vec;
                    std::vector<std::vector<dtwc::data_t>> series(static_cast<size_t>(d.size()));
                    for (size_t i = 0; i < series.size(); ++i) {
@@ -837,6 +843,7 @@ NB_MODULE(_dtwcpp_core, m)
                  "The float64 series, a list each (a float32 store's is []); a view's, as an\n"
                  "Arrow IPC file's, are read through it and cannot be written.")
     .def_prop_rw("p_names", [](const dtwc::Data &d) {
+                   nb::gil_scoped_release release;
                    if (!d.is_view()) return d.p_names;
                    std::vector<std::string> names(static_cast<size_t>(d.size()));
                    for (size_t i = 0; i < names.size(); ++i) names[i] = d.name(i);
@@ -883,6 +890,7 @@ NB_MODULE(_dtwcpp_core, m)
         if (PyErr_Occurred()) throw nb::python_error();
         throw dtwc::InvalidInput("data_from_arrow_c_array: null Arrow stream capsule.");
       }
+      nb::gil_scoped_release release;
       return dtwc::io::data_from_arrow_stream(stream, 1, precision);
     }
 
@@ -911,13 +919,16 @@ NB_MODULE(_dtwcpp_core, m)
     // capsule destructors see release==nullptr afterwards and become no-ops, so
     // there is no double free.
     dtwc::Data data;
-    try {
-      data = dtwc::io::data_from_arrow(schema, array, {}, precision);
-    } catch (...) {
+    {
+      nb::gil_scoped_release release;
+      try {
+        data = dtwc::io::data_from_arrow(schema, array, {}, precision);
+      } catch (...) {
+        dtwc::io::release_arrow(schema, array);
+        throw;
+      }
       dtwc::io::release_arrow(schema, array);
-      throw;
     }
-    dtwc::io::release_arrow(schema, array);
     return data; }, "obj"_a, "dtype"_a = std::string("float64"),
         "Build a Data object from an Arrow C Data interface source (no Python list\n"
         "conversion, no pyarrow; the Data owns a copy). `obj` must implement\n"
@@ -1181,9 +1192,9 @@ NB_MODULE(_dtwcpp_core, m)
     "external (a build without HiGHS) solves Method.MIP on HiGHS with\n"
     "dtwcpp._mip.solve(prob), prob the run's own Problem, co-owned; an\n"
     "exception solve raises reaches the caller as itself.";
-  m.def("_run", [](const dtwc::Config &config, const std::string &source, dtwc::index_t skip_cols, dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype, bool external, const std::string &output, const std::string &checkpoint, int checkpoint_interval) {
+  m.def("_run", [](const dtwc::Config &config, const std::filesystem::path &source, dtwc::index_t skip_cols, dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype, bool external, const std::string &output, const std::string &checkpoint, int checkpoint_interval) {
           dtwc::Config copy = config;
-          copy.input = source;
+          copy.input = dtwc::path_to_utf8(source);
           return run_released(std::move(copy), std::nullopt, skip_cols, skip_rows, delimiter, dtype, external,
                               output, checkpoint, checkpoint_interval); }, "config"_a, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{}, "dtype"_a = std::string("float64"), "external"_a = false, "output"_a = std::string{}, "checkpoint"_a = std::string{}, "checkpoint_interval"_a = 0, run_doc);
   m.def("_run", [](const dtwc::Config &config, const dtwc::Data &source, dtwc::index_t skip_cols, dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype, bool external, const std::string &output, const std::string &checkpoint, int checkpoint_interval) { return run_released(config, source, skip_cols, skip_rows, delimiter, dtype, external, output, checkpoint, checkpoint_interval); }, "config"_a, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{}, "dtype"_a = std::string("float64"), "external"_a = false, "output"_a = std::string{}, "checkpoint"_a = std::string{}, "checkpoint_interval"_a = 0);
@@ -1199,7 +1210,9 @@ NB_MODULE(_dtwcpp_core, m)
     return [member](const PMedianModel &model) {
       const auto &values = model.*member;
       using T = typename std::remove_cvref_t<decltype(values)>::value_type;
-      return nb::ndarray<nb::numpy, const T, nb::ndim<1>>(values.data(), { values.size() });
+      static constexpr T empty_dummy{};
+      const T *ptr = values.empty() ? &empty_dummy : values.data();
+      return nb::ndarray<nb::numpy, const T, nb::ndim<1>>(ptr, { values.size() });
     };
   };
   constexpr auto internal = nb::rv_policy::reference_internal;
@@ -1218,6 +1231,11 @@ NB_MODULE(_dtwcpp_core, m)
     .def_prop_ro("a_value", view(&PMedianModel::a_value), internal)
     .def_prop_ro("integrality", view(&PMedianModel::integrality), internal)
     .def_prop_ro("start", view(&PMedianModel::start), internal);
+
+  m.def("_validate_mip", [](const dtwc::Problem &prob) {
+    dtwc::require_clusterable(prob.n_clusters(), static_cast<std::size_t>(prob.size()));
+    dtwc::validate_mip_settings(prob.mip_settings); }, "prob"_a,
+        "Validate Problem clusterability and MIPSettings.");
 
   m.def("_mip_model", [](dtwc::Problem &prob) {
     dtwc::require_clusterable(prob.n_clusters(), static_cast<std::size_t>(prob.size())); // as Problem::cluster()

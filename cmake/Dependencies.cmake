@@ -1,3 +1,8 @@
+# @file Dependencies.cmake
+# @brief Third-party dependency setup via find_package and pinned CPM packages.
+# @author Volkan Kumtepeli
+# @date 20 Oct 2023
+
 include(cmake/CPM.cmake)
 
 # Function scope keeps dependency-local variables (e.g. BUILD_SHARED_LIBS) from leaking out.

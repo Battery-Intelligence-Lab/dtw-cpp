@@ -21,7 +21,7 @@ function out = device(name)
 %> @file device.m
 %> @brief Global compute-device get/set.
 %> @author Volkan Kumtepeli
-
+%> @date 07 Jul 2026
     if nargin < 1
         out = dtwc_mex('get_device');
     else

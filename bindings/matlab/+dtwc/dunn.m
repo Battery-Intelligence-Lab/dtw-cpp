@@ -10,5 +10,6 @@ function di = dunn(prob)
 %> @file dunn.m
 %> @brief Dunn index.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     di = dtwc_mex('dunn', prob.get_handle());
 end

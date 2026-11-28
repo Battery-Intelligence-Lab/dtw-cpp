@@ -6,7 +6,7 @@ function D = cdist(X, varargin)
 %> @file cdist.m
 %> @brief Top-level alias for dtwc.distance.cdist.
 %> @author Volkan Kumtepeli
-
+%> @date 13 Nov 2026
     D = dtwc.distance.cdist(X, varargin{:});
 end
 

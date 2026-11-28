@@ -28,7 +28,7 @@ classdef Result < handle
 %> @file Result.m
 %> @brief Clustering outcome returned by dtwc.cluster.
 %> @author Volkan Kumtepeli
-
+%> @date 07 Jul 2026
     properties (SetAccess = private)
         labels
         medoids

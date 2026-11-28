@@ -14,5 +14,6 @@ function ok = load_checkpoint(prob, path)
 %> @file load_checkpoint.m
 %> @brief Load a Problem distance-matrix checkpoint.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     ok = dtwc_mex('load_checkpoint', prob.get_handle(), char(path));
 end

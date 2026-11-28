@@ -29,7 +29,7 @@ function dx = derivative_transform(x)
 %> @file derivative_transform.m
 %> @brief Apply the Keogh-Pazzani derivative transform.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     validateattributes(x, {'numeric'}, {'vector', 'nonempty'}, 'derivative_transform', 'x');
     dx = dtwc_mex('derivative_transform', double(x(:)'));
 end

@@ -2,6 +2,7 @@
 @file distance.py
 @brief Pairwise and cross-collection DTW distances computed in C++/SIMD/CUDA.
 @author Volkan Kumtepeli
+@date 14 Apr 2026
 """
 
 from __future__ import annotations
@@ -123,6 +124,11 @@ def cdist(
     """
     import dtwcpp
 
+    def _require_number(val, name):
+        if isinstance(val, (bool, np.bool_)) or not isinstance(val, (int, float, np.integer, np.floating)):
+            raise TypeError(f"{name} must be a number, got {type(val).__name__}")
+        return float(val)
+
     if isinstance(band, (bool, np.bool_)) or not isinstance(band, (int, np.integer)):
         raise TypeError(f"band must be an integer, got {type(band).__name__}")
     if not isinstance(fallback, (bool, np.bool_)):
@@ -144,16 +150,16 @@ def cdist(
         band=int(band),
         metric=metric,
         missing_strategy=missing_strategy,
-        wdtw_g=float(wdtw_g),
-        adtw_penalty=float(adtw_penalty),
-        sdtw_gamma=float(sdtw_gamma),
-        msm_c=float(msm_c),
-        twe_nu=float(twe_nu),
-        twe_lambda=float(twe_lambda),
+        wdtw_g=_require_number(wdtw_g, "wdtw_g"),
+        adtw_penalty=_require_number(adtw_penalty, "adtw_penalty"),
+        sdtw_gamma=_require_number(sdtw_gamma, "sdtw_gamma"),
+        msm_c=_require_number(msm_c, "msm_c"),
+        twe_nu=_require_number(twe_nu, "twe_nu"),
+        twe_lambda=_require_number(twe_lambda, "twe_lambda"),
         mv_mode=mv_mode,
         device=eff_device,
         gpu_precision=gpu_precision,
-        gpu_share=float(gpu_share),
+        gpu_share=_require_number(gpu_share, "gpu_share"),
         matrix_dtype=matrix_dtype,
         fallback=bool(fallback),
     )

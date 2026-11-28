@@ -1,3 +1,8 @@
+# @file DtwcTest.cmake
+# @brief CTest helper macros enforcing non-skipping PASS_REGULAR_EXPRESSION contracts.
+# @author Volkan Kumtepeli
+# @date 07 Sep 2026
+
 include_guard(GLOBAL)
 
 option(DTWC_ENABLE_COVERAGE "Enable coverage reporting for GCC or Clang" OFF)

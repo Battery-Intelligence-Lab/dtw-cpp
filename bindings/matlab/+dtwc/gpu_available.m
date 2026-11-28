@@ -11,6 +11,6 @@ function tf = gpu_available()
 %> @file gpu_available.m
 %> @brief Whether this build's GPU backend finds a GPU.
 %> @author Volkan Kumtepeli
-
+%> @date 01 Oct 2026
     tf = dtwc_mex('gpu_available');
 end

@@ -18,7 +18,7 @@
  *              IEEE TASSP 26(1) pp. 43-49.
  *
  * @author Volkan Kumtepeli
- * @date 2026-04-12
+ * @date 12 Apr 2026
  */
 
 #import "metal_dtw.hpp"
@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <type_traits>
@@ -586,18 +587,36 @@ static MetalContext &context()
   static std::once_flag once;
   std::call_once(once, []() {
     @autoreleasepool {
+      auto release_ctx = [&]() {
+        [ctx.pipeline_regtile_w8 release];
+        [ctx.pipeline_regtile_w4 release];
+        [ctx.pipeline_banded_row release];
+        [ctx.pipeline_global release];
+        [ctx.pipeline release];
+        [ctx.queue release];
+        [ctx.device release];
+        ctx.pipeline_regtile_w8 = nil;
+        ctx.pipeline_regtile_w4 = nil;
+        ctx.pipeline_banded_row = nil;
+        ctx.pipeline_global = nil;
+        ctx.pipeline = nil;
+        ctx.queue = nil;
+        ctx.device = nil;
+      };
+
+      // MTLCreateSystemDefaultDevice returns a +1 retained reference under -fno-objc-arc.
       ctx.device = MTLCreateSystemDefaultDevice();
       if (!ctx.device) {
         ctx.init_failed = true;
         ctx.init_error = "MTLCreateSystemDefaultDevice returned nil";
         return;
       }
-      [ctx.device retain]; // we hold it for the process lifetime
 
       ctx.queue = [ctx.device newCommandQueue];
       if (!ctx.queue) {
         ctx.init_failed = true;
         ctx.init_error = "newCommandQueue failed";
+        release_ctx();
         return;
       }
 
@@ -615,6 +634,7 @@ static MetalContext &context()
         ctx.init_failed = true;
         ctx.init_error = err ? [[err localizedDescription] UTF8String]
                              : "newLibraryWithSource failed";
+        release_ctx();
         return;
       }
 
@@ -650,7 +670,10 @@ static MetalContext &context()
           && make_pipeline(@"dtw_regtile_w4", ctx.pipeline_regtile_w4)
           && make_pipeline(@"dtw_regtile_w8", ctx.pipeline_regtile_w8);
       [lib release];
-      if (!built) return;
+      if (!built) {
+        release_ctx();
+        return;
+      }
 
       ctx.initialized = true;
     }
@@ -761,10 +784,18 @@ MetalDistMatResult compute_distance_matrix_metal(
   }
 
   // Find max length and build padded FP32 input buffer in parallel.
+  auto checked_int = [](size_t v, const char *what) -> int {
+    if (v > static_cast<size_t>(std::numeric_limits<int>::max())) {
+      throw dtwc::InvalidInput(std::string("compute_distance_matrix_metal: ") + what
+                               + " (" + std::to_string(v) + ") exceeds 32-bit Metal kernel limit");
+    }
+    return static_cast<int>(v);
+  };
+  const int N_int = checked_int(N, "n_series");
   int max_L = 0;
   std::vector<int> lengths(N);
   for (size_t s = 0; s < N; ++s) {
-    lengths[s] = static_cast<int>(series(s).size());
+    lengths[s] = checked_int(series(s).size(), "series length");
     if (lengths[s] > max_L) max_L = lengths[s];
   }
   // An all-zero matrix would read as N identical series.
@@ -815,7 +846,6 @@ MetalDistMatResult compute_distance_matrix_metal(
     std::memset([owned.out contents], 0, slots * sizeof(float));
 
     // Scalar args
-    const int N_int = static_cast<int>(N);
     const int requested_band = opts.band;
     const int use_sq_l2 = opts.use_squared_l2 ? 1 : 0;
 
@@ -884,7 +914,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     // Global-memory kernel is slower per-pair than threadgroup, so chunk more
     // aggressively for long series. Banded-row touches only band*La cells
     // per pair, so cells-per-pair accounting uses band*L, not L*L.
-    const size_t cells_budget = 5e9; // ~5 billion DTW cells per command buffer
+    constexpr size_t cells_budget = size_t{ 5000000000ULL }; // ~5 billion DTW cells per command buffer
     const size_t cells_per_pair = use_banded_row
         ? static_cast<size_t>(2 * band + 1) * static_cast<size_t>(max_L)
         : static_cast<size_t>(max_L) * static_cast<size_t>(max_L);
@@ -893,6 +923,13 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     const size_t num_chunks = (num_pairs + chunk - 1) / chunk;
     const size_t scratch_slots = (num_chunks > 1) ? 2 : 1;
+    auto alloc_scratch = [&](size_t bytes, const std::string &fail_msg) {
+      for (size_t i = 0; i < scratch_slots; ++i) {
+        owned.scratch[i] = [ctx.device newBufferWithLength:bytes
+                                                   options:MTLResourceStorageModePrivate];
+        if (!owned.scratch[i]) throw dtwc::DeviceError(fail_msg);
+      }
+    };
     // Allocate scratch sized for one chunk (double-buffered when multiple chunks exist).
     size_t scratch_bytes = 0;
     if (use_global) {
@@ -904,18 +941,11 @@ MetalDistMatResult compute_distance_matrix_metal(
       scratch_bytes = 0;
     }
     if (scratch_bytes > 0) {
-      owned.scratch[0] = [ctx.device newBufferWithLength:scratch_bytes
-                                                 options:MTLResourceStorageModePrivate];
-      if (!owned.scratch[0]) {
-        throw dtwc::DeviceError(
-            "Metal: scratch allocation failed (" + std::to_string(scratch_bytes)
-            + " bytes for max_L=" + std::to_string(max_L) + ", chunk="
-            + std::to_string(chunk) + "). No CPU fallback was attempted.");
-      }
-      if (scratch_slots == 2) {
-        owned.scratch[1] = [ctx.device newBufferWithLength:scratch_bytes
-                                                   options:MTLResourceStorageModePrivate];
-      }
+      alloc_scratch(
+          scratch_bytes,
+          "Metal: scratch allocation failed (" + std::to_string(scratch_bytes)
+              + " bytes for max_L=" + std::to_string(max_L) + ", chunk="
+              + std::to_string(chunk) + "). No CPU fallback was attempted.");
     }
 
     // Pick threads-per-threadgroup.
@@ -953,20 +983,13 @@ MetalDistMatResult compute_distance_matrix_metal(
     int banded_stride = 0;
     if (use_banded_row) {
       const size_t ntgs = (chunk + tg_size - 1) / tg_size;
-      banded_stride = static_cast<int>(ntgs * tg_size);
+      banded_stride = checked_int(ntgs * tg_size, "banded_stride");
       scratch_bytes =
           2ULL * static_cast<size_t>(2 * band + 1) * static_cast<size_t>(banded_stride) * sizeof(float);
-      owned.scratch[0] = [ctx.device newBufferWithLength:scratch_bytes
-                                                 options:MTLResourceStorageModePrivate];
-      if (!owned.scratch[0]) {
-        throw dtwc::DeviceError(
-            "Metal: banded-row scratch allocation failed ("
-            + std::to_string(scratch_bytes) + " bytes). No CPU fallback was attempted.");
-      }
-      if (scratch_slots == 2) {
-        owned.scratch[1] = [ctx.device newBufferWithLength:scratch_bytes
-                                                   options:MTLResourceStorageModePrivate];
-      }
+      alloc_scratch(
+          scratch_bytes,
+          "Metal: banded-row scratch allocation failed ("
+              + std::to_string(scratch_bytes) + " bytes). No CPU fallback was attempted.");
     }
 
     // A command buffer that failed, whichever chunk it carried, is a typed
@@ -983,74 +1006,83 @@ MetalDistMatResult compute_distance_matrix_metal(
     const bool dual_scratch = owned.scratch[1] != nil;
     std::vector<id<MTLCommandBuffer>> in_flight;
     size_t chunk_idx = 0;
-    for (size_t off = 0; off < num_pairs; off += chunk, ++chunk_idx) {
-      if ((use_global || use_banded_row) && dual_scratch && chunk_idx >= 2) {
-        id<MTLCommandBuffer> prev_cmd = in_flight[chunk_idx - 2];
-        [prev_cmd waitUntilCompleted];
-        check(prev_cmd);
-      }
+    try {
+      for (size_t off = 0; off < num_pairs; off += chunk, ++chunk_idx) {
+        if ((use_global || use_banded_row) && dual_scratch && chunk_idx >= 2) {
+          id<MTLCommandBuffer> prev_cmd = in_flight[chunk_idx - 2];
+          [prev_cmd waitUntilCompleted];
+          check(prev_cmd);
+        }
 
-      // The kernels read buffer(8) as a 64-bit `long`: typed here, never narrowed.
-      const std::int64_t pair_offset = static_cast<std::int64_t>(off);
-      const size_t this_chunk = std::min(chunk, num_pairs - off);
+        // The kernels read buffer(8) as a 64-bit `long`: typed here, never narrowed.
+        const std::int64_t pair_offset = static_cast<std::int64_t>(off);
+        const size_t this_chunk = std::min(chunk, num_pairs - off);
 
-      id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
-      id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-      [enc setComputePipelineState:pipeline];
-      [enc setBuffer:owned.series  offset:0 atIndex:0];
-      [enc setBuffer:owned.lengths offset:0 atIndex:1];
-      [enc setBuffer:owned.out     offset:0 atIndex:2];
-      [enc setBytes:&N_int     length:sizeof(int) atIndex:3];
-      [enc setBytes:&max_L     length:sizeof(int) atIndex:4];
-      [enc setBytes:&band      length:sizeof(int) atIndex:5];
-      [enc setBytes:&use_sq_l2 length:sizeof(int) atIndex:6];
-      if (use_global || use_banded_row) {
-        id<MTLBuffer> cur_scratch = dual_scratch ? owned.scratch[chunk_idx % 2] : owned.scratch[0];
-        [enc setBuffer:cur_scratch offset:0 atIndex:7];
-      } else if (use_regtile) {
-        [enc setThreadgroupMemoryLength:regtile_smem_len atIndex:0];
-      } else {
-        [enc setThreadgroupMemoryLength:tg_mem_len atIndex:0];
-      }
-      [enc setBytes:&pair_offset length:sizeof(pair_offset) atIndex:8];
-      if (use_banded_row) {
-        [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
-      } else if (use_regtile) {
-        const int pairs_per_tg_arg = static_cast<int>(pairs_per_tg);
-        [enc setBytes:&pairs_per_tg_arg length:sizeof(int) atIndex:9];
-      }
+        id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
+        if (!cmd) throw dtwc::DeviceError("Metal: commandBuffer creation failed");
+        id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+        if (!enc) throw dtwc::DeviceError("Metal: computeCommandEncoder creation failed");
+        [enc setComputePipelineState:pipeline];
+        [enc setBuffer:owned.series  offset:0 atIndex:0];
+        [enc setBuffer:owned.lengths offset:0 atIndex:1];
+        [enc setBuffer:owned.out     offset:0 atIndex:2];
+        [enc setBytes:&N_int     length:sizeof(int) atIndex:3];
+        [enc setBytes:&max_L     length:sizeof(int) atIndex:4];
+        [enc setBytes:&band      length:sizeof(int) atIndex:5];
+        [enc setBytes:&use_sq_l2 length:sizeof(int) atIndex:6];
+        if (use_global || use_banded_row) {
+          id<MTLBuffer> cur_scratch = dual_scratch ? owned.scratch[chunk_idx % 2] : owned.scratch[0];
+          [enc setBuffer:cur_scratch offset:0 atIndex:7];
+        } else if (use_regtile) {
+          [enc setThreadgroupMemoryLength:regtile_smem_len atIndex:0];
+        } else {
+          [enc setThreadgroupMemoryLength:tg_mem_len atIndex:0];
+        }
+        [enc setBytes:&pair_offset length:sizeof(pair_offset) atIndex:8];
+        if (use_banded_row) {
+          [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
+        } else if (use_regtile) {
+          const int pairs_per_tg_arg = static_cast<int>(pairs_per_tg);
+          [enc setBytes:&pairs_per_tg_arg length:sizeof(int) atIndex:9];
+        }
 
-      // Grid geometry:
-      //  - banded-row: one thread per pair, dispatch ceil(chunk / tg_size) tgs.
-      //  - regtile:    pairs_per_tg warps per tg, dispatch ceil(chunk/pairs_per_tg) tgs.
-      //  - wavefront:  one threadgroup per pair.
-      MTLSize grid, tg;
-      if (use_banded_row) {
-        const size_t ntgs = (this_chunk + tg_size - 1) / tg_size;
-        grid = MTLSizeMake(ntgs, 1, 1);
-        tg   = MTLSizeMake(tg_size, 1, 1);
-      } else if (use_regtile) {
-        const size_t ntgs = (this_chunk + pairs_per_tg - 1) / pairs_per_tg;
-        grid = MTLSizeMake(ntgs, 1, 1);
-        tg   = MTLSizeMake(tg_size, 1, 1);
-      } else {
-        grid = MTLSizeMake(this_chunk, 1, 1);
-        tg   = MTLSizeMake(tg_size, 1, 1);
-      }
-      [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
-      [enc endEncoding];
-      [cmd commit];
+        // Grid geometry:
+        //  - banded-row: one thread per pair, dispatch ceil(chunk / tg_size) tgs.
+        //  - regtile:    pairs_per_tg warps per tg, dispatch ceil(chunk/pairs_per_tg) tgs.
+        //  - wavefront:  one threadgroup per pair.
+        MTLSize grid, tg;
+        if (use_banded_row) {
+          const size_t ntgs = (this_chunk + tg_size - 1) / tg_size;
+          grid = MTLSizeMake(ntgs, 1, 1);
+          tg   = MTLSizeMake(tg_size, 1, 1);
+        } else if (use_regtile) {
+          const size_t ntgs = (this_chunk + pairs_per_tg - 1) / pairs_per_tg;
+          grid = MTLSizeMake(ntgs, 1, 1);
+          tg   = MTLSizeMake(tg_size, 1, 1);
+        } else {
+          grid = MTLSizeMake(this_chunk, 1, 1);
+          tg   = MTLSizeMake(tg_size, 1, 1);
+        }
+        [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+        [enc endEncoding];
+        [cmd commit];
 
-      if ((use_global || use_banded_row) && !dual_scratch) {
-        [cmd waitUntilCompleted];
-        check(cmd);
-      } else {
-        in_flight.push_back(cmd);
+        if ((use_global || use_banded_row) && !dual_scratch) {
+          [cmd waitUntilCompleted];
+          check(cmd);
+        } else {
+          in_flight.push_back(cmd);
+        }
       }
-    }
-    for (id<MTLCommandBuffer> cmd : in_flight) {
-      [cmd waitUntilCompleted];
-      check(cmd);
+      for (id<MTLCommandBuffer> pending : in_flight) {
+        [pending waitUntilCompleted];
+        check(pending);
+      }
+    } catch (...) {
+      for (id<MTLCommandBuffer> pending : in_flight) {
+        [pending waitUntilCompleted];
+      }
+      throw;
     }
 
     // Every refusal is behind us: size the caller's matrix (one already N x N,

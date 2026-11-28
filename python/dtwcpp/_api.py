@@ -18,7 +18,9 @@
     (arrays, and Parquet, which pyarrow reads: dtwcpp.io). Result wraps the
     run's C++ dtwc::Result.
 @author Volkan Kumtepeli
+@date 06 Jul 2026
 """
+
 import os
 import time
 
@@ -46,6 +48,17 @@ def _float64(values):
     return np.asarray(values, dtype=np.float64)
 
 
+def _preprocess_table_source(source):
+    """Handle pandas DataFrame, Arrow C Data, and scipy.sparse rejection consistently."""
+    if type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
+        return source.to_numpy(), [str(label) for label in source.index], False
+    if hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
+        return source, None, True
+    if type(source).__module__.startswith("scipy.sparse"):
+        raise TypeError("Sparse input is not supported; provide a dense array.")
+    return source, None, False
+
+
 def _series(source, skip_rows=0):
     """Already-read series as C++ takes them: one 1-D float64 array per series,
     and their names. The one conversion behind cluster(), load(),
@@ -63,16 +76,11 @@ def _series(source, skip_rows=0):
     """
     from dtwcpp import InvalidInput
     from dtwcpp._dtwcpp_core import data_from_arrow_c_array
-    names = None
-    if type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
-        names = [str(label) for label in source.index]
-        source = source.to_numpy()
-    elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
+    source, names, is_arrow = _preprocess_table_source(source)
+    if is_arrow:
         data = data_from_arrow_c_array(source)
         return ([np.asarray(data.series(i), dtype=np.float64) for i in range(skip_rows, data.size)],
                 list(data.p_names)[skip_rows:])
-    elif type(source).__module__.startswith("scipy.sparse"):
-        raise TypeError("Sparse input is not supported; provide a dense array.")
     if isinstance(source, (list, tuple)):
         rows = [_float64(row) for row in source[skip_rows:]]
         for i, row in enumerate(rows):
@@ -114,17 +122,14 @@ def _to_data(source, *, skip_rows=0, skip_cols=0, names=None, ndim=1, dtype="flo
         names = None if names is None else list(names)  # a bad names fails before the series are copied
         rows = [np.asarray(source.series(i), dtype=np.float64) for i in range(skip_rows, source.size)]
         default_names = list(source.p_names)[skip_rows:]
-    elif type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
-        df_names = [str(label) for label in source.index]
-        source = source.to_numpy()
-    elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
-        if skip_rows == 0 and skip_cols == 0 and names is None and ndim == 1:
-            return _dtwcpp_core.data_from_arrow_c_array(source, dtype)
-        rows, default_names = _series(source, skip_rows)
-    elif type(source).__module__.startswith("scipy.sparse"):
-        raise TypeError("Sparse input is not supported; provide a dense array.")
-    elif isinstance(source, (list, tuple)):
-        rows, default_names = _series(source, skip_rows)
+    else:
+        source, df_names, is_arrow = _preprocess_table_source(source)
+        if is_arrow:
+            if skip_rows == 0 and skip_cols == 0 and names is None and ndim == 1:
+                return _dtwcpp_core.data_from_arrow_c_array(source, dtype)
+            rows, default_names = _series(source, skip_rows)
+        elif isinstance(source, (list, tuple)):
+            rows, default_names = _series(source, skip_rows)
 
     if rows is not None:
         if skip_cols > 0:
@@ -474,11 +479,17 @@ class Result:
 
         D = np.asarray(self.distance_matrix, dtype=float)
         n = D.shape[0]
-        J = np.eye(n) - np.ones((n, n)) / n          # centering matrix
-        B = -0.5 * J @ (D ** 2) @ J                    # double-centered Gram matrix
-        w, V = np.linalg.eigh(B)
-        top = np.argsort(w)[::-1][:2]                  # top-2 eigenpairs
-        XY = V[:, top] * np.sqrt(np.maximum(w[top], 0.0))
+        if n < 2:
+            XY = np.zeros((n, 2), dtype=float)
+        else:
+            D2 = D * D
+            row_mean = D2.mean(axis=1, keepdims=True)
+            col_mean = D2.mean(axis=0, keepdims=True)
+            B = -0.5 * (D2 - row_mean - col_mean + D2.mean())
+            B = 0.5 * (B + B.T)
+            w, V = np.linalg.eigh(B)
+            top = np.argsort(w)[::-1][:2]                  # top-2 eigenpairs
+            XY = V[:, top] * np.sqrt(np.maximum(w[top], 0.0))
 
         fig, ax = plt.subplots(figsize=(6, 5))
         ax.scatter(XY[:, 0], XY[:, 1], c=self.labels, cmap="tab10", s=45,

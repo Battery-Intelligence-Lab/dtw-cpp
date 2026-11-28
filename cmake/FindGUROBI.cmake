@@ -1,3 +1,8 @@
+# @file FindGUROBI.cmake
+# @brief CMake finder module for Gurobi C and C++ solver libraries.
+# @author Volkan Kumtepeli
+# @date 18 Oct 2022
+
 # This file is adapted from https://gitlab.inf.unibe.ch/CGG-public/cmake-library/-/blob/master/finders/FindGurobi.cmake
 # Once done this will define
 #  Gurobi_FOUND - System has Gurobi
@@ -12,7 +17,7 @@ set(_gurobi_search_paths "$ENV{GUROBI_HOME}" "/opt/gurobi/linux64/")
 if(WIN32)
   # Scan C:/gurobi*/win64 for installations, sorted descending to prefer newest
   file(GLOB _gurobi_win_candidates "C:/gurobi*/win64")
-  list(SORT _gurobi_win_candidates ORDER DESCENDING)
+  list(SORT _gurobi_win_candidates COMPARE NATURAL ORDER DESCENDING)
   list(APPEND _gurobi_search_paths ${_gurobi_win_candidates})
   unset(_gurobi_win_candidates)
 elseif(APPLE)
@@ -22,7 +27,7 @@ elseif(APPLE)
   if(NOT _gurobi_mac_candidates)
     file(GLOB _gurobi_mac_candidates "/Library/gurobi*/mac64")
   endif()
-  list(SORT _gurobi_mac_candidates ORDER DESCENDING)
+  list(SORT _gurobi_mac_candidates COMPARE NATURAL ORDER DESCENDING)
   list(APPEND _gurobi_search_paths ${_gurobi_mac_candidates})
   unset(_gurobi_mac_candidates)
 endif()
@@ -66,17 +71,16 @@ else()
 endif()
 
 # Extract version numbers, ignoring _light variants
-string(REGEX MATCHALL
-    "gurobi([0-9]+)\\..*"
-    GUROBI_LIBRARY_LIST
-    "${GUROBI_LIBRARY_LIST}"
-    )
-
-string(REGEX REPLACE
-    ".*gurobi([0-9]+)\\..*"
-    "\\1"
-    GUROBI_LIBRARY_VERSIONS
-    "${GUROBI_LIBRARY_LIST}")
+set(GUROBI_LIBRARY_VERSIONS "")
+foreach(_gurobi_lib IN LISTS GUROBI_LIBRARY_LIST)
+    get_filename_component(_gurobi_lib_name "${_gurobi_lib}" NAME)
+    if(_gurobi_lib_name MATCHES "^(lib)?gurobi([0-9]+)\\.")
+        list(APPEND GUROBI_LIBRARY_VERSIONS "${CMAKE_MATCH_2}")
+    endif()
+endforeach()
+unset(_gurobi_lib)
+unset(_gurobi_lib_name)
+list(REMOVE_DUPLICATES GUROBI_LIBRARY_VERSIONS)
 list(LENGTH GUROBI_LIBRARY_VERSIONS GUROBI_NUMVER)
 
 if (GUROBI_NUMVER EQUAL 0)
@@ -126,7 +130,7 @@ mark_as_advanced(GUROBI_LIBRARY)
 # ── Create imported targets ─────────────────────────────────────────────────
 if(GUROBI_LIBRARY AND NOT TARGET Gurobi::GurobiC)
     add_library(Gurobi::GurobiC SHARED IMPORTED)
-    target_include_directories(Gurobi::GurobiC INTERFACE ${GUROBI_INCLUDE_DIR})
+    target_include_directories(Gurobi::GurobiC SYSTEM INTERFACE ${GUROBI_INCLUDE_DIR})
     if(WIN32 AND GUROBI_DLL)
       set_target_properties(Gurobi::GurobiC PROPERTIES
         IMPORTED_LOCATION "${GUROBI_DLL}"
@@ -157,7 +161,7 @@ if(TARGET Gurobi::GurobiC AND GUROBI_CXX_SRC AND NOT TARGET Gurobi::GurobiCXX)
         target_compile_definitions(GurobiCXX PRIVATE "WIN64")
     endif()
 
-    target_include_directories(GurobiCXX PUBLIC ${GUROBI_INCLUDE_DIR})
+    target_include_directories(GurobiCXX SYSTEM PUBLIC ${GUROBI_INCLUDE_DIR})
     target_link_libraries(GurobiCXX PUBLIC Gurobi::GurobiC)
     # We need to be able to link this into a shared library:
     set_target_properties(GurobiCXX PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -67,7 +67,7 @@ function res = cluster(data, k, varargin)
 %> @file cluster.m
 %> @brief High-level clustering entry point.
 %> @author Volkan Kumtepeli
-
+%> @date 07 Jul 2026
     [varargin{:}] = convertStringsToChars(varargin{:});
     key = 2 * find(strcmpi(varargin(1:2:end - 1), 'Dtype')) - 1;   % load's, not the run's
     loadArgs = varargin(sort([key, key + 1]));
@@ -87,8 +87,9 @@ function res = cluster(data, k, varargin)
     else
         % The keys are checked before parquetread reads a file, as for a path. The series go with their Ndim.
         settings = dtwc.Problem();
+        cleaner = onCleanup(@() delete(settings)); %#ok<NASGU>
         dtwc_mex('apply', settings.get_handle(), k, varargin{:});
-        delete(settings);
+        clear cleaner;
         [series, names, ndim] = data.as_series();
         out = dtwc_mex('run_workflow', dtwc.internal.cast_series(series, data.Dtype), names, ndim, 0, 0, '', data.Dtype, ...
                        data.Name, output, checkpoint, interval, k, varargin{:});

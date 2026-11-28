@@ -2,6 +2,7 @@
 @file __init__.py
 @brief DTWC++ — Fast Dynamic Time Warping and Clustering.
 @author Volkan Kumtepeli
+@date 28 Mar 2026
 """
 
 from dtwcpp._dtwcpp_core import (

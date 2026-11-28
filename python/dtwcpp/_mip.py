@@ -8,8 +8,8 @@
     NumPy views, and C++ decodes the solution into labels and medoids. dtwcpp.cluster()'s
     run (dtwc::run) calls solve(); Problem.cluster's override (__init__.py) calls cluster().
 @author Volkan Kumtepeli
+@date 06 Oct 2026
 """
-
 
 def solve(prob):
     """The solver ``dtwcpp.cluster()``'s run hands its highspy case to (C++
@@ -46,8 +46,7 @@ def cluster(prob):
     n = int(prob.size)
     k = int(prob.n_clusters())
     settings = prob.mip_settings
-    if not (settings.mip_gap >= 0.0) or settings.lr_max_nodes < 1:
-        _dtwcpp_core._mip_model(prob)  # triggers C++ validate_mip_settings / require_clusterable
+    _dtwcpp_core._validate_mip(prob)
 
     if n >= 1 and k == 1:
         return _dtwcpp_core.fast_pam(prob, 1, 0, prob.random_seed)

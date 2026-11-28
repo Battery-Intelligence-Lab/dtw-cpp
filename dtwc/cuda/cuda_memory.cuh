@@ -1,7 +1,9 @@
 /**
  * @file cuda_memory.cuh
  * @brief RAII wrappers for CUDA device memory.
+ *
  * @author Volkan Kumtepeli
+ * @date 02 Apr 2026
  */
 
 #pragma once
@@ -34,8 +36,9 @@ namespace dtwc::cuda {
 
 /// Deleter that calls cudaFree for use with std::unique_ptr.
 struct CudaDeleter {
-  void operator()(void *p) const {
-    if (p) cudaFree(p);
+  void operator()(void *p) const noexcept
+  {
+    if (p && cudaFree(p) != cudaSuccess) (void)cudaGetLastError();
   }
 };
 
@@ -58,8 +61,9 @@ CudaPtr<T> cuda_alloc(size_t count)
 
 /// Deleter that calls cudaFreeHost for use with std::unique_ptr.
 struct PinnedDeleter {
-  void operator()(void *p) const {
-    if (p) cudaFreeHost(p);
+  void operator()(void *p) const noexcept
+  {
+    if (p && cudaFreeHost(p) != cudaSuccess) (void)cudaGetLastError();
   }
 };
 
@@ -87,8 +91,9 @@ PinnedPtr<T> pinned_alloc_nothrow(size_t count)
 
 /// Deleter that calls cudaStreamDestroy for use with std::unique_ptr.
 struct StreamDeleter {
-  void operator()(CUstream_st *s) const {
-    if (s) cudaStreamDestroy(s);
+  void operator()(CUstream_st *s) const noexcept
+  {
+    if (s && cudaStreamDestroy(s) != cudaSuccess) (void)cudaGetLastError();
   }
 };
 
@@ -109,8 +114,9 @@ inline CudaStream make_cuda_stream()
 
 /// Deleter that calls cudaEventDestroy for use with std::unique_ptr.
 struct EventDeleter {
-  void operator()(CUevent_st *e) const {
-    if (e) cudaEventDestroy(e);
+  void operator()(CUevent_st *e) const noexcept
+  {
+    if (e && cudaEventDestroy(e) != cudaSuccess) (void)cudaGetLastError();
   }
 };
 

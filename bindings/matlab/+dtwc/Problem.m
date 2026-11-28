@@ -17,7 +17,7 @@ classdef Problem < handle
 %> @file Problem.m
 %> @brief OOP wrapper for the DTWC++ Problem class.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     properties (Access = private)
         Handle uint64 = uint64(0)
     end
@@ -51,7 +51,7 @@ classdef Problem < handle
             addParameter(p, 'Device', 'cpu', @(v) ischar(v) || isstring(v));
             addParameter(p, 'Fallback', false, @(v) islogical(v) && isscalar(v));
             parse(p, varargin{:});
-            obj.Handle = dtwc_mex('Problem_new', name, char(p.Results.Device), p.Results.Fallback);
+            obj.Handle = dtwc_mex('Problem_new', char(name), char(p.Results.Device), p.Results.Fallback);
         end
 
         function delete(obj)
@@ -120,9 +120,9 @@ classdef Problem < handle
         %
         %   Names are the C++ table's (the CLI's), ignoring case.
             if nargin > 2
-                dtwc_mex('Problem_set_variant', obj.Handle, variant, double(varargin{1}));
+                dtwc_mex('Problem_set_variant', obj.Handle, char(variant), double(varargin{1}));
             else
-                dtwc_mex('Problem_set_variant', obj.Handle, variant);
+                dtwc_mex('Problem_set_variant', obj.Handle, char(variant));
             end
         end
 
@@ -141,7 +141,7 @@ classdef Problem < handle
         %   prob.set_missing_strategy('zero_cost')
         %   prob.set_missing_strategy('arow')
         %   prob.set_missing_strategy('interpolate')
-            dtwc_mex('Problem_set_missing_strategy', obj.Handle, strategy);
+            dtwc_mex('Problem_set_missing_strategy', obj.Handle, char(strategy));
         end
 
         function set_device(obj, device, varargin)

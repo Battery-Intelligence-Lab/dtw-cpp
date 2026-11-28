@@ -24,7 +24,7 @@ function result = cut_dendrogram(dend, prob, k)
 %> @file cut_dendrogram.m
 %> @brief Cut a dendrogram to produce k flat clusters.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     validateattributes(k, {'numeric'}, {'scalar', 'positive', 'integer'}, 'cut_dendrogram', 'k');
     result = dtwc_mex('cut_dendrogram', dend, prob.get_handle(), double(k));
 end

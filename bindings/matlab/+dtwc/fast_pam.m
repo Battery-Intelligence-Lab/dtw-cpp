@@ -40,7 +40,7 @@ function result = fast_pam(prob, k, varargin)
 %> @file fast_pam.m
 %> @brief Run FasterPAM k-medoids clustering on a Problem.
 %> @author Volkan Kumtepeli
-
+%> @date 03 Apr 2026
     p = inputParser;
     addRequired(p, 'prob');
     addRequired(p, 'k', @(v) isnumeric(v) && isscalar(v) && v > 0);

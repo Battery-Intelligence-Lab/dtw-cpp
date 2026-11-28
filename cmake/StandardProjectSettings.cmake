@@ -1,3 +1,8 @@
+# @file StandardProjectSettings.cmake
+# @brief Default build type, C++ standard, export compile commands, and target architecture flags.
+# @author Volkan Kumtepeli
+# @date 17 Aug 2022
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
   set(CMAKE_BUILD_TYPE
@@ -162,11 +167,11 @@ if(PROJECT_IS_TOP_LEVEL)
     message(FATAL_ERROR "DTWC_ARCH_LEVEL=v4 is an x86-64 level; the target is ${CMAKE_SYSTEM_PROCESSOR}.")
   endif()
 endif()
+# Applied to dtwc_options INTERFACE in dtwc_local_options() (cmake/ProjectOptions.cmake)
+# after dtwc_setup_dependencies(), so fetched third-party targets do not inherit it.
 if(_arch_flag STREQUAL "")
   message(STATUS "Architecture level: ${_dtwc_arch_level} — no compiler flag added")
 else()
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_arch_flag}>>)
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_arch_flag}>>)
   message(STATUS "Architecture level: ${_dtwc_arch_level} (${_arch_flag})")
 endif()
 

@@ -6,5 +6,6 @@ function seed = default_random_seed()
 %> @file default_random_seed.m
 %> @brief Shared invocation-local seed used by deterministic Tier-1 algorithms.
 %> @author Volkan Kumtepeli
+%> @date 10 Jul 2026
     seed = dtwc_mex('default_random_seed');
 end

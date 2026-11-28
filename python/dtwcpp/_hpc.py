@@ -15,7 +15,9 @@
     wrapper against local stand-ins for ssh, rsync and sbatch, and job.toml
     through a local dtwc_cl.
 @author Volkan Kumtepeli
+@date 30 Jun 2026
 """
+
 import csv
 import importlib.resources
 import os
@@ -72,7 +74,7 @@ def write_series_tsv(series, path):
     HPC run clusters the same numbers as a local one.
     """
     path = str(path)
-    with open(path, "w", newline="") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         for s in series:
             f.write("\t".join(repr(float(v)) for v in s))
             f.write("\n")
@@ -362,17 +364,21 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
     runs = os.path.join(repo_root, "results", "hpc")
     os.makedirs(runs, exist_ok=True)
     rundir = tempfile.mkdtemp(prefix="job.", dir=runs)  # one per run: no shared path
-    if series is not None:
-        write_series_tsv(series, os.path.join(rundir, "input.tsv"))
-    elif staged_local_path is not None:
-        dst = os.path.join(rundir, staged_rel_name)
-        if os.path.isdir(staged_local_path):
-            shutil.copytree(staged_local_path, dst)
-        else:
-            shutil.copy2(staged_local_path, dst)
-    with open(os.path.join(rundir, "job.toml"), "w", encoding="utf-8",
-              newline="\n") as f:
-        f.writelines(f"{key} = {_toml_value(value)}\n" for key, value in items)
+    try:
+        if series is not None:
+            write_series_tsv(series, os.path.join(rundir, "input.tsv"))
+        elif staged_local_path is not None:
+            dst = os.path.join(rundir, staged_rel_name)
+            if os.path.isdir(staged_local_path):
+                shutil.copytree(staged_local_path, dst)
+            else:
+                shutil.copy2(staged_local_path, dst)
+        with open(os.path.join(rundir, "job.toml"), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.writelines(f"{key} = {_toml_value(value)}\n" for key, value in items)
+    except Exception:
+        shutil.rmtree(rundir, ignore_errors=True)
+        raise
 
     # Relative to the project directory, so Git Bash's rsync cannot read
     # 'C:/...' as host:path.

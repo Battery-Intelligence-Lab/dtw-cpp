@@ -20,9 +20,11 @@ function d = dtw(x, y, varargin)
 %   strategy does not take raises dtwc:invalidArgument.
 
 %> @file dtw.m
+%> @brief DTW-family pairwise distance entry point in MATLAB backed by dtwc_mex.
 %> @author Volkan Kumtepeli
-    if ~isnumeric(x) || ~isnumeric(y)
-        error('dtwc:invalidArgument', 'x and y must be numeric.');
+%> @date 14 Apr 2026
+    if ~isnumeric(x) || ~isnumeric(y) || isempty(x) || isempty(y) || ~isvector(x) || ~isvector(y)
+        error('dtwc:invalidArgument', 'x and y must be non-empty numeric vectors.');
     end
     [varargin{:}] = convertStringsToChars(varargin{:});
     d = dtwc_mex('dtw', double(x(:)'), double(y(:)'), varargin{:});

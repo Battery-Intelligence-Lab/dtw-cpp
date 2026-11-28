@@ -1,3 +1,8 @@
+# @file CMakeLists.txt
+# @brief Library target definitions for dtwc_core, dtwc_io, and dtwc_cli.
+# @author Volkan Kumtepeli
+# @date 03 Dec 2023
+
 cmake_minimum_required(VERSION 3.26)
 
 # Three libraries and one name for consumers:
@@ -223,7 +228,9 @@ endif()
 foreach(_dtwc_lib IN LISTS _dtwc_libs)
   target_link_libraries(${_dtwc_lib} PRIVATE project_warnings project_options)
   if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${_dtwc_lib} PRIVATE ${DTWC_GNU_FLAG_PREFIX}-fno-finite-math-only)
+    target_compile_options(${_dtwc_lib} PRIVATE
+      $<$<COMPILE_LANGUAGE:C,CXX,OBJCXX>:${DTWC_GNU_FLAG_PREFIX}-fno-finite-math-only>
+    )
   endif()
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     target_compile_options(${_dtwc_lib} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/we4062>)

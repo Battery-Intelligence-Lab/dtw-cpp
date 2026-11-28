@@ -12,5 +12,6 @@ function ari = adjusted_rand(labels_true, labels_pred)
 %> @file adjusted_rand.m
 %> @brief Adjusted Rand index.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     ari = dtwc_mex('adjusted_rand', labels_true, labels_pred);
 end

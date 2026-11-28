@@ -1,4 +1,7 @@
-# @author Volkan Kumtepeli
+## @file _wheel_smoke.py
+## @brief Runtime release-artifact gate used by cibuildwheel.
+## @author Volkan Kumtepeli
+## @date 10 Jul 2026
 """Runtime release-artifact gate used by cibuildwheel.
 
 The six series are a compact subset of the cross-language conformance fixture:

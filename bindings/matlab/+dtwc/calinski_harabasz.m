@@ -10,5 +10,6 @@ function ch = calinski_harabasz(prob)
 %> @file calinski_harabasz.m
 %> @brief Calinski-Harabasz index.
 %> @author Volkan Kumtepeli
+%> @date 07 Jul 2026
     ch = dtwc_mex('calinski_harabasz', prob.get_handle());
 end

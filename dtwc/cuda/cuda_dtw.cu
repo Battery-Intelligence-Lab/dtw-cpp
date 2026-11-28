@@ -19,6 +19,7 @@
  *      three explicit integer offsets.
  *
  * @author Volkan Kumtepeli
+ * @date 29 Mar 2026
  */
 
 #include "cuda_dtw.cuh"
@@ -49,6 +50,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -219,6 +221,7 @@ cudaError_t open_wavefront_variants(DeviceLimits &device)
 const DeviceLimits &device_limits(int device_id)
 {
   static std::unique_ptr<DeviceLimits[]> limits;
+  static int device_count = 0;
   static cudaError_t read_error = cudaSuccess;
   static std::once_flag read_once;
   std::call_once(read_once, [] {
@@ -231,6 +234,11 @@ const DeviceLimits &device_limits(int device_id)
     int count = 0;
     read_error = cudaGetDeviceCount(&count);
     if (read_error != cudaSuccess) return;
+    if (count <= 0) {
+      read_error = cudaErrorNoDevice;
+      return;
+    }
+    device_count = count;
     limits = std::make_unique<DeviceLimits[]>(static_cast<size_t>(count));
     for (int d = 0; d < count; ++d) {
       DeviceLimits &device = limits[static_cast<size_t>(d)];
@@ -253,9 +261,16 @@ const DeviceLimits &device_limits(int device_id)
     }
   });
   CUDA_CHECK(read_error);
+  if (device_id < 0 || device_id >= device_count) CUDA_CHECK(cudaErrorInvalidDevice);
   DeviceLimits &device = limits[static_cast<size_t>(device_id)];
   detail::require_compute_capability(device.compute_major, device.compute_minor, device_id);
-  std::call_once(device.set_up, [&device] {
+  std::call_once(device.set_up, [&device, device_id] {
+    int previous = 0;
+    const bool had_previous = cudaGetDevice(&previous) == cudaSuccess;
+    if (!had_previous) (void)cudaGetLastError();
+    if (!had_previous || previous != device_id) {
+      device.setup_error = cudaSetDevice(device_id);
+    }
     using Open = cudaError_t (*)(DeviceLimits &);
     const Open opens[] = {
       open_wavefront_variants<float, Pairs::Triangle, double>,
@@ -267,6 +282,11 @@ const DeviceLimits &device_limits(int device_id)
     };
     for (const Open open : opens)
       if (device.setup_error == cudaSuccess) device.setup_error = open(device);
+    if (had_previous && previous != device_id) {
+      const cudaError_t restore_err = cudaSetDevice(previous);
+      if (device.setup_error == cudaSuccess) device.setup_error = restore_err;
+      else if (restore_err != cudaSuccess) (void)cudaGetLastError();
+    }
   });
   CUDA_CHECK(device.setup_error);
   return device;
@@ -880,7 +900,8 @@ struct DTWLaunchWorkspace {
   size_t overflow_capacity = 0;
   size_t slot_map_capacity = 0;
   size_t medoid_idx_capacity = 0;
-  size_t argmin_capacity = 0;
+  size_t argmin_labels_capacity = 0;
+  size_t argmin_dists_capacity = 0;
 
   CachedHostBuffer<T> host_series;
   CachedHostBuffer<int> host_lengths;
@@ -910,16 +931,8 @@ struct DTWLaunchWorkspace {
   std::array<CudaEvent, 2> uploaded, computed, d_out_free, d2h_done;
   std::array<CudaEvent, 3> downloaded;
 
-  void release() noexcept
+  void release_device() noexcept
   {
-    host_series = CachedHostBuffer<T>{};
-    host_lengths = CachedHostBuffer<int>{};
-    host_out = CachedHostBuffer<double>{};
-    host_overflow = CachedHostBuffer<int>{};
-    host_d2h[0] = CachedHostBuffer<std::byte>{};
-    host_d2h[1] = CachedHostBuffer<std::byte>{};
-    host_argmin_labels = CachedHostBuffer<index_t>{};
-    host_argmin_dists = CachedHostBuffer<double>{};
     reset_events();
     copy_stream.reset();
     d2h_stream.reset();
@@ -937,31 +950,28 @@ struct DTWLaunchWorkspace {
     evt_start.reset();
     evt_end.reset();
     series_capacity = length_capacity = out_byte_capacity = counter_capacity = scratch_capacity = 0;
-    overflow_capacity = slot_map_capacity = medoid_idx_capacity = argmin_capacity = 0;
+    overflow_capacity = slot_map_capacity = medoid_idx_capacity = 0;
+    argmin_labels_capacity = argmin_dists_capacity = 0;
     device_id = -1;
+  }
+
+  void release() noexcept
+  {
+    host_series = CachedHostBuffer<T>{};
+    host_lengths = CachedHostBuffer<int>{};
+    host_out = CachedHostBuffer<double>{};
+    host_overflow = CachedHostBuffer<int>{};
+    host_d2h[0] = CachedHostBuffer<std::byte>{};
+    host_d2h[1] = CachedHostBuffer<std::byte>{};
+    host_argmin_labels = CachedHostBuffer<index_t>{};
+    host_argmin_dists = CachedHostBuffer<double>{};
+    release_device();
   }
 
   void ensure_runtime(int new_device_id)
   {
     if (device_id != new_device_id) {
-      d_series.reset();
-      d_lengths.reset();
-      d_out.reset();
-      d_counter.reset();
-      d_scratch.reset();
-      d_overflow.reset();
-      d_slot_to_unique.reset();
-      d_medoid_indices.reset();
-      d_argmin_labels.reset();
-      d_argmin_dists.reset();
-      stream.reset();
-      copy_stream.reset();
-      d2h_stream.reset();
-      evt_start.reset();
-      evt_end.reset();
-      reset_events();
-      series_capacity = length_capacity = out_byte_capacity = counter_capacity = scratch_capacity = 0;
-      overflow_capacity = slot_map_capacity = medoid_idx_capacity = argmin_capacity = 0;
+      release_device();
       device_id = new_device_id;
     }
 
@@ -1024,7 +1034,16 @@ std::size_t workspace_bytes(const DTWLaunchWorkspace<T> &w)
          + w.out_byte_capacity + w.counter_capacity * sizeof(int)
          + w.scratch_capacity * sizeof(T) + w.overflow_capacity * sizeof(int)
          + w.slot_map_capacity * sizeof(int) + w.medoid_idx_capacity * sizeof(index_t)
-         + w.argmin_capacity * (sizeof(index_t) + sizeof(double));
+         + w.argmin_labels_capacity * sizeof(index_t) + w.argmin_dists_capacity * sizeof(double);
+}
+
+inline int checked_int(size_t value, const char *what)
+{
+  if (value > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw dtwc::InvalidInput(std::string(what) + " (" + std::to_string(value)
+                             + ") exceeds 32-bit CUDA kernel limit");
+  }
+  return static_cast<int>(value);
 }
 
 template <typename T>
@@ -1033,6 +1052,17 @@ DTWLaunchWorkspace<T> &get_dtw_launch_workspace(int device_id)
   DTWLaunchWorkspace<T> &workspace = workspace_of<T>();
   workspace.ensure_runtime(device_id);
   return workspace;
+}
+
+template <typename T>
+void ensure_cuda_buf(CudaPtr<T> &buf, size_t &capacity, size_t needed)
+{
+  if (capacity >= needed) return;
+  // Release old VRAM before allocating the replacement to avoid a 2x peak and stale capacity on throw.
+  buf.reset();
+  capacity = 0;
+  buf = cuda_alloc<T>(needed);
+  capacity = needed;
 }
 
 template <typename T>
@@ -1045,30 +1075,12 @@ void ensure_dtw_device_capacity(
     size_t counter_elems,
     size_t overflow_elems = 1)
 {
-  if (workspace.series_capacity < series_elems) {
-    workspace.d_series = cuda_alloc<T>(series_elems);
-    workspace.series_capacity = series_elems;
-  }
-  if (workspace.length_capacity < length_elems) {
-    workspace.d_lengths = cuda_alloc<int>(length_elems);
-    workspace.length_capacity = length_elems;
-  }
-  if (workspace.out_byte_capacity < out_bytes) {
-    workspace.d_out = cuda_alloc<std::byte>(out_bytes);
-    workspace.out_byte_capacity = out_bytes;
-  }
-  if (workspace.scratch_capacity < scratch_elems) {
-    workspace.d_scratch = cuda_alloc<T>(scratch_elems);
-    workspace.scratch_capacity = scratch_elems;
-  }
-  if (workspace.counter_capacity < counter_elems) {
-    workspace.d_counter = cuda_alloc<int>(counter_elems);
-    workspace.counter_capacity = counter_elems;
-  }
-  if (workspace.overflow_capacity < overflow_elems) {
-    workspace.d_overflow = cuda_alloc<int>(overflow_elems);
-    workspace.overflow_capacity = overflow_elems;
-  }
+  ensure_cuda_buf(workspace.d_series, workspace.series_capacity, series_elems);
+  ensure_cuda_buf(workspace.d_lengths, workspace.length_capacity, length_elems);
+  ensure_cuda_buf(workspace.d_out, workspace.out_byte_capacity, out_bytes);
+  ensure_cuda_buf(workspace.d_scratch, workspace.scratch_capacity, scratch_elems);
+  ensure_cuda_buf(workspace.d_counter, workspace.counter_capacity, counter_elems);
+  ensure_cuda_buf(workspace.d_overflow, workspace.overflow_capacity, overflow_elems);
 }
 
 template <typename T>
@@ -1083,7 +1095,7 @@ int pad_series(T *dst, std::span<const double> src, size_t max_L)
       dst[k] = static_cast<T>(src[k]);
   }
   std::fill(dst + len, dst + max_L, T(0));
-  return static_cast<int>(len);
+  return checked_int(len, "pad_series length");
 }
 
 /// Exact scalar double DTW for rare Float32 overflow error reporting.
@@ -1186,7 +1198,7 @@ struct Launches {
 
   Launches(detail::KernelPath kernel_path, size_t max_length, bool squared_l2, int band_width,
            bool output_f32, std::int64_t chunk, const DeviceLimits &device)
-      : path(kernel_path), max_L(static_cast<int>(max_length)), use_squared_l2(squared_l2),
+      : path(kernel_path), max_L(checked_int(max_length, "Launches max_length")), use_squared_l2(squared_l2),
         band(band_width), out_f32(output_f32)
   {
     const bool banded = (band >= 0 && band < max_L - 1);
@@ -1605,6 +1617,86 @@ struct TriangleFill {
   }
 };
 
+template <typename T, typename UploadExtraFn, typename ComputeFn, typename D2hCopyFn, typename ConsumeFn>
+double run_medoid_pipeline(
+    DTWLaunchWorkspace<T> &workspace,
+    size_t N, size_t block, size_t series_slots, size_t n_medoids, size_t max_L,
+    const SeriesAt &series, const std::vector<std::span<const double>> &medoids,
+    T *h_series, int *h_lengths, T *d_series, int *d_lengths,
+    const ParallelFor &parallel,
+    UploadExtraFn &&upload_extra,
+    ComputeFn &&compute_fn,
+    D2hCopyFn &&d2h_copy_fn,
+    ConsumeFn &&consume_fn)
+{
+  const size_t blocks = (N + block - 1) / block;
+  const size_t device_slot = (n_medoids + block) * max_L;
+  const cudaStream_t copy = workspace.copy_stream.get(), compute = workspace.stream.get(),
+                     d2h = workspace.d2h_stream.get();
+
+  const auto enqueue = [&](size_t b) {
+    const size_t s = b % 2, first = b * block, count = std::min(block, N - first);
+    T *const h_slot = h_series + (n_medoids + s * block) * max_L;
+    int *const h_slot_lengths = h_lengths + n_medoids + s * block;
+    if (b >= 2) CUDA_CHECK(cudaEventSynchronize(workspace.uploaded[s].get()));
+    parallel(count, [&](size_t i) { h_slot_lengths[i] = pad_series(h_slot + i * max_L, series(first + i), max_L); });
+    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(copy, workspace.computed[s].get(), 0));
+    T *const d_slot = d_series + s * device_slot;
+    int *const d_slot_lengths = d_lengths + s * (n_medoids + block);
+
+    CUDA_CHECK(cudaMemcpyAsync(d_slot + n_medoids * max_L, h_slot, count * max_L * sizeof(T),
+                               cudaMemcpyHostToDevice, copy));
+    CUDA_CHECK(cudaMemcpyAsync(d_slot_lengths + n_medoids, h_slot_lengths, count * sizeof(int),
+                               cudaMemcpyHostToDevice, copy));
+    CUDA_CHECK(cudaEventRecord(workspace.uploaded[s].get(), copy));
+    CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.uploaded[s].get(), 0));
+    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.d_out_free[s].get(), 0));
+
+    compute_fn(s, first, count, d_slot, d_slot_lengths, compute);
+    CUDA_CHECK(cudaEventRecord(workspace.computed[s].get(), compute));
+    CUDA_CHECK(cudaStreamWaitEvent(d2h, workspace.computed[s].get(), 0));
+
+    const size_t d_slot_idx = b % 3;
+    d2h_copy_fn(s, d_slot_idx, count, d2h);
+    CUDA_CHECK(cudaEventRecord(workspace.d_out_free[s].get(), d2h));
+    CUDA_CHECK(cudaEventRecord(workspace.downloaded[d_slot_idx].get(), d2h));
+  };
+
+  try {
+    for (size_t m = 0; m < n_medoids; ++m) {
+      h_lengths[m] = pad_series(h_series + m * max_L, medoids[m], max_L);
+    }
+    CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), copy));
+    upload_extra(copy);
+    for (size_t s = 0; s < series_slots; ++s) {
+      CUDA_CHECK(cudaMemcpyAsync(d_series + s * device_slot, h_series, n_medoids * max_L * sizeof(T),
+                                 cudaMemcpyHostToDevice, copy));
+      CUDA_CHECK(cudaMemcpyAsync(d_lengths + s * (n_medoids + block), h_lengths, n_medoids * sizeof(int),
+                                 cudaMemcpyHostToDevice, copy));
+    }
+    enqueue(0);
+    if (blocks > 1) enqueue(1);
+    for (size_t b = 0; b < blocks; ++b) {
+      if (b + 2 < blocks) enqueue(b + 2);
+      const size_t d_slot_idx = b % 3;
+      CUDA_CHECK(cudaEventSynchronize(workspace.downloaded[d_slot_idx].get()));
+      const size_t first = b * block, count = std::min(block, N - first);
+      consume_fn(d_slot_idx, first, count);
+    }
+    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), d2h));
+    CUDA_CHECK(cudaEventSynchronize(workspace.evt_end.get()));
+  } catch (...) {
+    (void)cudaStreamSynchronize(copy);
+    (void)cudaStreamSynchronize(compute);
+    (void)cudaStreamSynchronize(d2h);
+    (void)cudaGetLastError();
+    throw;
+  }
+  float elapsed_ms = 0.0f;
+  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, workspace.evt_start.get(), workspace.evt_end.get()));
+  return static_cast<double>(elapsed_ms) / 1000.0;
+}
+
 template <typename T>
 void launch_medoid_kernel(
     size_t N, const SeriesAt &series, const std::vector<std::span<const double>> &medoids, size_t max_L,
@@ -1613,7 +1705,9 @@ void launch_medoid_kernel(
 {
   const size_t k = medoids.size();
   const auto plan = detail::medoid_blocks(N, k, max_L, sizeof(T), opts.host_staging_bytes);
-  const size_t block = plan.block, blocks = (N + block - 1) / block;
+  const size_t block = plan.block;
+  const int k_int = checked_int(k, "launch_medoid_kernel k");
+  (void)checked_int(block * k, "launch_medoid_kernel block * k");
   const Launches<T, Pairs::Rectangle> launches(kernel_path, max_L, opts.use_squared_l2, opts.band,
                                                false, static_cast<std::int64_t>(block * k),
                                                device_limits(opts.device_id));
@@ -1627,66 +1721,23 @@ void launch_medoid_kernel(
   T *const h_series = workspace.host_series.ensure((k + plan.series_slots * block) * max_L, true);
   int *const h_lengths = workspace.host_lengths.ensure(k + plan.series_slots * block, true);
   double *const h_out = workspace.host_out.ensure(plan.distance_slots * block * k, true);
-  T *const d_series = workspace.d_series.get();
-  int *const d_lengths = workspace.d_lengths.get();
   double *const d_out = reinterpret_cast<double *>(workspace.d_out.get());
-  const cudaStream_t copy = workspace.copy_stream.get(), compute = workspace.stream.get(),
-                     d2h = workspace.d2h_stream.get();
 
-  const auto enqueue = [&](size_t b) {
-    const size_t s = b % 2, first = b * block, count = std::min(block, N - first);
-    T *const h_slot = h_series + (k + s * block) * max_L;
-    int *const h_slot_lengths = h_lengths + k + s * block;
-    if (b >= 2) CUDA_CHECK(cudaEventSynchronize(workspace.uploaded[s].get()));
-    parallel(count, [&](size_t i) { h_slot_lengths[i] = pad_series(h_slot + i * max_L, series(first + i), max_L); });
-    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(copy, workspace.computed[s].get(), 0));
-    T *const d_slot = d_series + s * device_slot;
-    int *const d_slot_lengths = d_lengths + s * (k + block);
-    double *const d_out_slot = d_out + s * block * k;
-    CUDA_CHECK(cudaMemcpyAsync(d_slot + k * max_L, h_slot, count * max_L * sizeof(T), cudaMemcpyHostToDevice, copy));
-    CUDA_CHECK(cudaMemcpyAsync(d_slot_lengths + k, h_slot_lengths, count * sizeof(int), cudaMemcpyHostToDevice, copy));
-    CUDA_CHECK(cudaEventRecord(workspace.uploaded[s].get(), copy));
-    CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.uploaded[s].get(), 0));
-    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.d_out_free[s].get(), 0));
-    launches(workspace, d_slot, d_slot_lengths, static_cast<int>(k), 0, static_cast<int>(count * k), 0, compute,
-             d_out_slot, nullptr);
-    CUDA_CHECK(cudaEventRecord(workspace.computed[s].get(), compute));
-    CUDA_CHECK(cudaStreamWaitEvent(d2h, workspace.computed[s].get(), 0));
-    CUDA_CHECK(cudaMemcpyAsync(h_out + (b % 3) * block * k, d_out_slot, count * k * sizeof(double),
-                               cudaMemcpyDeviceToHost, d2h));
-    CUDA_CHECK(cudaEventRecord(workspace.d_out_free[s].get(), d2h));
-    CUDA_CHECK(cudaEventRecord(workspace.downloaded[b % 3].get(), d2h));
-  };
-
-  try {
-    for (size_t m = 0; m < k; ++m) h_lengths[m] = pad_series(h_series + m * max_L, medoids[m], max_L);
-    CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), copy));
-    for (size_t s = 0; s < plan.series_slots; ++s) {
-      CUDA_CHECK(cudaMemcpyAsync(d_series + s * device_slot, h_series, k * max_L * sizeof(T), cudaMemcpyHostToDevice,
-                                 copy));
-      CUDA_CHECK(cudaMemcpyAsync(d_lengths + s * (k + block), h_lengths, k * sizeof(int), cudaMemcpyHostToDevice,
-                                 copy));
-    }
-    enqueue(0);
-    if (blocks > 1) enqueue(1);
-    for (size_t b = 0; b < blocks; ++b) {
-      if (b + 2 < blocks) enqueue(b + 2);
-      CUDA_CHECK(cudaEventSynchronize(workspace.downloaded[b % 3].get()));
-      const size_t first = b * block, count = std::min(block, N - first);
-      consume(first, count, std::span<const double>(h_out + (b % 3) * block * k, count * k));
-    }
-    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), d2h));
-    CUDA_CHECK(cudaEventSynchronize(workspace.evt_end.get()));
-  } catch (...) {
-    (void)cudaStreamSynchronize(copy);
-    (void)cudaStreamSynchronize(compute);
-    (void)cudaStreamSynchronize(d2h);
-    (void)cudaGetLastError();
-    throw;
-  }
-  float elapsed_ms = 0.0f;
-  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, workspace.evt_start.get(), workspace.evt_end.get()));
-  gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
+  gpu_time_sec = run_medoid_pipeline(
+      workspace, N, block, plan.series_slots, k, max_L, series, medoids,
+      h_series, h_lengths, workspace.d_series.get(), workspace.d_lengths.get(), parallel,
+      [](cudaStream_t) {},
+      [&](size_t s, size_t, size_t count, T *d_slot, int *d_slot_lengths, cudaStream_t compute) {
+        launches(workspace, d_slot, d_slot_lengths, k_int, 0, static_cast<int>(count * k), 0, compute,
+                 d_out + s * block * k, nullptr);
+      },
+      [&](size_t s, size_t d_slot_idx, size_t count, cudaStream_t d2h) {
+        CUDA_CHECK(cudaMemcpyAsync(h_out + d_slot_idx * block * k, d_out + s * block * k,
+                                   count * k * sizeof(double), cudaMemcpyDeviceToHost, d2h));
+      },
+      [&](size_t d_slot_idx, size_t first, size_t count) {
+        consume(first, count, std::span<const double>(h_out + d_slot_idx * block * k, count * k));
+      });
 }
 
 template <typename T>
@@ -1706,7 +1757,13 @@ size_t launch_medoid_argmin_kernel(
   // Price host staging against all `slots` medoids so `--ram-limit` matches `run.cpp`'s budget estimate even when
   // unique_medoids.size() < slots after deduplication.
   const auto plan = detail::medoid_blocks(N, slots, max_L, sizeof(T), opts.host_staging_bytes);
-  const size_t block = plan.block, blocks = (N + block - 1) / block;
+  const size_t block = plan.block;
+  const int u_int = checked_int(u, "launch_medoid_argmin_kernel u");
+  const int n_samples_int = checked_int(n_samples, "launch_medoid_argmin_kernel n_samples");
+  const int k_int = checked_int(k, "launch_medoid_argmin_kernel k");
+  (void)checked_int(block * u, "launch_medoid_argmin_kernel block * u");
+  (void)checked_int(block * n_samples, "launch_medoid_argmin_kernel block * n_samples");
+
   const Launches<T, Pairs::Rectangle> launches(kernel_path, max_L, opts.use_squared_l2, opts.band,
                                                false, static_cast<std::int64_t>(block * u),
                                                device_limits(opts.device_id));
@@ -1716,21 +1773,21 @@ size_t launch_medoid_argmin_kernel(
   const size_t device_slot = (u + block) * max_L;
   ensure_dtw_device_capacity(workspace, plan.series_slots * device_slot, plan.series_slots * (u + block),
                              plan.series_slots * block * u * sizeof(double),
-                             launches.scratch_elems(), launches.counter_elems(), 1);
-  if (workspace.slot_map_capacity < slots) {
-    workspace.d_slot_to_unique = cuda_alloc<int>(slots);
-    workspace.slot_map_capacity = slots;
-  }
-  if (!medoid_indices.empty() && workspace.medoid_idx_capacity < slots) {
-    workspace.d_medoid_indices = cuda_alloc<index_t>(slots);
-    workspace.medoid_idx_capacity = slots;
+                             launches.scratch_elems(), launches.counter_elems(), plan.series_slots);
+  ensure_cuda_buf(workspace.d_slot_to_unique, workspace.slot_map_capacity, slots);
+  if (!medoid_indices.empty()) {
+    ensure_cuda_buf(workspace.d_medoid_indices, workspace.medoid_idx_capacity, slots);
   }
   const size_t argmin_device_elems = plan.series_slots * block * n_samples;
-  if (workspace.argmin_capacity < argmin_device_elems) {
-    workspace.d_argmin_labels = cuda_alloc<index_t>(argmin_device_elems);
-    workspace.d_argmin_dists = cuda_alloc<double>(argmin_device_elems);
-    workspace.argmin_capacity = argmin_device_elems;
+  if (workspace.argmin_labels_capacity < argmin_device_elems
+      || workspace.argmin_dists_capacity < argmin_device_elems) {
+    workspace.d_argmin_labels.reset();
+    workspace.argmin_labels_capacity = 0;
+    workspace.d_argmin_dists.reset();
+    workspace.argmin_dists_capacity = 0;
   }
+  ensure_cuda_buf(workspace.d_argmin_labels, workspace.argmin_labels_capacity, argmin_device_elems);
+  ensure_cuda_buf(workspace.d_argmin_dists, workspace.argmin_dists_capacity, argmin_device_elems);
 
   T *const h_series = workspace.host_series.ensure((u + plan.series_slots * block) * max_L, true);
   int *const h_lengths = workspace.host_lengths.ensure(u + plan.series_slots * block, true);
@@ -1738,116 +1795,71 @@ size_t launch_medoid_argmin_kernel(
   double *const h_dists = workspace.host_argmin_dists.ensure(plan.distance_slots * block * n_samples, true);
   int *const h_nonfinite = workspace.host_overflow.ensure(plan.distance_slots, true);
 
-  T *const d_series = workspace.d_series.get();
-  int *const d_lengths = workspace.d_lengths.get();
   double *const d_dist = reinterpret_cast<double *>(workspace.d_out.get());
   index_t *const d_labels = workspace.d_argmin_labels.get();
   double *const d_dists = workspace.d_argmin_dists.get();
-  const cudaStream_t copy = workspace.copy_stream.get(), compute = workspace.stream.get(),
-                     d2h = workspace.d2h_stream.get();
 
-  const auto enqueue = [&](size_t b) {
-    const size_t s = b % 2, first = b * block, count = std::min(block, N - first);
-    T *const h_slot = h_series + (u + s * block) * max_L;
-    int *const h_slot_lengths = h_lengths + u + s * block;
-    if (b >= 2) CUDA_CHECK(cudaEventSynchronize(workspace.uploaded[s].get()));
-    parallel(count, [&](size_t i) { h_slot_lengths[i] = pad_series(h_slot + i * max_L, series(first + i), max_L); });
-    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(copy, workspace.computed[s].get(), 0));
-    T *const d_slot = d_series + s * device_slot;
-    int *const d_slot_lengths = d_lengths + s * (u + block);
-    double *const d_dist_slot = d_dist + s * block * u;
-    index_t *const d_label_slot = d_labels + s * block * n_samples;
-    double *const d_best_slot = d_dists + s * block * n_samples;
+  gpu_time_sec = run_medoid_pipeline(
+      workspace, N, block, plan.series_slots, u, max_L, series, unique_medoids,
+      h_series, h_lengths, workspace.d_series.get(), workspace.d_lengths.get(), parallel,
+      [&](cudaStream_t copy) {
+        CUDA_CHECK(cudaMemcpyAsync(workspace.d_slot_to_unique.get(), slot_to_unique.data(),
+                                   slots * sizeof(int), cudaMemcpyHostToDevice, copy));
+        if (!medoid_indices.empty()) {
+          CUDA_CHECK(cudaMemcpyAsync(workspace.d_medoid_indices.get(), medoid_indices.data(),
+                                     slots * sizeof(index_t), cudaMemcpyHostToDevice, copy));
+        }
+      },
+      [&](size_t s, size_t first, size_t count, T *d_slot, int *d_slot_lengths, cudaStream_t compute) {
+        double *const d_dist_slot = d_dist + s * block * u;
+        index_t *const d_label_slot = d_labels + s * block * n_samples;
+        double *const d_best_slot = d_dists + s * block * n_samples;
+        int *const d_ov_slot = workspace.d_overflow.get() + s;
 
-    CUDA_CHECK(cudaMemcpyAsync(d_slot + u * max_L, h_slot, count * max_L * sizeof(T), cudaMemcpyHostToDevice, copy));
-    CUDA_CHECK(cudaMemcpyAsync(d_slot_lengths + u, h_slot_lengths, count * sizeof(int), cudaMemcpyHostToDevice, copy));
-    CUDA_CHECK(cudaEventRecord(workspace.uploaded[s].get(), copy));
-    CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.uploaded[s].get(), 0));
-    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.d_out_free[s].get(), 0));
-
-    launches(workspace, d_slot, d_slot_lengths, static_cast<int>(u), 0, static_cast<int>(count * u), 0, compute,
-             d_dist_slot, nullptr);
-    CUDA_CHECK(cudaMemsetAsync(workspace.d_overflow.get(), 0, sizeof(int), compute));
-    const int total_threads = static_cast<int>(count * n_samples);
-    const int arg_grid = (total_threads + 255) / 256;
-    medoid_argmin_kernel<<<arg_grid, 256, 0, compute>>>(
-        d_dist_slot, workspace.d_slot_to_unique.get(),
-        medoid_indices.empty() ? nullptr : workspace.d_medoid_indices.get(),
-        d_label_slot, d_best_slot, workspace.d_overflow.get(),
-        static_cast<int>(count), static_cast<int>(u), static_cast<int>(n_samples), static_cast<int>(k),
-        first_point_index + static_cast<index_t>(first));
-    CUDA_CHECK(cudaGetLastError());
-
-    CUDA_CHECK(cudaEventRecord(workspace.computed[s].get(), compute));
-    CUDA_CHECK(cudaStreamWaitEvent(d2h, workspace.computed[s].get(), 0));
-
-    const size_t d_slot_idx = b % 3;
-    CUDA_CHECK(cudaMemcpyAsync(h_labels + d_slot_idx * block * n_samples, d_label_slot,
-                               count * n_samples * sizeof(index_t), cudaMemcpyDeviceToHost, d2h));
-    CUDA_CHECK(cudaMemcpyAsync(h_dists + d_slot_idx * block * n_samples, d_best_slot,
-                               count * n_samples * sizeof(double), cudaMemcpyDeviceToHost, d2h));
-    CUDA_CHECK(cudaMemcpyAsync(h_nonfinite + d_slot_idx, workspace.d_overflow.get(),
-                               sizeof(int), cudaMemcpyDeviceToHost, d2h));
-    CUDA_CHECK(cudaEventRecord(workspace.d_out_free[s].get(), d2h));
-    CUDA_CHECK(cudaEventRecord(workspace.downloaded[d_slot_idx].get(), d2h));
-  };
-
-  try {
-    for (size_t m = 0; m < u; ++m) h_lengths[m] = pad_series(h_series + m * max_L, unique_medoids[m], max_L);
-    CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), copy));
-    CUDA_CHECK(cudaMemcpyAsync(workspace.d_slot_to_unique.get(), slot_to_unique.data(),
-                               slots * sizeof(int), cudaMemcpyHostToDevice, copy));
-    if (!medoid_indices.empty()) {
-      CUDA_CHECK(cudaMemcpyAsync(workspace.d_medoid_indices.get(), medoid_indices.data(),
-                                 slots * sizeof(index_t), cudaMemcpyHostToDevice, copy));
-    }
-    for (size_t s = 0; s < plan.series_slots; ++s) {
-      CUDA_CHECK(cudaMemcpyAsync(d_series + s * device_slot, h_series, u * max_L * sizeof(T), cudaMemcpyHostToDevice,
-                                 copy));
-      CUDA_CHECK(cudaMemcpyAsync(d_lengths + s * (u + block), h_lengths, u * sizeof(int), cudaMemcpyHostToDevice,
-                                 copy));
-    }
-    enqueue(0);
-    if (blocks > 1) enqueue(1);
-    for (size_t b = 0; b < blocks; ++b) {
-      if (b + 2 < blocks) enqueue(b + 2);
-      const size_t d_slot_idx = b % 3;
-      CUDA_CHECK(cudaEventSynchronize(workspace.downloaded[d_slot_idx].get()));
-      const size_t first = b * block, count = std::min(block, N - first);
-      const std::span<const index_t> lbl(h_labels + d_slot_idx * block * n_samples, count * n_samples);
-      const std::span<const double> bst(h_dists + d_slot_idx * block * n_samples, count * n_samples);
-      if (h_nonfinite[d_slot_idx] != 0) {
-        // Locate the first non-finite point/sample to throw the exact diagnostic.
-        for (size_t i = 0; i < count; ++i) {
-          for (size_t s = 0; s < n_samples; ++s) {
-            if (!std::isfinite(bst[s * count + i])) {
-              const index_t m = lbl[s * count + i];
-              const index_t med_idx = medoid_indices.empty()
-                  ? static_cast<index_t>(-1)
-                  : medoid_indices[s * k + static_cast<size_t>(m)];
-              core::detail::throw_nonfinite_medoid_distance(
-                  "compute_medoid_argmin_cuda",
-                  static_cast<size_t>(first_point_index) + first + i,
-                  m, med_idx);
+        launches(workspace, d_slot, d_slot_lengths, u_int, 0, static_cast<int>(count * u), 0, compute,
+                 d_dist_slot, nullptr);
+        CUDA_CHECK(cudaMemsetAsync(d_ov_slot, 0, sizeof(int), compute));
+        const int total_threads = static_cast<int>(count * n_samples);
+        const int arg_grid = (total_threads + 255) / 256;
+        medoid_argmin_kernel<<<arg_grid, 256, 0, compute>>>(
+            d_dist_slot, workspace.d_slot_to_unique.get(),
+            medoid_indices.empty() ? nullptr : workspace.d_medoid_indices.get(),
+            d_label_slot, d_best_slot, d_ov_slot,
+            static_cast<int>(count), u_int, n_samples_int, k_int,
+            first_point_index + static_cast<index_t>(first));
+        CUDA_CHECK(cudaGetLastError());
+      },
+      [&](size_t s, size_t d_slot_idx, size_t count, cudaStream_t d2h) {
+        CUDA_CHECK(cudaMemcpyAsync(h_labels + d_slot_idx * block * n_samples, d_labels + s * block * n_samples,
+                                   count * n_samples * sizeof(index_t), cudaMemcpyDeviceToHost, d2h));
+        CUDA_CHECK(cudaMemcpyAsync(h_dists + d_slot_idx * block * n_samples, d_dists + s * block * n_samples,
+                                   count * n_samples * sizeof(double), cudaMemcpyDeviceToHost, d2h));
+        CUDA_CHECK(cudaMemcpyAsync(h_nonfinite + d_slot_idx, workspace.d_overflow.get() + s,
+                                   sizeof(int), cudaMemcpyDeviceToHost, d2h));
+      },
+      [&](size_t d_slot_idx, size_t first, size_t count) {
+        const std::span<const index_t> lbl(h_labels + d_slot_idx * block * n_samples, count * n_samples);
+        const std::span<const double> bst(h_dists + d_slot_idx * block * n_samples, count * n_samples);
+        if (h_nonfinite[d_slot_idx] != 0) {
+          // Locate the first non-finite point/sample to throw the exact diagnostic.
+          for (size_t i = 0; i < count; ++i) {
+            for (size_t s = 0; s < n_samples; ++s) {
+              if (!std::isfinite(bst[s * count + i])) {
+                const index_t m = lbl[s * count + i];
+                const index_t med_idx = medoid_indices.empty()
+                    ? static_cast<index_t>(-1)
+                    : medoid_indices[s * k + static_cast<size_t>(m)];
+                core::detail::throw_nonfinite_medoid_distance(
+                    "compute_medoid_argmin_cuda",
+                    static_cast<size_t>(first_point_index) + first + i,
+                    m, med_idx);
+              }
             }
           }
+          throw dtwc::InvalidInput("compute_medoid_argmin_cuda: non-finite medoid distance.");
         }
-        throw dtwc::InvalidInput("compute_medoid_argmin_cuda: non-finite medoid distance.");
-      }
-      consume(first, count, lbl, bst);
-    }
-    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), d2h));
-    CUDA_CHECK(cudaEventSynchronize(workspace.evt_end.get()));
-  } catch (...) {
-    (void)cudaStreamSynchronize(copy);
-    (void)cudaStreamSynchronize(compute);
-    (void)cudaStreamSynchronize(d2h);
-    (void)cudaGetLastError();
-    throw;
-  }
-  float elapsed_ms = 0.0f;
-  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, workspace.evt_start.get(), workspace.evt_end.get()));
-  gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
+        consume(first, count, lbl, bst);
+      });
   return block;
 }
 
@@ -1908,6 +1920,7 @@ DistanceFill::DistanceFill(std::size_t N, const SeriesAt &series, const CUDADist
     if (N == 1) out.set(0, 0, 0.0);
     return;
   }
+  (void)checked_int(N, "compute_distance_matrix_cuda n_series");
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
@@ -1917,6 +1930,7 @@ DistanceFill::DistanceFill(std::size_t N, const SeriesAt &series, const CUDADist
   if (max_L == 0)
     throw dtwc::InvalidInput("compute_distance_matrix_cuda: every series is "
                              "empty, so there is no distance to compute.");
+  (void)checked_int(max_L, "compute_distance_matrix_cuda max_length");
 
   const size_t total_pairs = detail::upper_triangle_pairs(N);
   const bool out_f32 = (out.width() == core::Precision::Float32);
@@ -1977,6 +1991,7 @@ CUDADistMatResult compute_medoid_distances_cuda(
   result.kernel_used = "none";
   result.n = n_series;
   if (n_series == 0 || medoids.empty()) return result;
+  (void)checked_int(medoids.size(), "compute_medoid_distances_cuda medoids");
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
@@ -1987,6 +2002,7 @@ CUDADistMatResult compute_medoid_distances_cuda(
   if (max_L == 0)
     throw dtwc::InvalidInput("compute_medoid_distances_cuda: every series is "
                              "empty, so there is no distance to compute.");
+  (void)checked_int(max_L, "compute_medoid_distances_cuda max_length");
 
   bool warptile_border_fits = true;
   const auto [use_fp32, kernel_path] =
@@ -2033,6 +2049,8 @@ CUDADistMatResult compute_medoid_argmin_cuda(
   result.kernel_used = "none";
   result.n = n_series;
   if (n_series == 0 || medoids.empty() || n_samples == 0 || k == 0) return result;
+  (void)checked_int(n_samples, "compute_medoid_argmin_cuda n_samples");
+  (void)checked_int(k, "compute_medoid_argmin_cuda k");
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
@@ -2043,28 +2061,48 @@ CUDADistMatResult compute_medoid_argmin_cuda(
   if (max_L == 0)
     throw dtwc::InvalidInput("compute_medoid_argmin_cuda: every series is "
                              "empty, so there is no distance to compute.");
+  (void)checked_int(max_L, "compute_medoid_argmin_cuda max_length");
 
   // Deduplicate medoid spans across samples so repeated medoids compute once on GPU.
   const size_t slots = medoids.size();
   std::vector<std::span<const double>> unique_medoids;
   std::vector<int> slot_to_unique(slots);
   unique_medoids.reserve(slots);
-  for (size_t j = 0; j < slots; ++j) {
-    int found = -1;
-    for (size_t prev = 0; prev < j; ++prev) {
-      const bool same = !medoid_indices.empty()
-          ? (medoid_indices[prev] == medoid_indices[j])
-          : (medoids[prev].data() == medoids[j].data() && medoids[prev].size() == medoids[j].size());
-      if (same) {
-        found = slot_to_unique[prev];
-        break;
+  if (!medoid_indices.empty()) {
+    std::unordered_map<index_t, int> seen;
+    seen.reserve(slots);
+    for (size_t j = 0; j < slots; ++j) {
+      const auto [it, inserted] = seen.emplace(medoid_indices[j], 0);
+      if (inserted) {
+        it->second = checked_int(unique_medoids.size(), "compute_medoid_argmin_cuda unique_medoids");
+        unique_medoids.push_back(medoids[j]);
       }
+      slot_to_unique[j] = it->second;
     }
-    if (found < 0) {
-      found = static_cast<int>(unique_medoids.size());
-      unique_medoids.push_back(medoids[j]);
+  } else {
+    struct SpanKey {
+      const double *data;
+      size_t size;
+      bool operator==(const SpanKey &other) const noexcept = default;
+    };
+    struct SpanKeyHash {
+      size_t operator()(const SpanKey &key) const noexcept
+      {
+        const size_t h1 = std::hash<const void *>{}(key.data);
+        const size_t h2 = std::hash<size_t>{}(key.size);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+      }
+    };
+    std::unordered_map<SpanKey, int, SpanKeyHash> seen;
+    seen.reserve(slots);
+    for (size_t j = 0; j < slots; ++j) {
+      const auto [it, inserted] = seen.emplace(SpanKey{ medoids[j].data(), medoids[j].size() }, 0);
+      if (inserted) {
+        it->second = checked_int(unique_medoids.size(), "compute_medoid_argmin_cuda unique_medoids");
+        unique_medoids.push_back(medoids[j]);
+      }
+      slot_to_unique[j] = it->second;
     }
-    slot_to_unique[j] = found;
   }
 
   bool warptile_border_fits = true;

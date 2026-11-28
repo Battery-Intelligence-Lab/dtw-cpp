@@ -1,3 +1,8 @@
+# @file Cache.cmake
+# @brief Compiler cache (ccache/sccache) detection and configuration helper.
+# @author Volkan Kumtepeli
+# @date 17 Aug 2022
+
 # Enable cache if available
 function(dtwc_enable_cache)
   set(CACHE_OPTION

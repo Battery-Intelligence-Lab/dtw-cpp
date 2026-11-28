@@ -32,7 +32,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+        python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14', '3.15']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -45,7 +45,13 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install libomp && brew link --force libomp
 
+      # h5py lacks cp315 wheels on PyPI; tests/python/test_io.py skips HDF5 cleanly when h5py is absent.
+      - name: Install (Python 3.15)
+        if: matrix.python == '3.15'
+        run: uv pip install ".[test,dev,parquet,mip]" pandas matplotlib --system -v
+
       - name: Install
+        if: matrix.python != '3.15'
         run: uv pip install ".[test,dev,io,mip]" pandas matplotlib --system -v
 
       # The extension links no HiGHS, so method="mip" solves with highspy (a dependency of dtwcpp).
