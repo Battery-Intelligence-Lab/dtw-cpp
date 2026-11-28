@@ -375,10 +375,13 @@ DistanceMatrix &DistanceMatrix::operator=(DistanceMatrix &&other) noexcept
 
 void DistanceMatrix::point_at(std::byte *values) noexcept
 {
-  if (width_ == Precision::Float32)
+  if (width_ == Precision::Float32) {
     f32_ = reinterpret_cast<float *>(values);
-  else
+    f64_ = nullptr;
+  } else {
     f64_ = reinterpret_cast<double *>(values);
+    f32_ = nullptr;
+  }
 }
 
 size_t DistanceMatrix::row_offset(size_t r) const noexcept
@@ -419,7 +422,8 @@ void DistanceMatrix::clear_rows(size_t r0, size_t r1)
 
 std::pair<size_t, size_t> DistanceMatrix::first_infinite(size_t r0, size_t r1) const
 {
-  const size_t first = packed_size(r0), count = r0 < r1 ? packed_size(r1) - first : 0;
+  if (r0 >= r1) return { n_, n_ };
+  const size_t first = packed_size(r0), count = packed_size(r1) - first;
   const auto chunks = static_cast<size_t>(get_max_threads());
   std::vector<size_t> hit(chunks, count); // each chunk's first ±inf, its own slot
   visit([&](const auto *values) {
@@ -561,6 +565,8 @@ void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerp
 
 void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerprint, size_t r0, size_t r1)
 {
+  if (r0 >= r1) return;
+  assert(r1 <= n_);
   if (is_mapped_to(path)) {
     flush_rows(r0, r1, true);
     return;

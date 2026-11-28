@@ -1,7 +1,9 @@
 /**
  * @file public_distance.hpp
  * @brief Normalize compute-type distance sentinels at double-valued APIs.
+ *
  * @author Volkan Kumtepeli
+ * @date 24 Jul 2026
  */
 
 #pragma once

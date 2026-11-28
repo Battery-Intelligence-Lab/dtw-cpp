@@ -2,7 +2,7 @@
  * @file parallelisation.hpp
  * @brief Header for parallelisation functions.
  *
- * @details This header file provides functionalities for parallelising tasks using standard parallelisation.
+ * @details This header file provides functionalities for parallelising tasks using OpenMP.
  * It includes functions for running individual tasks in parallel and adjusting
  * the level of parallelism. Functions are templated to support various task types.
  *
@@ -35,6 +35,55 @@ void warn_if_single_threaded();
 namespace detail {
 /// The most threads the regions this thread starts may use (0: no cap), while a TeamCap lives.
 inline thread_local int team_cap = 0;
+
+/// Per-thread exception slots for OpenMP regions where an exception must not escape:
+/// each thread keeps the failure at the lowest index it observed, and `rethrow_lowest()`
+/// rethrows the lowest-index failure across all threads.
+template <typename IndexT = index_t>
+class FailureSlots
+{
+public:
+  struct Slot
+  {
+    std::exception_ptr failure;
+    IndexT failed_at;
+  };
+
+  FailureSlots(std::size_t n_slots, IndexT end)
+    : slots_(n_slots, Slot{ nullptr, end }), end_(end) {}
+
+  Slot &operator[](std::size_t thread_idx) noexcept { return slots_[thread_idx]; }
+  Slot &current() noexcept
+  {
+#ifdef _OPENMP
+    return slots_[static_cast<std::size_t>(omp_get_thread_num())];
+#else
+    return slots_[0];
+#endif
+  }
+
+  static void record(Slot &slot, IndexT idx, std::exception_ptr exc) noexcept
+  {
+    if (idx < slot.failed_at) {
+      slot.failure = std::move(exc);
+      slot.failed_at = idx;
+    }
+  }
+
+  void rethrow_lowest() const
+  {
+    if (slots_.empty()) return;
+    const auto lowest = std::min_element(slots_.begin(), slots_.end(),
+      [](const Slot &a, const Slot &b) { return a.failed_at < b.failed_at; });
+    if (lowest->failed_at < end_) std::rethrow_exception(lowest->failure);
+  }
+
+  std::size_t size() const noexcept { return slots_.size(); }
+
+private:
+  std::vector<Slot> slots_;
+  IndexT end_;
+};
 } // namespace detail
 
 /// @brief Returns the number of available OpenMP threads (1 if OpenMP is absent),
@@ -81,10 +130,11 @@ private:
   int previous_;
 };
 
-/// @brief Computes an optimal OpenMP dynamic chunk size at runtime.
+/// @brief Computes an OpenMP dynamic chunk size for a given thread count.
 /// @param n_iterations Total loop iterations.
-/// @param chunks_per_thread Target number of chunks per thread for load balancing (default: 4).
-/// @return Chunk size >= 1, scaled to the machine's thread count.
+/// @param chunks_per_thread Target number of chunks per thread for load balancing.
+/// @param nthreads Number of OpenMP threads executing the loop (> 0).
+/// @return Chunk size >= 1, scaled to `nthreads`.
 ///
 /// Heuristic: each thread gets ~chunks_per_thread work units. This balances
 /// dispatch overhead (fewer, larger chunks) against load imbalance (more, smaller chunks).
@@ -95,6 +145,10 @@ inline index_t omp_chunk_size_for(index_t n_iterations, int chunks_per_thread, i
   return std::max<index_t>(1, n_iterations / (index_t{ nthreads } * chunks_per_thread));
 }
 
+/// @brief Computes an optimal OpenMP dynamic chunk size at runtime using get_max_threads().
+/// @param n_iterations Total loop iterations.
+/// @param chunks_per_thread Target number of chunks per thread for load balancing (default: 4).
+/// @return Chunk size >= 1, scaled to the machine's active thread cap.
 inline index_t omp_chunk_size(index_t n_iterations, int chunks_per_thread = 4)
 {
   return omp_chunk_size_for(n_iterations, chunks_per_thread, get_max_threads());
@@ -128,6 +182,7 @@ void run_openmp(Tfun &task_indv, size_t i_end,
                 [[maybe_unused]] int chunks_per_thread = 4,
                 [[maybe_unused]] int max_workers = 0)
 {
+  if (i_end == 0) return;
   const auto end = static_cast<index_t>(i_end);
 #ifdef _OPENMP
   if (isParallel) {
@@ -137,28 +192,21 @@ void run_openmp(Tfun &task_indv, size_t i_end,
     const index_t chunk = omp_chunk_size_for(end, chunks_per_thread, nthreads);
     // One slot per thread; `failed_at` (== end: none) is what the loop tests,
     // since the MSVC STL's exception_ptr::operator bool is an out-of-line call.
-    struct Slot {
-      std::exception_ptr failure;
-      index_t failed_at;
-    };
-    std::vector<Slot> slots(static_cast<size_t>(nthreads), Slot{ nullptr, end });
+    detail::FailureSlots<index_t> slots(static_cast<size_t>(nthreads), end);
 #pragma omp parallel num_threads(nthreads)
     {
-      Slot &slot = slots[static_cast<size_t>(omp_get_thread_num())];
+      auto &slot = slots.current();
 #pragma omp for schedule(dynamic, chunk) nowait
       for (index_t i = 0; i < end; i++) {
         if (i > slot.failed_at) continue;
         try {
           task_indv(static_cast<size_t>(i));
         } catch (...) {
-          slot.failure = std::current_exception();
-          slot.failed_at = i;
+          detail::FailureSlots<index_t>::record(slot, i, std::current_exception());
         }
       }
     }
-    const auto lowest = std::min_element(slots.begin(), slots.end(),
-      [](const Slot &a, const Slot &b) { return a.failed_at < b.failed_at; });
-    if (lowest->failed_at < end) std::rethrow_exception(lowest->failure);
+    slots.rethrow_lowest();
     return;
   }
 #endif

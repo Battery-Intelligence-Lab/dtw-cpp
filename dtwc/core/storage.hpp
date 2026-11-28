@@ -1,7 +1,10 @@
-/// @file storage.hpp — Series precision enum.
-///
-/// @author Volkan Kumtepeli
-/// @date 08 Apr 2026
+/**
+ * @file storage.hpp
+ * @brief Series precision enum.
+ *
+ * @author Volkan Kumtepeli
+ * @date 08 Apr 2026
+ */
 #pragma once
 
 #include "../base/names.hpp"

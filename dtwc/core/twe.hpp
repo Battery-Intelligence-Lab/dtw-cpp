@@ -29,7 +29,7 @@
  *          positive `band` settings when `DTWVariant::TWE` is selected.
  *
  * @author Volkan Kumtepeli
- * @date 2026-07-08
+ * @date 08 Jul 2026
  */
 
 #pragma once

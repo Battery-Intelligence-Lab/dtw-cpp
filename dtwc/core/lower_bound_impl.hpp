@@ -24,6 +24,24 @@
 
 namespace dtwc::core {
 
+namespace detail {
+
+  template <typename T>
+  struct EnvelopeScratch
+  {
+    std::vector<std::size_t> dmax, dmin;
+    std::vector<T> lmax, lmin;
+  };
+
+  template <typename T>
+  EnvelopeScratch<T> &envelope_bufs() noexcept
+  {
+    thread_local EnvelopeScratch<T> sc;
+    return sc;
+  }
+
+} // namespace detail
+
 /**
  * @brief Compute Sakoe-Chiba upper/lower envelopes for a time series.
  *
@@ -81,12 +99,8 @@ void compute_envelopes(const T *series, std::size_t n, int band,
   const std::size_t mask = cap - 1;
   constexpr std::size_t kMaxScratchElems = std::size_t{ 1 } << 16;
 
-  struct Scratch
-  {
-    std::vector<std::size_t> dmax, dmin;
-    std::vector<T> lmax, lmin;
-  };
-  thread_local Scratch tl_scratch;
+  using Scratch = detail::EnvelopeScratch<T>;
+  Scratch &tl_scratch = detail::envelope_bufs<T>();
   Scratch local_scratch;
   Scratch &sc = (n <= kMaxScratchElems && cap <= kMaxScratchElems) ? tl_scratch : local_scratch;
   if (sc.dmax.size() < cap) sc.dmax.resize(cap);
@@ -190,11 +204,10 @@ T lb_keogh(const T *query, std::size_t n,
            const T *upper, const T *lower)
 {
   T sum = T(0);
-#if defined(_MSC_VER)
-  // MSVC does not support OpenMP reduction clauses on simd directives.
-  // The branchless ternaries below map to vmaxpd — MSVC can auto-vectorize them.
-#else
+#if defined(_OPENMP) && !defined(_MSC_VER)
   #pragma omp simd reduction(+:sum)
+#else
+  // MSVC and sequential builds skip OpenMP simd reductions; the branchless ternaries auto-vectorize.
 #endif
   for (std::size_t i = 0; i < n; ++i) {
     const T eu = query[i] - upper[i];  // positive when query is above the upper envelope

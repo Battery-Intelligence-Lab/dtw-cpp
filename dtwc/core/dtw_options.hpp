@@ -44,6 +44,12 @@ enum class DTWVariant
   TWE        ///< Time Warp Edit (Marteau 2009): stiffness ν + edit penalty λ, univariate/unbanded
 };
 
+/// Whether `v` honours a Sakoe-Chiba band (Soft-DTW, MSM and TWE are full O(n*m) recurrences).
+constexpr bool variant_uses_band(DTWVariant v) noexcept
+{
+  return v != DTWVariant::SoftDTW && v != DTWVariant::MSM && v != DTWVariant::TWE;
+}
+
 inline constexpr Name<DTWVariant> variant_names[]{
   { "standard", DTWVariant::Standard },
   { "ddtw", DTWVariant::DDTW },
@@ -117,7 +123,8 @@ struct DistanceConfig
 /// The one check of a DistanceConfig, run where one is set or bound (a Problem's
 /// setters, the checked dtwc::distance functions), never per pair: the kernels
 /// below it take their parameters unchecked.
-/// @param f32 the distance runs in float32, which must hold the active parameters.
+/// @param config Distance configuration to validate.
+/// @param f32 True when the distance runs in float32, which must hold the active parameters.
 /// @throws InvalidInput for an enum value outside its set (an integer cast), a
 ///         parameter outside its domain (every parameter, the
 ///         inactive ones too), a missing-data strategy with a variant other than

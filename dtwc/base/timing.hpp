@@ -9,17 +9,20 @@
 
 #pragma once
 
-#include <iostream>
-#include <cmath>
 #include <chrono>
+#include <cmath>
+#include <ostream>
 
 namespace dtwc {
 
+/// Wall-clock timer based on std::chrono::steady_clock.
 struct Clock
 {
-  std::chrono::time_point<std::chrono::high_resolution_clock> tstart{ std::chrono::high_resolution_clock::now() };
+  std::chrono::time_point<std::chrono::steady_clock> tstart{ std::chrono::steady_clock::now() };
   Clock() = default;
-  auto now() const { return std::chrono::high_resolution_clock::now(); }
+  /// Return the current steady-clock time point.
+  auto now() const { return std::chrono::steady_clock::now(); }
+  /// Return the start time point captured at construction.
   auto start() const { return tstart; }
 
   /// Elapsed time in seconds since construction.
@@ -28,16 +31,25 @@ struct Clock
     return std::chrono::duration<double>(now() - start()).count();
   }
 
-  static void print_duration(std::ostream &ofs, double duration)
+  /// Format @p duration in min:sec to an output stream.
+  static void write_duration(std::ostream &ofs, double duration)
   {
     const double mins = std::floor(duration / 60);
-    ofs << mins << ":" << duration - mins * 60 << " min:sec\n";
+    ofs << mins << ":" << duration - mins * 60 << " min:sec";
+  }
+
+  /// Format @p duration in min:sec followed by a newline to an output stream.
+  static void print_duration(std::ostream &ofs, double duration)
+  {
+    write_duration(ofs, duration);
+    ofs << '\n';
   }
 };
 
+/// Stream the elapsed duration of @p clk formatted as min:sec.
 inline std::ostream &operator<<(std::ostream &ofs, const Clock &clk)
 {
-  const double d = clk.duration(), mins = std::floor(d / 60);
-  return ofs << mins << ":" << d - mins * 60 << " min:sec";
+  Clock::write_duration(ofs, clk.duration());
+  return ofs;
 }
 } // namespace dtwc

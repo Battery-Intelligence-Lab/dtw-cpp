@@ -45,11 +45,10 @@ void z_normalize(T *series, size_t n)
 
   // Pass 1: sum(x) → mean
   T sum = 0;
-#if defined(_MSC_VER)
-  // MSVC does not support OpenMP reduction clauses on simd directives.
-  // The compiler can still auto-vectorize the simple reduction loop.
-#else
+#if defined(_OPENMP) && !defined(_MSC_VER)
   #pragma omp simd reduction(+:sum)
+#else
+  // MSVC and sequential builds skip OpenMP simd reductions; the loop auto-vectorizes.
 #endif
   for (size_t i = 0; i < n; ++i)
     sum += series[i];
@@ -59,9 +58,7 @@ void z_normalize(T *series, size_t n)
   // Computing deviations from the known mean is numerically stable even when
   // mean >> stddev (the case König-Huygens handles poorly).
   T sq_sum = 0;
-#if defined(_MSC_VER)
-  // MSVC does not support OpenMP reduction clauses on simd directives.
-#else
+#if defined(_OPENMP) && !defined(_MSC_VER)
   #pragma omp simd reduction(+:sq_sum)
 #endif
   for (size_t i = 0; i < n; ++i) {
@@ -76,11 +73,15 @@ void z_normalize(T *series, size_t n)
   // Pass 3: normalize in place.
   if (stddev > static_cast<T>(1e-10)) {
     const T inv_stddev = T(1) / stddev;
+#if defined(_OPENMP)
     #pragma omp simd
+#endif
     for (size_t i = 0; i < n; ++i)
       series[i] = (series[i] - mean) * inv_stddev;
   } else {
+#if defined(_OPENMP)
     #pragma omp simd
+#endif
     for (size_t i = 0; i < n; ++i)
       series[i] = 0;
   }

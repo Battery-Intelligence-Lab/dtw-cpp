@@ -203,7 +203,6 @@ inline GpuReport gpu_backend()
     return r;
   }
   r.available = true;
-  r.device_name = dtwc::cuda::cuda_device_info(0);
 
   const auto series = detail::gpu_probe_series();
   const std::size_t N = series.size();
@@ -217,6 +216,7 @@ inline GpuReport gpu_backend()
 
   dtwc::core::DistanceMatrix matrix;
   try {
+    r.device_name = dtwc::cuda::cuda_device_info(0);
     (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
   } catch (const std::exception &e) {
     r.reason = std::string("CUDA kernel execution failed: ") + e.what();
@@ -242,7 +242,6 @@ inline GpuReport gpu_backend()
     return r;
   }
   r.available = true;
-  r.device_name = dtwc::metal::metal_device_info();
 
   const auto series = detail::gpu_probe_series();
   const std::size_t N = series.size();
@@ -254,6 +253,7 @@ inline GpuReport gpu_backend()
 
   dtwc::core::DistanceMatrix matrix;
   try {
+    r.device_name = dtwc::metal::metal_device_info();
     (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
   } catch (const std::exception &e) {
     r.reason = std::string("Metal kernel execution failed: ") + e.what();

@@ -9,7 +9,9 @@
  *          threads do not reallocate. `release_thread_scratch()` empties every registered buffer across the OpenMP
  *          team (`ScratchRelease` invokes it at entry and exit of `dtwc::run`, while Tier-2 calls retain scratch across
  *          sweeps). Silhouette per-cluster accumulators (`scores.cpp`, `k * 64` bytes/thread) remain inline.
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Nov 2026
  */
 
 #pragma once
@@ -44,8 +46,10 @@ std::size_t held_bytes(bool release, V &...buffers) noexcept
 /// them.
 std::size_t dispatch_scratch(bool release) noexcept;     ///< dtw_dispatch.cpp: the buffers its bound distances use
 std::size_t lanes_scratch(bool release) noexcept;        ///< dtw_lanes.cpp: the lanes' rows
+std::size_t envelope_scratch(bool release) noexcept;     ///< lower_bound_impl.hpp: compute_envelopes ring/prefix buffers
 std::size_t fast_pam_scratch(bool release) noexcept;     ///< fast_pam.cpp: FasterPAM's per-slot losses
 std::size_t clara_assign_scratch(bool release) noexcept; ///< fast_clara.cpp: FastCLARA's assignment table
+std::size_t one_batch_pam_scratch(bool release) noexcept;///< one_batch_pam.cpp: OOB nearest-medoid buffers
 std::size_t barycenter_scratch(bool release) noexcept;   ///< barycenter.cpp: DBA and Soft-DTW barycenter matrices
 
 } // namespace detail

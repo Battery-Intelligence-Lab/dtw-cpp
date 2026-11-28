@@ -7,6 +7,7 @@
  *          `std::span<const T>(pointer, length)`.
  *
  * @author Volkan Kumtepeli
+ * @date 24 Nov 2026
  */
 
 #pragma once

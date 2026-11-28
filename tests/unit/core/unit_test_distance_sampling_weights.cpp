@@ -22,7 +22,9 @@
  * Style note: inputs are named locals rather than inline braced-init-lists,
  * because a brace list does not protect its commas from preprocessor argument
  * splitting inside the two-parameter CHECK_THROWS_AS / CHECK_THROWS_WITH macros.
+ *
  * @author Volkan Kumtepeli
+ * @date 23 Jul 2026
  */
 
 #include <core/distance_sampling_weights.hpp>
@@ -33,6 +35,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -200,5 +203,57 @@ TEST_CASE("distance_sampling_weights rejects an out-of-range selected index",
   {
     const std::vector<dtwc::index_t> selected{ 0 };
     CHECK_THROWS_AS(weigh({}, selected), std::logic_error);
+  }
+}
+
+// Entry point: dtwc::core::kmedoids_pp.
+TEST_CASE("kmedoids_pp rejects non-finite distances and non-finite weight totals",
+          "[core][distance_sampling][kmedoids_pp][validation]")
+{
+  constexpr dtwc::index_t N = 4;
+  constexpr dtwc::index_t k = 2;
+
+  SECTION("NaN distance is rejected")
+  {
+    std::mt19937_64 rng(42);
+    const auto nan_dist = [](dtwc::index_t c, dtwc::index_t i) {
+      return c == i ? 0.0 : (i == (c + 1) % N ? kNaN : 1.0);
+    };
+    CHECK_THROWS_AS(dtwc::core::kmedoids_pp(N, k, rng, nan_dist, kCaller), dtwc::InvalidInput);
+    std::mt19937_64 rng_msg(42);
+    CHECK_THROWS_WITH(dtwc::core::kmedoids_pp(N, k, rng_msg, nan_dist, kCaller),
+                      ContainsSubstring("initialization distance must be finite"));
+    std::mt19937_64 rng_caller(42);
+    CHECK_THROWS_WITH(dtwc::core::kmedoids_pp(N, k, rng_caller, nan_dist, kCaller),
+                      ContainsSubstring(kCaller));
+  }
+
+  SECTION("positive and negative infinity distances are rejected")
+  {
+    for (const double inf_val : { kInf, -kInf }) {
+      std::mt19937_64 rng(7);
+      const auto inf_dist = [inf_val](dtwc::index_t c, dtwc::index_t i) {
+        return c == i ? 0.0 : (i == (c + 1) % N ? inf_val : 1.0);
+      };
+      CHECK_THROWS_AS(dtwc::core::kmedoids_pp(N, k, rng, inf_dist, kCaller), dtwc::InvalidInput);
+      std::mt19937_64 rng_msg(7);
+      CHECK_THROWS_WITH(dtwc::core::kmedoids_pp(N, k, rng_msg, inf_dist, kCaller),
+                        ContainsSubstring("initialization distance must be finite"));
+    }
+  }
+
+  SECTION("finite distances whose sum overflows to infinity are rejected")
+  {
+    std::mt19937_64 rng(99);
+    const auto huge_dist = [](dtwc::index_t c, dtwc::index_t i) {
+      return c == i ? 0.0 : 1e308;
+    };
+    CHECK_THROWS_AS(dtwc::core::kmedoids_pp(N, k, rng, huge_dist, kCaller), dtwc::InvalidInput);
+    std::mt19937_64 rng_msg(99);
+    CHECK_THROWS_WITH(dtwc::core::kmedoids_pp(N, k, rng_msg, huge_dist, kCaller),
+                      ContainsSubstring("initialization weight total is non-finite"));
+    std::mt19937_64 rng_caller(99);
+    CHECK_THROWS_WITH(dtwc::core::kmedoids_pp(N, k, rng_caller, huge_dist, kCaller),
+                      ContainsSubstring(kCaller));
   }
 }

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file soft_dtw.hpp
  * @brief Soft-DTW: a differentiable variant of Dynamic Time Warping.
  *
@@ -53,19 +53,13 @@ T softmin_gamma_unchecked(
   T a, T b, T c, const core::detail::SoftGammaScale<T> &scale) noexcept
 {
   const T minimum = std::min(a, std::min(b, c));
-  constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
 
   // Retain the original reciprocal-multiply operation order for ordinary
   // gamma values. At the valid denormal boundary the reciprocal overflows;
   // normalise the denominator before scaling so -freciprocal-math cannot turn
   // the fallback back into 0 * Inf. frexp(gamma)=fraction*2^exponent.
   // At least one of {a, b, c} equals `minimum`, where exp(-0) == 1 is IEEE-754 exact.
-  const auto term = [&](T v) noexcept -> T {
-    if (v == minimum) return T(1);
-    const T s = scale.scaled(v - minimum);
-    return s >= kCutoff ? T(0) : std::exp(-s);
-  };
-  const T sum = term(a) + term(b) + term(c);
+  const T sum = scale.boltzmann(a, minimum) + scale.boltzmann(b, minimum) + scale.boltzmann(c, minimum);
   return sum == T(1) ? minimum : minimum - scale.gamma * std::log(sum);
 }
 
@@ -90,8 +84,9 @@ std::pair<std::vector<T> &, std::vector<T> &> soft_dtw_grad_bufs()
  * cells reduce to `predecessor + cost`, the hard accumulation
  * soft_dtw_gradient() uses there.
  *
- * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair),
- *              a std::vector, std::span, std::array or C array of float or double.
+ * @tparam X First series type: contiguous range of float or double (core::SeriesPair),
+ *           e.g. std::vector, std::span, std::array, or C array.
+ * @tparam Y Second series type: contiguous range of the same element type as @p X (core::SeriesPair).
  * @param x First time series.
  * @param y Second time series.
  * @param gamma Smoothing parameter, > 0 (unchecked). As gamma -> 0, result
@@ -181,7 +176,6 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   // values, w_q = exp(-(q - m)/gamma) / sum, m their minimum. The weights lie in
   // [0, 1] and sum to 1, and no local cost is subtracted from a cumulative one. A
   // first-row or first-column cell has one predecessor, weight 1.
-  constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
   std::fill_n(e_buf.begin(), mx * my, T{0});
   E(mx - 1, my - 1) = T(1);
   for (std::size_t j = my - 1; j >= 1; --j) {
@@ -189,14 +183,9 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
       const T e = E(i, j);
       const T up = C(i - 1, j), left = C(i, j - 1), diag = C(i - 1, j - 1);
       const T m = std::min(up, std::min(left, diag)); // its weight is exp(-0) == 1
-      const auto weight = [&](T val) noexcept -> T {
-        if (val == m) return T(1);
-        const T s = gamma_scale.scaled(val - m);
-        return s >= kCutoff ? T(0) : std::exp(-s);
-      };
-      const T w_up = weight(up);
-      const T w_left = weight(left);
-      const T w_diag = weight(diag);
+      const T w_up = gamma_scale.boltzmann(up, m);
+      const T w_left = gamma_scale.boltzmann(left, m);
+      const T w_diag = gamma_scale.boltzmann(diag, m);
       const T share = e / (w_up + w_left + w_diag);
       E(i - 1, j) += share * w_up;
       E(i, j - 1) += share * w_left;

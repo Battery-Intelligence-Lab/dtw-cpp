@@ -56,10 +56,10 @@ struct ClusteringResult {
   std::optional<HybridSplit> hybrid;   ///< FastCLARA on cpu+gpu: how its pass was split (empty elsewhere).
 
   /// Returns the number of clusters.
-  index_t n_clusters() const { return static_cast<index_t>(medoid_indices.size()); }
+  index_t n_clusters() const noexcept { return static_cast<index_t>(medoid_indices.size()); }
 
   /// Returns the number of data points.
-  index_t n_points() const { return static_cast<index_t>(labels.size()); }
+  index_t n_points() const noexcept { return static_cast<index_t>(labels.size()); }
 };
 
 } // namespace dtwc::core

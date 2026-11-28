@@ -48,7 +48,7 @@ inline bool is_missing(T val) noexcept
 
 /// Returns true if any element in the range is NaN.
 template <typename T>
-bool has_missing(std::span<const T> v)
+bool has_missing(std::span<const T> v) noexcept
 {
   for (const auto &x : v)
     if (is_missing(x)) return true;
@@ -57,7 +57,7 @@ bool has_missing(std::span<const T> v)
 
 /// Convenience overload: vector -> span (implicit conversion is non-deduced).
 template <typename T>
-bool has_missing(const std::vector<T> &v)
+bool has_missing(const std::vector<T> &v) noexcept
 {
   return has_missing(std::span<const T>{v});
 }
@@ -67,7 +67,7 @@ bool has_missing(const std::vector<T> &v)
 /// reconstruct it; callers reject it before dispatch rather than let the
 /// throw happen inside a per-pair (parallel) lambda.
 template <typename T>
-bool all_missing(std::span<const T> v)
+bool all_missing(std::span<const T> v) noexcept
 {
   if (v.empty()) return false;
   for (const auto &x : v)

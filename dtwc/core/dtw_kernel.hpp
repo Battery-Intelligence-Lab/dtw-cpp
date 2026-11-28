@@ -40,7 +40,7 @@
  *          T operator()(T a, T b) const.
  *
  * @author Volkan Kumtepeli
- * @date 2026-04-12
+ * @date 12 Apr 2026
  */
 
 #pragma once
@@ -185,6 +185,8 @@ namespace detail {
   template <typename T>
   struct SoftGammaScale
   {
+    static constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
+
     T gamma;
     T inv_gamma;
     bool finite_reciprocal;
@@ -204,6 +206,13 @@ namespace detail {
       return finite_reciprocal
                ? delta * inv_gamma
                : std::scalbn(delta / gamma_fraction, -gamma_exponent);
+    }
+
+    DTWC_KERNEL_FORCE_INLINE T boltzmann(T value, T minimum) const noexcept
+    {
+      if (value == minimum) return T(1);
+      const T s = scaled(value - minimum);
+      return s >= kCutoff ? T(0) : std::exp(-s);
     }
   };
 
@@ -231,43 +240,31 @@ struct SoftCell
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
     constexpr T maxValue = std::numeric_limits<T>::max();
-    constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
     T m = maxValue;
     if (diag < m) m = diag;
     if (up < m) m = up;
     if (left < m) m = left;
     if (m == maxValue) return maxValue;
 
-    const auto contribution = [&](T predecessor) noexcept -> T {
-      if (predecessor == m) return T(1);
-      const T s = scale.scaled(predecessor - m);
-      return s >= kCutoff ? T(0) : std::exp(-s);
-    };
     // diag, left, up: on dtw_kernel_linear (up = dp[i, j-1], left = dp[i-1, j])
     // the order soft_dtw has always summed in; another order moves a float32
     // distance by an ulp.
     T acc = T(0);
-    if (diag != maxValue) acc += contribution(diag);
-    if (left != maxValue) acc += contribution(left);
-    if (up != maxValue) acc += contribution(up);
+    if (diag != maxValue) acc += scale.boltzmann(diag, m);
+    if (left != maxValue) acc += scale.boltzmann(left, m);
+    if (up != maxValue) acc += scale.boltzmann(up, m);
     return (acc == T(1) ? m : m - gamma * std::log(acc)) + cost;
   }
   DTWC_KERNEL_FORCE_INLINE T combine_interior(T diag, T up, T left, T cost,
                      std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
-    constexpr T kCutoff = sizeof(T) == 8 ? T(40.0) : T(20.0);
     T m = diag;
     if (up < m) m = up;
     if (left < m) m = left;
 
-    const auto contribution = [&](T predecessor) noexcept -> T {
-      if (predecessor == m) return T(1);
-      const T s = scale.scaled(predecessor - m);
-      return s >= kCutoff ? T(0) : std::exp(-s);
-    };
-    T acc = contribution(diag);
-    acc += contribution(left);
-    acc += contribution(up);
+    T acc = scale.boltzmann(diag, m);
+    acc += scale.boltzmann(left, m);
+    acc += scale.boltzmann(up, m);
     return (acc == T(1) ? m : m - gamma * std::log(acc)) + cost;
   }
   T boundary(T prev, T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -325,21 +322,21 @@ struct AROWCell
 // Shared band-bounds helper
 // ===========================================================================
 
-/// Canonical Sakoe-Chiba column range [lo, hi) at zero-based row `row`.
-/// The adjustment window is |row-column| <= band. Bounds are clamped here so
-/// callers never narrow sequence indices to `int` or overflow `row+band+1`.
+/// Canonical Sakoe-Chiba range [lo, hi) in [0, column_count) at zero-based index `row`.
+/// The adjustment window is |row-column| <= band. Bounds are clamped here so callers never
+/// narrow sequence indices to `int` or overflow `row+band+1`. `row` may reach or exceed
+/// `column_count` when used along the transposed axis of `dtw_kernel_lanes` (ny[w] > nx).
 inline std::pair<std::size_t, std::size_t>
   dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 {
   if (band < 0) return { 0, column_count }; // every row, of a matrix of any shape
-  if (column_count == 0 || row >= column_count)
-    return { column_count, column_count };
-
+  if (column_count == 0) return { 0, 0 };
   const auto width = static_cast<std::size_t>(band);
   const auto lo = (row > width) ? row - width : 0;
-  // The subtraction is safe because row < column_count. Taking this branch
+  if (lo >= column_count) return { column_count, column_count };
+  // The subtraction is safe when row < column_count. Taking this branch
   // before forming row+width+1 makes the upper clamp overflow-proof.
-  const auto hi = (width >= column_count - row - 1)
+  const auto hi = (row >= column_count || width >= column_count - row - 1)
                     ? column_count
                     : row + width + 1;
   return { lo, hi };
@@ -389,6 +386,8 @@ namespace detail {
     if (n_short == 1) {
       T acc = short_side[0];
       for (std::size_t j = 1; j < n_long; ++j) {
+        // SoftCell uses boundary() directly (one predecessor needs no exp/log);
+        // standard cells keep combine()'s min as a barrier against -fassociative-math reassociation.
         if constexpr (std::is_same_v<Cell, SoftCell<T>>)
           acc = cell.boundary(acc, cost(0, j), 0, j);
         else
@@ -617,6 +616,12 @@ struct LanesCell : StandardCell
   {
     return std::fmin(std::fmin(diag, up), left) + cost;
   }
+  template <typename T>
+  T combine_interior(T diag, T up, T left, T cost,
+                     std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return combine(diag, up, left, cost, 0, 0);
+  }
 };
 #else
 struct LanesCell : StandardCell
@@ -630,6 +635,12 @@ struct LanesCell : StandardCell
     const T m1 = (up < diag) ? up : diag;
     const T m2 = (left < m1) ? left : m1;
     return m2 + cost;
+  }
+  template <typename T>
+  T combine_interior(T diag, T up, T left, T cost,
+                     std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return combine(diag, up, left, cost, 0, 0);
   }
 };
 #endif
@@ -653,22 +664,6 @@ inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
 inline constexpr bool dtw_lanes_packed = false;
 #endif
 
-/// Sakoe-Chiba row range [lo, hi) in [0, row_count) at zero-based column `col` for
-/// dtw_kernel_lanes, where `col` may reach or exceed `row_count` when ny[w] > nx.
-inline std::pair<std::size_t, std::size_t>
-  dtw_lanes_band_bounds(int band, std::size_t col, std::size_t row_count) noexcept
-{
-  if (band < 0) return { 0, row_count };
-  if (row_count == 0) return { 0, 0 };
-  const auto width = static_cast<std::size_t>(band);
-  const auto lo = (col > width) ? col - width : 0;
-  if (lo >= row_count) return { row_count, row_count };
-  const auto hi = (col >= row_count || width >= row_count - col - 1)
-                    ? row_count
-                    : col + width + 1;
-  return { lo, hi };
-}
-
 namespace detail {
 
   /// A row of the lanes' buffers: one value a lane.
@@ -687,6 +682,15 @@ namespace detail {
   {
     thread_local std::vector<LanesRow<T>> y_buf, s_buf;
     return { y_buf, s_buf };
+  }
+
+  /// Ragged-tail end-row snapshot buffer for dtw_kernel_lanes_packed, kept separate from y_buf
+  /// (which holds PackedLanesView::rows) so panel.rows and end_rows never alias under DTWC_LANES_RESTRICT.
+  template <typename T>
+  std::vector<LanesRow<T>> &lanes_end_buf()
+  {
+    thread_local std::vector<LanesRow<T>> end_buf;
+    return end_buf;
   }
 
 } // namespace detail
@@ -719,8 +723,9 @@ struct PackedLanesPanel
 
 namespace detail {
 
-  template <typename T>
-  PackedLanesView<T> pack_lanes_into(const std::span<const T> *ys, std::vector<LanesRow<T>> &buf)
+  template <typename T, typename Transform>
+  PackedLanesView<T> pack_lanes_with(const std::span<const T> *ys, std::vector<LanesRow<T>> &buf,
+                                     Transform &&transform)
   {
     constexpr std::size_t W = dtw_lanes<T>;
     std::array<std::size_t, W> ny{};
@@ -734,8 +739,9 @@ namespace detail {
     if (buf.size() < ny_max) buf.resize(ny_max);
     LanesRow<T> *DTWC_LANES_RESTRICT Y = buf.data();
     for (std::size_t w = 0; w < W; ++w) {
-      const T *DTWC_LANES_RESTRICT yw = ys[w].data();
-      const std::size_t n = ny[w];
+      const std::span<const T> src = transform(ys[w]);
+      const T *DTWC_LANES_RESTRICT yw = src.data();
+      const std::size_t n = src.size();
       std::size_t t = 0;
       for (; t < n; ++t) Y[t].v[w] = yw[t];
       const T last = yw[n - 1];
@@ -744,16 +750,13 @@ namespace detail {
     return { Y, ny, ny_min, ny_max };
   }
 
-} // namespace detail
+  template <typename T>
+  PackedLanesView<T> pack_lanes_into(const std::span<const T> *ys, std::vector<LanesRow<T>> &buf)
+  {
+    return pack_lanes_with<T>(ys, buf, [](std::span<const T> s) noexcept { return s; });
+  }
 
-template <typename T>
-void pack_lanes_panel(const std::span<const T> *ys, PackedLanesPanel<T> &panel)
-{
-  const auto v = detail::pack_lanes_into<T>(ys, panel.rows);
-  panel.ny = v.ny;
-  panel.ny_min = v.ny_min;
-  panel.ny_max = v.ny_max;
-}
+} // namespace detail
 
 /// DTW between xs and a pre-packed panel of W = dtw_lanes<T> series, with pointwise distance
 /// dist(xs[i], panel.rows[j].v[w]). Supports both unbanded (band < 0) and Sakoe-Chiba banded
@@ -788,21 +791,23 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
     return r;
   }();
 
-  auto [y_buf, s_buf] = detail::lanes_bufs<T>();
+  auto &s_buf = detail::lanes_bufs<T>().second;
   if (s_buf.size() < nx) s_buf.resize(nx);
   const bool ragged_tail = (ny_min < ny_max);
+  Row *DTWC_LANES_RESTRICT end_rows = nullptr;
   if (ragged_tail) {
+    auto &end_buf = detail::lanes_end_buf<T>();
     const std::size_t tail_count = ny_max - (ny_min - 1);
-    if (y_buf.size() < tail_count) y_buf.resize(tail_count);
+    if (end_buf.size() < tail_count) end_buf.resize(tail_count);
+    end_rows = end_buf.data();
   }
   const Row *DTWC_LANES_RESTRICT Y = panel.rows;
-  Row *end_rows = ragged_tail ? y_buf.data() : nullptr;
   Row *DTWC_LANES_RESTRICT s = s_buf.data();
 
   // Column 0 (y[0]). The rows above its band hold maxValue: the band only moves
   // up, so a later column first meets such a row as an unreachable `up`.
   constexpr bool has_row_weight = requires(const Cell &c) { c.row_weight(std::size_t{ 0 }, std::size_t{ 0 }); };
-  const std::size_t hi0 = dtw_lanes_band_bounds(band, 0, nx).second;
+  const std::size_t hi0 = dtw_band_bounds(band, 0, nx).second;
   {
     T y0[W];
     for (std::size_t w = 0; w < W; ++w) y0[w] = Y[0].v[w];
@@ -969,7 +974,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
 
   // Remaining columns (1-column tail when unbanded, or every column when banded).
   for (; j < ny_max; ++j) {
-    const auto [lo, hi] = dtw_lanes_band_bounds(band, j, nx);
+    const auto [lo, hi] = dtw_band_bounds(band, j, nx);
     T y[W], diag[W], left[W];
     for (std::size_t w = 0; w < W; ++w) y[w] = Y[j].v[w];
     std::size_t i = lo;

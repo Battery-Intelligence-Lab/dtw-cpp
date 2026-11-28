@@ -5,7 +5,9 @@
  * Used for persistent-cache identities. The digest is a format contract, so it
  * must not depend on std::hash (which is implementation-defined and may be
  * salted) or on host word size.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #pragma once
@@ -26,6 +28,7 @@ public:
 
   void update(const void *bytes, std::size_t size)
   {
+    if (size == 0) return;
     const auto *input = static_cast<const std::uint8_t *>(bytes);
     total_size_ += static_cast<std::uint64_t>(size);
 

@@ -1,7 +1,9 @@
 /**
  * @file dtw_dispatch.cpp
  * @brief validate(DistanceConfig) and resolve_dtw_fn<T> (see dtw_dispatch.hpp).
+ *
  * @author Volkan Kumtepeli
+ * @date 12 Apr 2026
  */
 
 #include "dtw_dispatch.hpp"
@@ -306,6 +308,8 @@ void validate(const DistanceConfig &c, bool f32)
   case MVMode::Dependent: case MVMode::Independent: break;
   default: throw outside("MVMode", p.mv_mode);
   }
+  if (c.ndim == 0)
+    throw InvalidInput("ndim must be at least 1; got 0.");
   if (c.band < -1)
     throw InvalidInput("band must be -1 (full DTW) or at least 0; got " + std::to_string(c.band) + ".");
 

@@ -23,7 +23,9 @@
  * `band >= 0 && band < |m - n|` (infeasible Sakoe-Chiba window for
  * unequal-length series), `dtwc::distance::*` returns `std::numeric_limits<T>::max()`
  * (`DBL_MAX` for `double`, `FLT_MAX` for `float`).
+ *
  * @author Volkan Kumtepeli
+ * @date 14 Apr 2026
  */
 
 #pragma once
@@ -50,6 +52,15 @@
 
 namespace dtwc::distance {
 
+/// @brief Compute checked banded DTW distance between two series.
+/// @tparam X First series type (core::SeriesPair).
+/// @tparam Y Second series type matching @p X (core::SeriesPair).
+/// @param x First time series.
+/// @param y Second time series.
+/// @param band Sakoe-Chiba half-width (-1 = unconstrained).
+/// @param metric Pointwise distance metric (default: L1).
+/// @return DTW distance, or `numeric_limits<T>::max()` for an infeasible band.
+/// @throws InvalidInput on invalid band/metric, empty series, or non-finite values.
 template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> dtw(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
@@ -61,6 +72,15 @@ core::series_value_t<X> dtw(const X &x, const Y &y, int band = settings::DEFAULT
   return dtwBanded(x, y, band, static_cast<T>(-1), metric);
 }
 
+/// @brief Compute checked Derivative DTW (DDTW) distance between two series.
+/// @tparam X First series type (core::SeriesPair).
+/// @tparam Y Second series type matching @p X (core::SeriesPair).
+/// @param x First time series.
+/// @param y Second time series.
+/// @param band Sakoe-Chiba half-width (-1 = unconstrained).
+/// @param metric Pointwise distance metric (default: L1).
+/// @return DDTW distance, or `numeric_limits<T>::max()` for an infeasible band.
+/// @throws InvalidInput on invalid band/metric, empty series, or non-finite values.
 template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> ddtw(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
@@ -73,6 +93,15 @@ core::series_value_t<X> ddtw(const X &x, const Y &y, int band = settings::DEFAUL
   return ddtwBanded(x, y, band, metric);
 }
 
+/// @brief Compute checked Weighted DTW (WDTW) distance between two series.
+/// @tparam X First series type (core::SeriesPair).
+/// @tparam Y Second series type matching @p X (core::SeriesPair).
+/// @param x First time series.
+/// @param y Second time series.
+/// @param band Sakoe-Chiba half-width (-1 = unconstrained).
+/// @param g Logistic weight steepness parameter (>= 0).
+/// @return WDTW distance, or `numeric_limits<T>::max()` for an infeasible band.
+/// @throws InvalidInput on invalid band or @p g, empty series, or non-finite values.
 template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> wdtw(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
@@ -85,6 +114,15 @@ core::series_value_t<X> wdtw(const X &x, const Y &y, int band = settings::DEFAUL
   return wdtwBanded(x, y, band, g);
 }
 
+/// @brief Compute checked Amerced DTW (ADTW) distance between two series.
+/// @tparam X First series type (core::SeriesPair).
+/// @tparam Y Second series type matching @p X (core::SeriesPair).
+/// @param x First time series.
+/// @param y Second time series.
+/// @param band Sakoe-Chiba half-width (-1 = unconstrained).
+/// @param penalty Additive penalty for non-diagonal warping steps (>= 0).
+/// @return ADTW distance, or `numeric_limits<T>::max()` for an infeasible band.
+/// @throws InvalidInput on invalid band or @p penalty, empty series, or non-finite values.
 template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> adtw(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
@@ -97,6 +135,14 @@ core::series_value_t<X> adtw(const X &x, const Y &y, int band = settings::DEFAUL
   return adtwBanded(x, y, band, penalty);
 }
 
+/// @brief Compute checked Soft-DTW distance (Cuturi & Blondel 2017) between two series.
+/// @tparam X First series type (core::SeriesPair).
+/// @tparam Y Second series type matching @p X (core::SeriesPair).
+/// @param x First time series.
+/// @param y Second time series.
+/// @param gamma Smoothing parameter (> 0).
+/// @return Soft-DTW distance (may be negative when @p gamma > 0).
+/// @throws InvalidInput on non-positive/non-finite @p gamma, empty series, or non-finite values.
 template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> soft_dtw(const X &x, const Y &y, core::series_value_t<X> gamma = 1.0)
@@ -108,6 +154,15 @@ core::series_value_t<X> soft_dtw(const X &x, const Y &y, core::series_value_t<X>
   return dtwc::soft_dtw(x, y, gamma);
 }
 
+/// @brief Compute checked NaN-aware DTW distance with zero local cost on missing values.
+/// @tparam X First series type (core::SeriesPair).
+/// @tparam Y Second series type matching @p X (core::SeriesPair).
+/// @param x First time series (NaN marks missing samples).
+/// @param y Second time series (NaN marks missing samples).
+/// @param band Sakoe-Chiba half-width (-1 = unconstrained).
+/// @param metric Pointwise distance metric (default: L1).
+/// @return Missing-data DTW distance, or `numeric_limits<T>::max()` for an infeasible band.
+/// @throws InvalidInput on invalid band/metric, empty series, or +/-inf values.
 template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> missing(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
@@ -120,6 +175,15 @@ core::series_value_t<X> missing(const X &x, const Y &y, int band = settings::DEF
   return dtwMissing_banded(x, y, band, static_cast<T>(-1), metric);
 }
 
+/// @brief Compute checked DTW-AROW distance (diagonal-only alignment across NaN values).
+/// @tparam X First series type (core::SeriesPair).
+/// @tparam Y Second series type matching @p X (core::SeriesPair).
+/// @param x First time series (NaN marks missing samples).
+/// @param y Second time series (NaN marks missing samples).
+/// @param band Sakoe-Chiba half-width (-1 = unconstrained).
+/// @param metric Pointwise distance metric (default: L1).
+/// @return DTW-AROW distance, or `numeric_limits<T>::max()` for an infeasible band.
+/// @throws InvalidInput on invalid band/metric, empty series, or +/-inf values.
 template <typename X, typename Y>
   requires core::SeriesPair<X, Y>
 core::series_value_t<X> arow(const X &x, const Y &y, int band = settings::DEFAULT_BAND,
@@ -222,7 +286,7 @@ std::vector<double> cdist(const std::vector<std::vector<T>> &X,
 {
   static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>,
                 "distance::cdist supports double (data_t) and float series.");
-  const std::size_t ndim = distance.ndim == 0 ? 1 : distance.ndim;
+  const std::size_t ndim = distance.ndim;
   auto make_view = [ndim](const std::vector<std::vector<T>> &vecs,
                           std::vector<std::string> &names_buf) {
     names_buf.resize(vecs.size());

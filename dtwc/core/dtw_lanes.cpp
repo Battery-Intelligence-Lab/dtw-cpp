@@ -7,7 +7,9 @@
  *          Windows the lane loop of dtw_kernel_lanes would compile to W scalar
  *          chains instead of W / 4 vector ones. dtwc/core/CMakeLists.txt compiles this
  *          file to native code there, where clang's own -O3 pipeline runs SLP.
+ *
  * @author Volkan Kumtepeli
+ * @date 29 Sep 2026
  */
 
 #include "dtw_dispatch.hpp"
@@ -96,62 +98,65 @@ bool supports_lanes(const DistanceConfig &c) noexcept
          || c.variant.variant == DTWVariant::WDTW;
 }
 
-template <typename T>
-std::span<const T> prep_series_into(const DistanceConfig &c, std::span<const T> s, std::vector<T> &buf)
+enum class LanePrep { None, DDTW, Interpolate };
+
+constexpr LanePrep lane_prep_of(const DistanceConfig &c) noexcept
 {
-  if (c.missing == MissingStrategy::Interpolate)
+  if (c.missing == MissingStrategy::Interpolate) return LanePrep::Interpolate;
+  if (c.variant.variant == DTWVariant::DDTW) return LanePrep::DDTW;
+  return LanePrep::None;
+}
+
+template <LanePrep Prep, typename T>
+std::span<const T> prep_series_into(std::span<const T> s, std::vector<T> &buf)
+{
+  if constexpr (Prep == LanePrep::Interpolate) {
     return interpolate_linear_into<T>(s, buf);
-  if (c.variant.variant == DTWVariant::DDTW) {
+  } else if constexpr (Prep == LanePrep::DDTW) {
     derivative_transform_inplace<T>(s, buf);
     return buf;
+  } else {
+    (void)buf;
+    return s;
   }
-  return s;
 }
 
-template <typename T>
-std::vector<T> &query_prep_buf(const DistanceConfig &c)
+template <LanePrep Prep, typename T>
+std::span<const T> prepare_query_impl(std::span<const T> x)
 {
-  if (c.missing == MissingStrategy::Interpolate)
-    return dtwc::detail::interpolate_bufs<T>().first;
-  return dtwc::detail::derivative_bufs<T>().first;
+  if constexpr (Prep == LanePrep::None) {
+    return x;
+  } else {
+    if (x.empty()) return x;
+    auto &buf = (Prep == LanePrep::Interpolate)
+                  ? dtwc::detail::interpolate_bufs<T>().first
+                  : dtwc::detail::derivative_bufs<T>().first;
+    return prep_series_into<Prep, T>(x, buf);
+  }
 }
 
-template <typename T>
-std::vector<T> &panel_prep_buf(const DistanceConfig &c)
+template <LanePrep Prep, typename T>
+PackedLanesView<T> pack_transformed_into(const std::span<const T> *ys, std::vector<detail::LanesRow<T>> &buf)
 {
-  if (c.missing == MissingStrategy::Interpolate)
-    return dtwc::detail::interpolate_bufs<T>().second;
-  return dtwc::detail::derivative_bufs<T>().second;
-}
-
-template <typename T>
-PackedLanesView<T> pack_transformed_into(const DistanceConfig &c, const std::span<const T> *ys,
-                                         std::vector<detail::LanesRow<T>> &buf)
-{
-  if (c.missing != MissingStrategy::Interpolate && c.variant.variant != DTWVariant::DDTW)
+  if constexpr (Prep == LanePrep::None) {
     return detail::pack_lanes_into<T>(ys, buf);
+  } else {
+    auto &tmp = (Prep == LanePrep::Interpolate)
+                  ? dtwc::detail::interpolate_bufs<T>().second
+                  : dtwc::detail::derivative_bufs<T>().second;
+    return detail::pack_lanes_with<T>(ys, buf, [&tmp](std::span<const T> s) {
+      return prep_series_into<Prep, T>(s, tmp);
+    });
+  }
+}
 
-  constexpr std::size_t W = dtw_lanes<T>;
-  std::array<std::size_t, W> ny{};
-  std::size_t ny_min = std::numeric_limits<std::size_t>::max(), ny_max = 0;
-  for (std::size_t w = 0; w < W; ++w) {
-    ny[w] = ys[w].size();
-    ny_min = std::min(ny_min, ny[w]);
-    ny_max = std::max(ny_max, ny[w]);
-  }
-  if (ny_min == 0) return { nullptr, ny, 0, ny_max };
-  if (buf.size() < ny_max) buf.resize(ny_max);
-  detail::LanesRow<T> *Y = buf.data();
-  std::vector<T> &tmp = panel_prep_buf<T>(c);
-  for (std::size_t w = 0; w < W; ++w) {
-    const std::span<const T> yw = prep_series_into<T>(c, ys[w], tmp);
-    const std::size_t n = yw.size();
-    std::size_t t = 0;
-    for (; t < n; ++t) Y[t].v[w] = yw[t];
-    const T last = yw[n - 1];
-    for (; t < ny_max; ++t) Y[t].v[w] = last;
-  }
-  return { Y, ny, ny_min, ny_max };
+template <typename T>
+void run_wdtw_equal_len_lanes(std::span<const T> x, const PackedLanesView<T> &panel,
+                              int band, T g, std::span<double> out)
+{
+  const auto &w_tab = dtwc::detail::cached_wdtw_weights<T>(static_cast<int>(x.size() - 1), g);
+  const auto d = dtw_kernel_lanes_packed<T>(x, panel, band, PointwiseL1{}, WDTWCell<T>{ w_tab.data() });
+  for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
 }
 
 template <typename T, typename Dist, typename Cell>
@@ -164,15 +169,15 @@ packed_block_fn(int band, Dist dist, Cell cell)
   };
 }
 
-template <typename T, typename Dist, typename Cell>
+template <LanePrep Prep, typename T, typename Dist, typename Cell>
 std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
-block_fn(DistanceConfig config, Dist dist, Cell cell)
+block_fn(int band, Dist dist, Cell cell)
 {
-  return [config, dist, cell](std::span<const T> x, std::span<const std::span<const T>> ys, std::span<double> out) {
-    const std::span<const T> x_prep = prepare_dtw_query<T>(config, x);
+  return [band, dist, cell](std::span<const T> x, std::span<const std::span<const T>> ys, std::span<double> out) {
+    const std::span<const T> x_prep = prepare_query_impl<Prep, T>(x);
     auto &y_buf = detail::lanes_bufs<T>().first;
-    const auto panel = pack_transformed_into<T>(config, ys.data(), y_buf);
-    const auto d = dtw_kernel_lanes_packed<T>(x_prep, panel, config.band, dist, cell);
+    const auto panel = pack_transformed_into<Prep, T>(ys.data(), y_buf);
+    const auto d = dtw_kernel_lanes_packed<T>(x_prep, panel, band, dist, cell);
     for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
   };
 }
@@ -202,7 +207,14 @@ auto dispatch_lane_kernel(const DistanceConfig &config, MakeFn &&make)
 template <typename T>
 void pack_dtw_panel(const DistanceConfig &config, const std::span<const T> *ys, PackedLanesPanel<T> &panel)
 {
-  const auto v = pack_transformed_into<T>(config, ys, panel.rows);
+  const PackedLanesView<T> v = [&] {
+    switch (lane_prep_of(config)) {
+    case LanePrep::Interpolate: return pack_transformed_into<LanePrep::Interpolate, T>(ys, panel.rows);
+    case LanePrep::DDTW:        return pack_transformed_into<LanePrep::DDTW, T>(ys, panel.rows);
+    case LanePrep::None:        break;
+    }
+    return pack_transformed_into<LanePrep::None, T>(ys, panel.rows);
+  }();
   panel.ny = v.ny;
   panel.ny_min = v.ny_min;
   panel.ny_max = v.ny_max;
@@ -211,10 +223,12 @@ void pack_dtw_panel(const DistanceConfig &config, const std::span<const T> *ys, 
 template <typename T>
 std::span<const T> prepare_dtw_query(const DistanceConfig &config, std::span<const T> x)
 {
-  if (config.missing != MissingStrategy::Interpolate && config.variant.variant != DTWVariant::DDTW)
-    return x;
-  if (x.empty()) return x;
-  return prep_series_into<T>(config, x, query_prep_buf<T>(config));
+  switch (lane_prep_of(config)) {
+  case LanePrep::Interpolate: return prepare_query_impl<LanePrep::Interpolate, T>(x);
+  case LanePrep::DDTW:        return prepare_query_impl<LanePrep::DDTW, T>(x);
+  case LanePrep::None:        break;
+  }
+  return x;
 }
 
 template <typename T>
@@ -232,9 +246,7 @@ resolve_dtw_packed_block_fn(const DistanceConfig &config)
         return;
       }
       if (nx == panel.ny_min && nx == panel.ny_max) {
-        const auto &w_tab = dtwc::detail::cached_wdtw_weights<T>(static_cast<int>(nx - 1), g);
-        const auto d = dtw_kernel_lanes_packed<T>(x, panel, band, PointwiseL1{}, WDTWCell<T>{ w_tab.data() });
-        for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
+        run_wdtw_equal_len_lanes<T>(x, panel, band, g, out);
         return;
       }
       auto &buf = wdtw_lane_unpack_buf<T>();
@@ -276,17 +288,22 @@ resolve_dtw_block_fn(const DistanceConfig &config)
       if (equal_len) {
         auto &y_buf = detail::lanes_bufs<T>().first;
         const auto panel = detail::pack_lanes_into<T>(ys.data(), y_buf);
-        const auto &w_tab = dtwc::detail::cached_wdtw_weights<T>(static_cast<int>(nx - 1), g);
-        const auto d = dtw_kernel_lanes_packed<T>(x, panel, band, PointwiseL1{}, WDTWCell<T>{ w_tab.data() });
-        for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
+        run_wdtw_equal_len_lanes<T>(x, panel, band, g, out);
         return;
       }
       for (std::size_t w = 0; w < dtw_lanes<T>; ++w)
         out[w] = normalize_public_distance(wdtwBanded(x, ys[w], band, g));
     };
   }
+  const LanePrep prep = lane_prep_of(config);
+  const int band = config.band;
   return dispatch_lane_kernel<T>(config, [&](auto dist, auto cell) {
-    return block_fn<T>(config, dist, cell);
+    switch (prep) {
+    case LanePrep::Interpolate: return block_fn<LanePrep::Interpolate, T>(band, dist, cell);
+    case LanePrep::DDTW:        return block_fn<LanePrep::DDTW, T>(band, dist, cell);
+    case LanePrep::None:        break;
+    }
+    return block_fn<LanePrep::None, T>(band, dist, cell);
   });
 }
 
@@ -311,7 +328,9 @@ std::size_t detail::lanes_scratch(bool release) noexcept
 {
   auto [y32, s32] = detail::lanes_bufs<float>();
   auto [y64, s64] = detail::lanes_bufs<data_t>();
-  return held_bytes(release, y32, s32, y64, s64, wdtw_lane_unpack_buf<float>(), wdtw_lane_unpack_buf<data_t>());
+  return held_bytes(release, y32, s32, y64, s64,
+                    detail::lanes_end_buf<float>(), detail::lanes_end_buf<data_t>(),
+                    wdtw_lane_unpack_buf<float>(), wdtw_lane_unpack_buf<data_t>());
 }
 
 } // namespace dtwc::core

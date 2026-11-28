@@ -209,7 +209,10 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
           + "; a distance matrix is symmetric.");
     }
 
-  if (N == 0) return;
+  if (N == 0) {
+    dm.resize(0);
+    return;
+  }
   dm.resize(N);
   const bool negative_is_mark = not_computed == core::NotComputed::Negative;
   for (size_t i = 0; i < N; ++i)

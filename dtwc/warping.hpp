@@ -33,6 +33,7 @@
 #pragma once
 
 #include "base/error.hpp"              // for InvalidInput
+#include "base/missing_utils.hpp"      // for all_missing
 #include "base/settings.hpp"           // for DEFAULT_BAND
 #include "core/dtw_options.hpp"    // for core::MetricType
 #include "core/dtw_kernel.hpp"     // unified DTW kernels, orient, run_dtw
@@ -113,6 +114,36 @@ template <typename data_t>
                          + ", which require_finite() takes.");
 }
 
+enum class SeriesVerdict : unsigned char
+{
+  Usable,
+  EntirelyNaN,
+  Refused
+};
+
+template <typename data_t>
+inline SeriesVerdict series_verdict(std::span<const data_t> values, core::MissingStrategy missing)
+{
+  const bool nan_is_missing = (missing != core::MissingStrategy::Error);
+  if (!all_usable(values, nan_is_missing)) return SeriesVerdict::Refused;
+  if (missing == core::MissingStrategy::Interpolate && all_missing(values)) return SeriesVerdict::EntirelyNaN;
+  return SeriesVerdict::Usable;
+}
+
+template <typename DataLike>
+inline SeriesVerdict series_verdict(const DataLike &data, std::size_t i, core::MissingStrategy missing)
+{
+  return data.is_f32() ? series_verdict(data.series_f32(i), missing) : series_verdict(data.series(i), missing);
+}
+
+template <typename DataLike>
+[[noreturn]] inline void refuse_series_unusable(const DataLike &data, std::size_t i, std::string_view name,
+                                                std::string_view where, bool nan_is_missing)
+{
+  if (data.is_f32()) refuse_unusable(data.series_f32(i), name, where, nan_is_missing);
+  refuse_unusable(data.series(i), name, where, nan_is_missing);
+}
+
 /// Both series of a pair, x first. Neither may be empty: an empty series has no
 /// warping path, which the kernels return as max(), a finite number.
 template <typename data_t>
@@ -140,10 +171,11 @@ void require_finite(std::span<const data_t> x, std::span<const data_t> y,
  *          preserving path. A negative band, the default, requests
  *          unconstrained DTW.
  *
- * @tparam X, Y The series: contiguous ranges of one floating-point type (core::SeriesPair),
- *              a std::vector, std::span, std::array or C array of float or double. Their
- *              element type is the type of the distance. A pointer and a length pass as
- *              `std::span<const T>(pointer, length)`.
+ * @tparam X First series type: contiguous range of float or double (core::SeriesPair),
+ *           e.g. std::vector, std::span, std::array, or C array. Their element type
+ *           is the type of the distance. A pointer and length pass as
+ *           `std::span<const T>(pointer, length)`.
+ * @tparam Y Second series type: contiguous range of the same element type as @p X (core::SeriesPair).
  * @param x First series.
  * @param y Second series.
  * @param band Fixed diagonal half-width in samples; negative means
@@ -270,6 +302,7 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
     return dtwBanded(std::span<const data_t>(x, nx_steps), std::span<const data_t>(y, ny_steps), band,
                      data_t(-1), metric);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
+  if (x == y && nx_steps == ny_steps) return data_t(0);
   if (band >= 0) {
     const auto min_steps = std::min(nx_steps, ny_steps);
     const auto max_steps = std::max(nx_steps, ny_steps);

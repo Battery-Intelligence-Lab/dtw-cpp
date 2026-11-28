@@ -23,7 +23,7 @@
  *          one is SpanMVL2Cost, the Euclidean norm over the channels.
  *
  * @author Volkan Kumtepeli
- * @date 2026-04-12
+ * @date 12 Apr 2026
  */
 
 #pragma once
@@ -149,6 +149,7 @@ struct SpanMVWeightedL1Cost {
 // "pass through" missing regions without penalty.
 // ===========================================================================
 
+/// Univariate NaN-aware L1 cost at cell (row, col): returns 0 if either operand is NaN.
 template <typename T>
 struct SpanNanAwareL1Cost {
   const T* x;
@@ -161,6 +162,7 @@ struct SpanNanAwareL1Cost {
   }
 };
 
+/// Univariate NaN-aware squared-L2 cost at cell (row, col): returns 0 if either operand is NaN.
 template <typename T>
 struct SpanNanAwareSquaredL2Cost {
   const T* x;
@@ -211,6 +213,7 @@ struct SpanMVNanAwareL2Cost {
   }
 };
 
+/// Multivariate NaN-aware squared-L2 cost: sums (a[d] - b[d])^2 over channels where neither operand is NaN.
 template <typename T>
 struct SpanMVNanAwareSquaredL2Cost {
   const T* x;
@@ -266,6 +269,7 @@ struct SpanMVAROWL1Cost {
   }
 };
 
+/// Multivariate AROW squared-L2 cost: sums (a[d] - b[d])^2 over comparable channels, or returns NaN if none are comparable.
 template <typename T>
 struct SpanMVAROWSquaredL2Cost {
   const T* x;

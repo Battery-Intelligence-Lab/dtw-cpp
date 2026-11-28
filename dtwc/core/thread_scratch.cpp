@@ -1,13 +1,16 @@
 /**
  * @file thread_scratch.cpp
  * @brief The closed list of the threads' scratch, its release, and thread_scratch_bytes (see thread_scratch.hpp).
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Nov 2026
  */
 
 #include "thread_scratch.hpp"
 
 #include "distance_matrix.hpp"          // release_free_memory
 #include "dtw_kernel.hpp"               // dtw_lanes
+#include "lower_bound_impl.hpp"         // envelope_bufs
 #include "../base/parallelisation.hpp"  // full_team_threads
 #include "../base/settings.hpp"         // data_t
 
@@ -21,14 +24,24 @@
 
 namespace dtwc::core {
 
+std::size_t detail::envelope_scratch(bool release) noexcept
+{
+  auto &s32 = envelope_bufs<float>();
+  auto &s64 = envelope_bufs<data_t>();
+  return held_bytes(release, s32.dmax, s32.dmin, s32.lmax, s32.lmin,
+                    s64.dmax, s64.dmin, s64.lmax, s64.lmin);
+}
+
 namespace {
 
 /// The closed list: every function, each beside the code that uses its buffers (thread_scratch.hpp says why).
 constexpr std::size_t (*closed_list[])(bool) noexcept = {
   detail::dispatch_scratch,
   detail::lanes_scratch,
+  detail::envelope_scratch,
   detail::fast_pam_scratch,
   detail::clara_assign_scratch,
+  detail::one_batch_pam_scratch,
   detail::barycenter_scratch,
 };
 
@@ -88,17 +101,19 @@ std::size_t scratch_bytes(const DistanceConfig &c, std::size_t length)
   const std::size_t lanes = c.ndim == 1 ? 2 * length * dtw_lanes<T> * value : 0;
   switch (c.missing) {
   case MissingStrategy::ZeroCost:
-  case MissingStrategy::AROW: return dp;
+  case MissingStrategy::AROW: return lanes + dp;
   case MissingStrategy::Interpolate: return 2 * length * value + lanes + dp; // x_buffer, y_buffer + lanes
   case MissingStrategy::Error: break;
   }
   switch (c.variant.variant) {
   case DTWVariant::DDTW: return 2 * values * value + lanes + dp; // dx, dy + univariate lanes
-  case DTWVariant::WDTW: return length * value + dp;     // cached_w: max_dev + 1 weights (warping_wdtw.hpp)
-  case DTWVariant::ADTW: return dp;
+  case DTWVariant::WDTW:
+    // cached_w (warping_wdtw.hpp) + wdtw_lane_unpack_buf (dtw_lanes.cpp) + lanes
+    return length * value + (c.ndim == 1 ? length * value : 0) + lanes + dp;
+  case DTWVariant::ADTW: return lanes + dp;
   case DTWVariant::SoftDTW: return length * value;       // dtw_kernel_linear's column, no band
   case DTWVariant::MSM: return 2 * length * value;       // prev_buf, curr_buf (msm.hpp)
-  case DTWVariant::TWE: return length == 0 ? 0 : 2 * (length + 1) * value; // prev_buf, curr_buf, padded (twe.hpp)
+  case DTWVariant::TWE: return length == 0 ? 0 : 3 * (length + 1) * value; // prev_buf, curr_buf, step_y_buf (twe.hpp)
   case DTWVariant::Standard: break;
   }
   // The lanes (resolve_dtw_block_fn): y_buf and s_buf, a row of dtw_lanes<T> values a time step each.

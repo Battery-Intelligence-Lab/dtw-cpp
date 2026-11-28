@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file warping_wdtw.hpp
  * @brief Weighted Dynamic Time Warping (WDTW) — thin wrappers over the
  *        unified DTW kernel.
@@ -52,12 +52,13 @@ namespace dtwc {
 template <typename data_t>
 std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.0)
 {
-  std::vector<data_t> weights(max_dev + 1);
+  if (max_dev < 0) return {};
+  std::vector<data_t> weights(static_cast<std::size_t>(max_dev) + 1);
   const data_t half_dev = static_cast<data_t>(max_dev) / data_t(2);
   // The sum and the quotient are double for float32 too, as the table has always been built.
   for (int d = 0; d <= max_dev; ++d) {
-    weights[d] = static_cast<data_t>(static_cast<double>(w_max)
-                                     / (1.0 + static_cast<double>(std::exp(-g * (static_cast<data_t>(d) - half_dev)))));
+    weights[static_cast<std::size_t>(d)] = static_cast<data_t>(
+      static_cast<double>(w_max) / (1.0 + static_cast<double>(std::exp(-g * (static_cast<data_t>(d) - half_dev)))));
   }
   return weights;
 }
@@ -170,8 +171,9 @@ data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
 {
   if (ndim == 1)
     return wdtwBanded(std::span<const data_t>(x, nx_steps), std::span<const data_t>(y, ny_steps), band, g);
+  if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   const size_t max_steps = std::max(nx_steps, ny_steps);
-  const int max_dev = (max_steps > 0) ? static_cast<int>(max_steps - 1) : 0;
+  const int max_dev = static_cast<int>(max_steps - 1);
   const auto &w = detail::cached_wdtw_weights<data_t>(max_dev, g);
   return wdtwBanded_mv(x, nx_steps, y, ny_steps, ndim, std::span<const data_t>{ w }, band);
 }

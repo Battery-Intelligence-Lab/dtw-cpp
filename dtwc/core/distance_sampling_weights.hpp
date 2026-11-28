@@ -2,7 +2,9 @@
  * @file distance_sampling_weights.hpp
  * @brief k-medoids++ seeding: D-sampling weights of non-negative
  *        dissimilarities, and the one seeding loop that draws from them.
+ *
  * @author Volkan Kumtepeli
+ * @date 13 Jul 2026
  */
 
 #pragma once
@@ -23,10 +25,11 @@
 
 namespace dtwc::core {
 
+/// Unnormalized D-sampling weights and their sum for k-medoids++ seeding.
 struct DistanceSamplingWeights
 {
-  std::vector<double> values;
-  double total = 0.0;
+  std::vector<double> values; ///< Per-point weights (0 for already-selected points).
+  double total = 0.0;         ///< Sum of all entries in values.
 };
 
 /**
@@ -68,10 +71,10 @@ DistanceSamplingWeights distance_sampling_weights(
 /**
  * k-medoids++ seeding (D-sampling): `k` distinct indices of [0, N). The first is
  * uniform; each next one is drawn with probability proportional to its
- * distance_sampling_weights() weight, its dissimilarity to the nearest index
- * chosen so far. When every unchosen weight is zero (identical series) or the
- * draw lands on a chosen index, the smallest unchosen index is taken instead, so
- * the k indices are distinct whatever the data.
+ * D-sampling weight, its dissimilarity to the nearest index chosen so far.
+ * When every unchosen weight is zero (identical series) or the draw lands on a
+ * chosen index, the smallest unchosen index is taken instead, so the k indices
+ * are distinct whatever the data.
  *
  * `distance(c, i)` is point i's dissimilarity to the chosen index c. A Σd
  * objective passes d (k-median++: FastPAM, init::Kmeanspp); barycenter k-means

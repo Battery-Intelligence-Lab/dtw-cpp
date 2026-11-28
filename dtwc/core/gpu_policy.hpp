@@ -1,7 +1,9 @@
 /**
  * @file gpu_policy.hpp
  * @brief Shared GPU capability checks and error wording for Problem and cdist.
+ *
  * @author Volkan Kumtepeli
+ * @date 26 Nov 2026
  */
 
 #pragma once
@@ -43,8 +45,10 @@ inline const char *gpu_missing_name(MissingStrategy m)
 
 #ifdef DTWC_HAS_CUDA
 inline constexpr std::string_view kGpuBackendName = "CUDA";
-#else
+#elif defined(DTWC_HAS_METAL)
 inline constexpr std::string_view kGpuBackendName = "Metal";
+#else
+inline constexpr std::string_view kGpuBackendName = "GPU";
 #endif
 
 [[noreturn]] inline void reject_gpu(std::string_view where, const std::string &request, const std::string &fix)

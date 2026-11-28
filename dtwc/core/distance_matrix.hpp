@@ -3,10 +3,14 @@
  * @brief The pairwise distance matrix: a packed lower triangle on the heap or in
  *        a memory-mapped `.dtwm` file.
  *
- * @details One layout in memory and on disk: N(N+1)/2 doubles, row i holding
- * columns 0..i, NaN = not computed, a value no distance takes. get, set and
- * is_computed index a raw `double *` whichever storage holds the doubles; the
- * storage is chosen once, when the matrix is made.
+ * @details One layout in memory and on disk: N(N+1)/2 packed lower-triangular
+ * values (`Precision::Float64` / binary64 `double` by default, or
+ * `Precision::Float32` / binary32 `float`), row i holding columns 0..i, with
+ * NaN marking uncomputed entries. get() widens stored values to `double`,
+ * set() rounds inputs to the active precision, is_computed() checks `!isnan`,
+ * and visit() passes the underlying typed pointer (`double *` or `float *`)
+ * to loops; the storage backend (heap or mapped) and width are chosen once
+ * when the matrix is made.
  *
  * A `.dtwm` file is a 64-byte header and the packed values (binary64 or binary32,
  * the matrix's width), in the host's byte order (every supported platform is
@@ -67,17 +71,17 @@ inline constexpr Name<NotComputed> not_computed_names[]{
 };
 
 /// Map (i,j) to a packed lower-triangular index (symmetric: tri_index(i,j)==tri_index(j,i)).
-inline size_t tri_index(size_t i, size_t j)
+inline constexpr size_t tri_index(size_t i, size_t j) noexcept
 {
   if (i < j) std::swap(i, j);
   return i * (i + 1) / 2 + j;
 }
 
 /// Number of elements in a packed lower-triangular matrix of dimension n.
-inline size_t packed_size(size_t n) { return n * (n + 1) / 2; }
+inline constexpr size_t packed_size(size_t n) noexcept { return n * (n + 1) / 2; }
 
 /// Bytes a distance takes at `width`: 8 for float64, 4 for float32.
-inline constexpr size_t value_bytes(Precision width) { return width == Precision::Float32 ? sizeof(float) : sizeof(double); }
+inline constexpr size_t value_bytes(Precision width) noexcept { return width == Precision::Float32 ? sizeof(float) : sizeof(double); }
 
 /// Rows for_each_point reads together by default: one 64-byte line of a packed row of doubles.
 inline constexpr size_t group_rows = 8;
@@ -211,7 +215,7 @@ public:
   /// The first entry of packed rows [r0, r1) that is ±inf, as (i, j) with j <= i; (n, n) when none is.
   std::pair<size_t, size_t> first_infinite(size_t r0, size_t r1) const;
 
-  double get(size_t i, size_t j) const
+  double get(size_t i, size_t j) const noexcept
   {
     assert(i < n_ && j < n_);
     const size_t k = tri_index(i, j);
@@ -219,7 +223,7 @@ public:
   }
 
   /// Parallel fills write disjoint (i,j) pairs; no locking is needed.
-  void set(size_t i, size_t j, double v)
+  void set(size_t i, size_t j, double v) noexcept
   {
     assert(i < n_ && j < n_ && !std::isnan(v));
     const size_t k = tri_index(i, j);
@@ -229,7 +233,7 @@ public:
       f32_[k] = static_cast<float>(v);
   }
 
-  bool is_computed(size_t i, size_t j) const { return !std::isnan(get(i, j)); }
+  bool is_computed(size_t i, size_t j) const noexcept { return !std::isnan(get(i, j)); }
 
   /// f(values): the packed values at their width, `const double *` or `const float *`, for a loop that reads many.
   template <typename F>
