@@ -69,7 +69,7 @@ disp(result.medoid_indices); disp(result.total_cost); disp(dtwc.davies_bouldin(p
 | | C++ `dtwc::Problem` | Python `dtwcpp.Problem` | MATLAB `dtwc.Problem` |
 |---|---|---|---|
 | create | `Problem("name")`, `Problem("name", loader)` (a `DataLoader`) | `Problem("name", device="cpu")` | `dtwc.Problem('name', 'Device', 'cpu')` |
-| series | `set_data(Data)` | `set_data(series, names=None, ndim=1)` | `set_data(X, names, ndim, dtype)` |
+| series | `set_data(Data)` | `set_data(series, names=None, ndim=1, dtype="float64")` | `set_data(X, names, ndim, dtype)` |
 | read | `size()`, `series(i)`, `series_name(i)`, `data()` | `size`, `series(i)`, `series_name(i)` | `size()` |
 | k | `set_n_clusters(k)`, `n_clusters()` | the same | the same |
 | method of `cluster()` | `set_method(Method)`, `method()` | `set_method(Method)`, `method` | `set_method(name)` |
@@ -237,8 +237,7 @@ print(list(dtwcpp.barycenter_kmeans(prob, options).labels))
 | adjusted Rand index | `adjusted_rand(a, b)` | `adjusted_rand(a, b)` | `adjusted_rand(a, b)` |
 | normalised mutual information | `normalized_mutual_info(a, b)` | `normalized_mutual_info(a, b)` | `normalized_mutual_info(a, b)` |
 
-The first six read the clustering a `Problem` holds and fill its matrix if
-needed; the last two compare two labellings.
+`davies_bouldin(prob)` and `inertia(prob)` (and `Result.score("davies_bouldin")` / `Result.score("inertia")`) are matrix-free when no distance matrix has been filled, computing only the point-to-medoid and medoid-to-medoid distances needed; `silhouette`, `dunn`, `calinski_harabasz`, and `score(prob, ...)` for those three fill the matrix on demand. The last two compare two labellings.
 
 ## Distance functions
 
@@ -246,6 +245,7 @@ needed; the last two compare two labellings.
 |---|---|---|---|
 | Standard DTW | `dtw(x, y, band = -1, metric = L1)` | `dtw(x, y, band=-1, metric="l1")` | `dtw(x, y, 'Band', -1, 'Metric', 'l1')` |
 | a variant | `dtw(x, y, core::DTWVariantParams, band, metric, missing_strategy)`, or `ddtw`, `wdtw`, `adtw`, `soft_dtw`, `msm`, `twe` | `dtw(x, y, variant="wdtw", wdtw_g=0.05, ...)` | `dtw(x, y, 'Variant', 'wdtw', 'WdtwG', 0.05, ...)` |
+| Soft-DTW gradient | `dtwc::soft_dtw_gradient(x, y, gamma = 1)` | `dtwcpp.soft_dtw_gradient(x, y, gamma=1.0)` | `dtwc.soft_dtw_gradient(x, y, 'Gamma', 1.0)` |
 | missing values (NaN) | `missing(x, y, ...)`, `arow(x, y, ...)`, or `missing_strategy` | `missing_strategy="zero_cost"`, `"arow"`, `"interpolate"` | `'MissingStrategy', 'zero_cost'`, ... |
 
 The keyword arguments and their defaults are `cluster()`'s distance settings.
@@ -253,7 +253,7 @@ Each call checks its settings and both series first and raises `InvalidInput`
 for an empty series, a NaN or ±inf value (NaN is a missing value under a
 missing-data strategy) or a parameter outside its domain. Python's
 `compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix_dtype="float64")` and MATLAB's
-`dtwc.compute_distance_matrix(X, 'Band', b, 'MatrixDtype', 'float64')` return the N×N matrix of a set of
+`dtwc.compute_distance_matrix(X, 'Band', b, 'Metric', 'l1', 'Device', '', 'MatrixDtype', 'float64')` return the N×N matrix of a set of
 series.
 
 ```cpp

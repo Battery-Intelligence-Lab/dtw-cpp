@@ -14,9 +14,9 @@ implemented.
 
 | Metric | Scalar cost | Multivariate cost | Notes |
 |---|---:|---:|---|
-| L1 (default) | $$|x_i-y_j|$$ | $$\sum_c |x_{i,c}-y_{j,c}|$$ | Absolute-difference sum. |
-| L2 | $$\sqrt{(x_i-y_j)^2}$$ | $$\sqrt{\sum_c (x_{i,c}-y_{j,c})^2}$$ | For one channel this equals L1; it differs for multivariate input, except in independent mode, which runs a univariate DTW on each channel. |
-| Squared L2 | $$(x_i-y_j)^2$$ | $$\sum_c (x_{i,c}-y_{j,c})^2$$ | Emphasizes large pointwise deviations; the accumulated result is not itself a metric distance. |
+| L1 (default) | $|x_i-y_j|$ | $\sum_c |x_{i,c}-y_{j,c}|$ | Absolute-difference sum. |
+| L2 | $\sqrt{(x_i-y_j)^2}$ | $\sqrt{\sum_c (x_{i,c}-y_{j,c})^2}$ | For one channel this equals L1; it differs for multivariate input, except in independent mode, which runs a univariate DTW on each channel. |
+| Squared L2 | $(x_i-y_j)^2$ | $\sum_c (x_{i,c}-y_{j,c})^2$ | Emphasizes large pointwise deviations; the accumulated result is not itself a metric distance. |
 
 Every front end selects among all three. `Problem::set_metric` makes the
 metric part of a `Problem`'s distance semantics — its CPU and GPU fills, its
@@ -42,12 +42,13 @@ fill uses no lower bound.
 
 ### LB_Keogh
 
-LB_Keogh constructs an envelope around one series and measures how far the
-other lies outside it. For a fixed DTW radius `w`, the envelope radius `r`
-must satisfy `r >= w`; a wider envelope is valid but weaker. Full DTW requires
-an envelope that repeats the candidate's global minimum and maximum; a
-negative band passed to the low-level envelope helpers requests exactly that
-envelope.
+LB_Keogh constructs an envelope around candidate series $c$ and measures how far query series $a$ lies outside it (`dtwc/core/lower_bound_impl.hpp`). For a fixed DTW radius $w$, the envelope radius $r$ must satisfy $r \ge w$; a wider envelope is valid but weaker. Full DTW requires an envelope that repeats the candidate's global minimum and maximum ($r \ge m$); a negative band passed to `compute_envelopes` / `compute_envelope` builds that global envelope:
+
+$$U_i = \max_{j \in [\max(0, i-r),\; \min(m-1, i+r)]} c_j, \qquad L_i = \min_{j \in [\max(0, i-r),\; \min(m-1, i+r)]} c_j.$$
+
+Over the first $n_{\mathrm{cmp}} = \min(|a|, |c|)$ positions, the directional lower bound sums each excursion outside $[L_i, U_i]$:
+
+$$\mathrm{LB\_Keogh}(a; L, U) = \sum_{i=0}^{n_{\mathrm{cmp}}-1} \delta(a_i; L_i, U_i), \qquad \delta(a; L, U) = \begin{cases} a - U, & a > U, \\ L - a, & a < L, \\ 0, & L \le a \le U. \end{cases}$$
 
 The admissibility statements in this section require finite input samples and
 ordered finite envelope bounds. Missing-value policies and non-finite data are
@@ -56,12 +57,20 @@ outside the D2 proof.
 The bound is L1 and has amplitude units `U`; TADPole applies it only to
 univariate L1 Standard DTW.
 
-For a feasible fixed window (`w >= |n-m|`), a directional bound may sum only
-the first `min(n,m)` rows and remains admissible: every included row can be
-charged to one distinct path cell. The symmetric bound is the maximum of the
-two directional bounds, not their sum. The complete proof and executable
-oracle are in the
+For a feasible fixed window ($w \ge |n-m|$), summing over the first $\min(n,m)$ rows remains admissible because every included row can be charged to one distinct path cell. The symmetric bound is the maximum of the two directional bounds, not their sum:
+
+$$\mathrm{LB\_Keogh}_{\mathrm{sym}}(x, y) = \max\big(\mathrm{LB\_Keogh}(x; L_y, U_y),\; \mathrm{LB\_Keogh}(y; L_x, U_x)\big).$$
+
+For threshold tests (`core::lb_keogh_at_least` and `core::lb_keogh_greater`), DTWC++ evaluates $\mathrm{LB\_Keogh}(x; L_y, U_y)$ first and short-circuits before running the second pass whenever the first direction already reaches (or strictly exceeds) the threshold. The complete proof and executable oracle are in the
 [D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
+
+### LB_Kim (two-endpoint $O(1)$ bound)
+
+Before scanning linear envelopes, TADPole checks the two-endpoint $O(1)$ L1 bound (`lb_kim_l1` in `dtwc/algorithms/tadpole.cpp`) on equal-length pairs because endpoint preservation forces $x_0$ to match $y_0$ and $x_{n-1}$ to match $y_{n-1}$:
+
+$$\mathrm{LB\_Kim}_{\mathrm{L1}}(x, y) = \begin{cases} |x_0 - y_0| + |x_{n-1} - y_{n-1}|, & n \ge 2, \\ |x_0 - y_0|, & n = 1. \end{cases}$$
+
+Kim et al.'s full four-feature bound is not used, and stronger bounds such as `LB_Improved` and `BGLB` are not implemented in DTWC++.
 
 ## Choosing a metric
 

@@ -76,7 +76,7 @@ The process device is what `cluster()` uses when it is not given one. A Tier-2
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::load(source, skip_cols = 0, skip_rows = 0, delimiter = 0, name = "", dtype = core::Precision::Float64)` | `dtwcpp.load(source, *, skip_cols=None, skip_rows=None, delimiter=None, name=None, dtype=None, ndim=None)` | `dtwc.load(source, 'SkipCols', 0, 'SkipRows', 0, 'Delimiter', '', 'Name', '', 'Dtype', 'float64', 'Ndim', 1)` |
+| call | `dtwc::load(source, skip_cols = 0, skip_rows = 0, delimiter = 0, name = "", dtype = core::Precision::Float64, ndim = 1)` | `dtwcpp.load(source, *, skip_cols=None, skip_rows=None, delimiter=None, name=None, dtype=None, ndim=None)` | `dtwc.load(source, 'SkipCols', 0, 'SkipRows', 0, 'Delimiter', '', 'Name', '', 'Dtype', 'float64', 'Ndim', 1)` |
 | a path | `std::filesystem::path` | `str` or `os.PathLike` | char or string |
 | series in memory | `std::vector<std::vector<double>>`, one series per row, any lengths | a 2-D array (one series per row), a list of 1-D arrays (any lengths), a pandas DataFrame (rows, named by its index) or an Arrow array | an N×L numeric matrix (one series per row) or a cell of numeric vectors (any lengths) |
 
@@ -200,8 +200,10 @@ is for that run only.
 On a GPU, `pam`, `kmedoids`, `mip`, `lrcore` and `hierarchical` run with the GPU
 filling the distance matrix and `clara` with the GPU filling its samples, while
 `onebatch` and `tadpole`, which compute on the CPU as they go, raise
-`DeviceError`. CUDA reads the series of an Arrow IPC file, which are views, where they lie
-(Metal's fill uploads an owned copy of them, which the memory plan counts). `device="cpu+gpu"`
+`DeviceError`. CUDA reads the series of an Arrow IPC file, which are views, where they lie;
+Metal's fill reads views directly via `SeriesAt` spans and converts them into an FP32 shared
+buffer in parallel without creating an intermediate owned host copy (though `dtwc_cl`'s
+memory planner still conservatively reserves space for one). `device="cpu+gpu"`
 (`'cpu+gpu'`, CUDA only) fills the matrix of those methods on the CPU's threads and the GPU
 together and splits `clara`'s assignment pass between them; `onebatch`, `tadpole`, a run
 that streams its series and a build without CUDA raise `DeviceError`. `gpu_share` is
@@ -246,8 +248,9 @@ holds one for these data ([Checkpointing](../../getting-started/checkpointing/))
 no distance matrix writes none. `checkpoint_interval` saves it every that many rows (0, the default:
 once, at the end) and needs `checkpoint`: without one it is `InvalidInput`, and in Python and MATLAB so is
 one below 0. In C++ they are
-fields of the `Config` that `cluster(data, config)` takes, whose `output` starts at `dtwc_cl`'s
-`./results`: clear it to cluster in memory, as the six-value `cluster()` does.
+fields of the `Config` that `cluster(data, config)` takes; `Config::output` defaults
+to `""` (writing no files, matching the six-argument `cluster()`), while `dtwc_cl`
+defaults `--output` to `./results`.
 
 ```cpp
 dtwc::Config config;
@@ -310,8 +313,10 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 `score(name)` takes `silhouette` (the mean over the series), `davies_bouldin`,
 `dunn`, `calinski_harabasz` or `inertia`, in any case; another name is
 `InvalidInput`. Where fewer than two clusters are non-empty, `silhouette`,
-`dunn`, `davies_bouldin` and `calinski_harabasz` raise `UndefinedScore`. `onebatch`, `clara` and `tadpole` do not
-build the N×N matrix; `score`, `distance_matrix` and `save` fill it the first
+`dunn`, `davies_bouldin` and `calinski_harabasz` raise `UndefinedScore`. `onebatch`, `clara`, and `tadpole` do not
+build the N×N matrix: `davies_bouldin` and `inertia` evaluate **matrix-free** from
+only the required point-to-medoid and medoid-to-medoid distances, whereas `silhouette`,
+`dunn`, `calinski_harabasz`, `distance_matrix`, and `save` fill the matrix the first
 time they need it. Under `matrix_dtype` float32, `distance_matrix` is a NumPy
 `float32` array in Python and `single` in MATLAB; C++ returns doubles.
 
@@ -346,21 +351,18 @@ cluster sizes.
 ## Cross-collection distances: cdist
 
 `cdist` computes the rectangular `M × N` pairwise DTW distance matrix between
-two collections `X` (`M` series) and `Y` (`N` series) without clustering:
+two collections `X` (`M` series) and `Y` (`N` series) without clustering (omitting
+`Y` / passing `Y=None` computes `cdist(X, X)`):
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::cdist(X, Y, opts)` / `dtwc::cdist_f32(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, dtype=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'Dtype', '', 'MatrixDtype', 'float64', ...)` |
+| call | `dtwc::cdist(X, Y, dist = {}, device = CPU, idx = 0, prec = Auto, share = -1.0, fallback = false)` / `cdist(X, Y, config)` / `cdist_f32(...)` / `cdist(Dataset, Dataset, ...)` | `dtwcpp.cdist(X, Y=None, *, variant="standard", band=-1, metric="l1", ..., ndim=None, dtype=None, matrix_dtype="float64", device=None, gpu_precision="auto", gpu_share=-1.0, fallback=False)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', '', 'Dtype', '', 'MatrixDtype', 'float64', ...)` (`dtwc.distance.cdist` alias) |
 | returns | `std::vector<double>` (`std::vector<float>` from `cdist_f32`) of `M × N` values, row-major | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
 
-Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes on
-`cpu`, CUDA wavefront/regtile kernels on `gpu`, and row-partitioned concurrent
-execution on `cpu+gpu` (`gpu_share`). All DTW variants (`ddtw`, `wdtw`, `adtw`,
-`softdtw`, `msm`, `twe`), missing-value strategies, and multivariate modes
-(`dependent`, `independent`) run in parallel on the CPU. A GPU `device` the
-kernels or the machine cannot honour is a `DeviceError`, or with `fallback`
-(Python's `cdist(..., fallback=True)`, MATLAB's `'Fallback', true`, C++'s `Config::fallback`) the
-CPU's matrix, with one line on stderr saying why.
+In C++, `dtwc::cdist(Data, Data, Config)` throws `InvalidInput` if `config.matrix_dtype == Precision::Float32` — call `dtwc::cdist_f32` for single-precision output (or `dtwc::distance::cdist` for `std::vector<std::vector<T>>`). If one collection is stored as `Float32` and the other as `Float64`, the `Float32` side is widened to `Float64`; `cdist_f32` / `matrix_dtype="float32"` throws `InvalidInput` if any distance overflows float32. `band < -1` throws `InvalidInput` before any device check, regardless of `fallback`.
+
+Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes (`PackedLanesPanel` up to 64 MiB) on
+`cpu`, CUDA rectangular kernels (`compute_medoid_distances_cuda`) on `gpu`, and a dynamic two-ended work queue (or static split via `gpu_share`) on `cpu+gpu` (where `gpu_precision="auto"` resolves to `FP64` so GPU and CPU rows match precision). Apple Metal does not implement rectangular cross-collection `cdist` and raises `DeviceError` unless `fallback` runs it on CPU. All DTW variants (`ddtw`, `wdtw`, `adtw`, `softdtw` raw values, `msm`, `twe`), missing-value strategies, and multivariate modes (`dependent`, `independent`) run in parallel on CPU. A GPU `device` the kernels or machine cannot honour raises `DeviceError`, or with `fallback` (Python `fallback=True`, MATLAB `'Fallback', true`, C++ `Config::fallback`) computes on the CPU with one notice on `stderr`.
 
 ## The scikit-learn estimator (Python and MATLAB)
 
@@ -430,8 +432,8 @@ catches `InvalidInput` and `UndefinedScore` only; MATLAB's base identifier is
 `dtwc:error`. Memory the system refuses is no fault of an argument or a file:
 `load()` and the Tier-2 calls pass C++'s `std::bad_alloc` as it is (Python
 `MemoryError`, as Python's `load()` raises for memory pyarrow is refused reading
-Parquet; MATLAB `dtwc:internal`; Gurobi's MIP adapter reports it as a
-`SolverError`), and `cluster()` reports it within the run as the `InvalidInput`
+Parquet; MATLAB `dtwc:internal`; Gurobi's MIP adapter rethrows `std::bad_alloc`
+unchanged), and `cluster()` reports it within the run as the `InvalidInput`
 above (MATLAB `dtwc:invalidArgument`). Python reads Parquet, and copies series in
 memory, before the run: `MemoryError` there; MATLAB's MEX copies series in memory
 (Parquet's among them, which `parquetread` reads) before the run: `dtwc:internal`

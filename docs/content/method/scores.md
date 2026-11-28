@@ -12,8 +12,7 @@ external metrics for two label vectors. The canonical C++ functions are in
 
 ## Internal metrics
 
-Internal metrics read the assignments, medoids, and distance matrix stored in
-the `Problem`.
+Internal metrics read the assignments and medoids stored in the `Problem`. `davies_bouldin` and `inertia` (and `Result::score("davies_bouldin")` / `Result::score("inertia")`) are **matrix-free** when no distance matrix has been populated: they evaluate only the $O(N + k^2)$ or $O(N)$ point-to-medoid and medoid-to-medoid distances via `pair_distance` (reading a filled matrix if one already exists). `silhouette`, `dunn`, and `calinski_harabasz` require all pairwise distances and call `prob.fill_distance_matrix()` if the $N \times N$ matrix is not yet filled.
 
 ### Silhouette
 
@@ -21,17 +20,17 @@ the `Problem`.
 std::vector<double> dtwc::scores::silhouette(Problem &prob);
 ```
 
-For point $$i$$,
+For point $i$,
 
 $$s(i) = \frac{b(i)-a(i)}{\max(a(i),b(i))},$$
 
-where $$a(i)$$ is the mean dissimilarity to the other members of its cluster
-and $$b(i)$$ is the smallest mean dissimilarity to another non-empty cluster.
-Ordinary finite results lie in $$[-1,1]$$.
+where $a(i)$ is the mean dissimilarity to the other members of its cluster
+and $b(i)$ is the smallest mean dissimilarity to another non-empty cluster.
+Ordinary finite results lie in $[-1,1]$.
 
 The function returns one value per series. An unclustered problem raises
 `InvalidInput`, and so does one with fewer than two non-empty clusters (as its
-subclass `UndefinedScore`), because $$b(i)$$ needs another cluster. A singleton cluster
+subclass `UndefinedScore`), because $b(i)$ needs another cluster. A singleton cluster
 member receives `0`. If a non-singleton point has both means equal to zero,
 the `0/0` case is also `0` (Rousseeuw's convention), so the vector is finite.
 
@@ -41,7 +40,7 @@ the `0/0` case is also `0` (Rousseeuw's convention), so the vector is finite.
 double dtwc::scores::davies_bouldin(Problem &prob);
 ```
 
-For cluster medoids $$c_i$$ and mean within-cluster scatter $$S_i$$,
+For cluster medoids $c_i$ and mean within-cluster scatter $S_i$,
 
 $$\mathrm{DBI} = \frac{1}{k}\sum_i
   \max_{j\ne i}\frac{S_i+S_j}{d(c_i,c_j)}.$$
@@ -89,15 +88,13 @@ same dissimilarity contract.
 double dtwc::scores::calinski_harabasz(Problem &prob);
 ```
 
-The medoid-adapted calculation uses squared stored distances. Its within term
-is the sum of squared distances to each cluster medoid; its between term is
-the cluster-size-weighted sum of squared distances from cluster medoids to an
-overall medoid:
+The medoid-adapted calculation uses squared stored distances. Let $c^\star = \arg\min_{0 \le i < N} \sum_{j=0}^{N-1} d(x_i, x_j)$ be the overall medoid (smallest index on tie). Over the $k_{\mathrm{real}}$ non-empty clusters ($|C_r| > 0$), the within-cluster and between-cluster squared scatters are:
 
-$$\mathrm{CH} = \frac{B/(k-1)}{W/(N-k)}.$$
+$$W = \sum_{i=0}^{N-1} d(x_i, c_{\ell_i})^2, \qquad B = \sum_{r:\,|C_r| > 0} |C_r|\, d(c_r, c^\star)^2,$$
 
-It requires $$k>1$$ (`UndefinedScore` otherwise) and $$N>k$$ (`InvalidInput`), with $$k$$ the number of non-empty clusters. If the within term $$W$$ is zero, the function
-returns positive infinity.
+$$\mathrm{CH} = \frac{B/(k_{\mathrm{real}}-1)}{W/(N-k_{\mathrm{real}})}.$$
+
+It requires $k_{\mathrm{real}}>1$ (`UndefinedScore` otherwise) and $N>k_{\mathrm{real}}$ (`InvalidInput`). If the within term $W$ is zero, the function returns positive infinity.
 
 ## External metrics
 
@@ -111,9 +108,13 @@ double dtwc::scores::adjusted_rand(
     const std::vector<dtwc::index_t> &labels_pred);
 ```
 
-The Adjusted Rand score compares the pair-count contingency table after its
-chance correction. Identical non-degenerate partitions return `1`; a
-denominator-zero case also returns `1`.
+Let $n_{ij}$ be the contingency count of items in ground-truth cluster $i$ and predicted cluster $j$, with row sums $a_i = \sum_j n_{ij}$ and column sums $b_j = \sum_i n_{ij}$ over $N$ items. Defining $\binom{x}{2} = x(x-1)/2$:
+
+$$E = \frac{\sum_i \binom{a_i}{2} \sum_j \binom{b_j}{2}}{\binom{N}{2}}, \qquad M = \frac{1}{2}\!\left(\sum_i \binom{a_i}{2} + \sum_j \binom{b_j}{2}\right),$$
+
+$$\mathrm{ARI} = \frac{\sum_{i,j} \binom{n_{ij}}{2} - E}{M - E}.$$
+
+Identical non-degenerate partitions return `1`; if $M - E = 0$, the function also returns `1`.
 
 ### Normalized mutual information
 

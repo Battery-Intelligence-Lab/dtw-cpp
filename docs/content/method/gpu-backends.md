@@ -13,7 +13,7 @@ DTW is embarrassingly parallel across pairs but **sequential within** each pair 
 
 Both inherit a shared option/result base, then add backend-specific fields and
 defaults. Through `Problem`, an unavailable or uncompiled requested backend
-raises `DeviceError` rather than changing to CPU. A Metal buffer allocation or
+raises `DeviceError` rather than changing to CPU (unless `fallback` is set). A Metal buffer allocation or
 kernel that fails raises `DeviceError` too.
 
 Both write the matrix the CPU fill writes, `DistanceMatrix`'s packed lower
@@ -21,11 +21,9 @@ triangle, in place, whether it is on the heap or memory-mapped; the result
 structs report what ran (kernel, pair count, GPU time), not the distances. A
 backend that refuses a request (no device, a GPU that cannot hold the fill's
 buffers) does so before the matrix is allocated. Both accept series of any
-length. CUDA computes at most 2^27 pairs per launch and copies each launch's
+length. CUDA computes at most $2^{27}$ pairs per launch and copies each launch's
 share of the matrix to the host as it finishes: the GPU holds the padded series
-and about 1 GiB of output whatever N is (plus, for series too long for shared
-memory, three anti-diagonals per resident block), and the matrix itself lives in
-host memory.
+and output staging whatever $N$ is (plus, for multi-pass or fallback kernels on long series, persistent warp borders or three anti-diagonals), and the matrix itself lives in host memory.
 
 ## What a `Problem` can run on a GPU
 
@@ -41,38 +39,31 @@ raises `DeviceError` naming the setting and its value:
 |---|---|
 | a variant other than Standard, a missing-data strategy, `ndim > 1` | `DeviceError` |
 | Float32 series, owned or a view | `DeviceError` |
-| Float64 series that a `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) | CUDA reads them where they lie (its fill, FastCLARA's samples and its assignment pad them from the view; no copy is made); Metal's fill uploads an owned copy, freed when the fill returns (`dtwc_cl`'s memory plan counts the GPU's staging buffer, and on Metal that copy) |
+| Float64 series that a `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) | CUDA reads them where they lie (its fill, FastCLARA's samples and assignment pad them from the view; no copy is made); Metal reads Float64 series directly via `SeriesAt` spans and converts/uploads to FP32 in parallel without an intermediate owned host copy |
 | squared L2 (`Problem::set_metric(MetricType::SquaredL2)`, dense or mapped) | computed with `use_squared_l2` |
 | Metal: precision FP64, or a GPU index other than 0 (refused by `set_device`) | `DeviceError` |
 | CUDA: precision Auto, FP32 or FP64; any device index | honoured |
 | a band narrower than the longest-minus-shortest series length (every device) | `InvalidInput` naming both series and the smallest feasible band |
 
-The same validator runs in `Problem::dtw_function()`, through which
-OneBatchPAM, FastCLARA's assignment and TADPole compute the pairs they need.
-Known gap: through a Tier-2 `Problem`, OneBatchPAM and TADPole compute on the CPU
-when the device is `gpu` (`dtwc_cl` and Tier-1 `cluster()` refuse them on a GPU with
-a `DeviceError`). On `cpu+gpu` a Tier-2 `Problem` refuses them too, with a `DeviceError`.
-FastCLARA's assignment runs on the GPU with CUDA: `compute_medoid_distances_cuda`
-computes every series against the k medoids on the fill's kernels and route
-rule, one launch per block of series (a block holds at most 2^27 samples and as
-many distances), and the host keeps each series' nearest medoid as the CPU does,
-in point order. The blocks go through the two-stream pipeline the
-[Devices](../../guides/devices/) page describes, so that a block is padded and uploaded
-while the block before it computes and the host assigns a block while the next
-compute. The kernels are the fill's; the pipeline reads each series where it lies. The fill reads
-them the same way: the caller's threads pad every series into staging (pinned for
-256 KiB or more, where granted), one upload, then the launches. A failed CUDA call raises `DeviceError` whose text names
+`Problem::dtw_function()` remains CPU-only. When `Problem::cluster()`, `tadpole()`, or `one_batch_pam()` is called on a `Problem` configured for `Device::GPU` (or for `Device::CPU_GPU` with a CPU-only clustering method such as OneBatchPAM or TADPole), `DeviceScope` refuses the request with `DeviceError` unless `fallback = true` is set, in which case it falls back to the CPU and logs one notice on `stderr`.
+
+FastCLARA's assignment runs on the GPU with CUDA: `cuda::compute_medoid_argmin_cuda`
+deduplicates unique medoids across all subsamples, computes unique medoid distances on
+the fill's kernels and route rule, and reduces `(best_label, best_dist)` per sample
+directly on the GPU (preserving lowest-slot and self tie-breaking). Blocks move through
+a two-stream host/device pipeline so one block pads and uploads while the previous
+computes and assigns. A failed CUDA call raises `DeviceError` whose text names
 its file, line and call (`CUDA error at <file>:<line> (<call>): <CUDA's message>`);
 where the runtime refuses pinned host memory a buffer is pageable instead (slower
-copies, the same results) and one line on stderr says so. Metal has no such entry, so
-its assignment runs on the CPU.
+copies, the same results) and one line on `stderr` says so. Metal has no medoid
+assignment kernel, so FastCLARA's assignment runs on the CPU.
 
-With `Device::CPU_GPU` (`cpu+gpu`, CUDA only) the fill and the assignment share their
-work between this GPU session and the CPU's threads, in one parallel region per slab
-of the fill and one for the pass; the kernels and the CUDA entry points are the same,
+With `Device::CPU_GPU` (`cpu+gpu`, CUDA only) the fill and FastCLARA's assignment share
+their work between this GPU session and the CPU's threads, in one parallel region per
+slab of the fill and one for the pass; the kernels and the CUDA entry points are the same,
 the GPU's session filling row ranges of the matrix (`cuda::DistanceFill`). The rule
-and its limits are on the [Devices](../../guides/devices/) page; the GPU is Float64 or
-FP32 as on `gpu`, so under FP32 a `cpu+gpu` matrix holds FP32 rows and FP64 rows.
+and its limits are on the [Devices](../../guides/devices/) page; under explicit `FP32`
+the GPU writes `FP32` rows and the CPU writes `FP64` rows.
 
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
 > `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON on Apple platforms and
@@ -82,60 +73,58 @@ FP32 as on `gpu`, so under FP32 a `cpu+gpu` matrix holds FP32 rows and FP64 rows
 
 ## The DTW recurrence on a GPU
 
-For two series $$x \in \mathbb{R}^n$$ and $$y \in \mathbb{R}^m$$, the cumulative cost matrix $$C \in \mathbb{R}^{n \times m}$$ satisfies
+For two series $x \in \mathbb{R}^n$ and $y \in \mathbb{R}^m$, the cumulative cost matrix $C \in \mathbb{R}^{n \times m}$ satisfies
 
 $$
 c_{i,j} = d(x_i, y_j) + \min\bigl\{c_{i-1,j-1},\; c_{i-1,j},\; c_{i,j-1}\bigr\}
 $$
 
-with $$c_{0,0} = d(x_0, y_0)$$ and $$d(\cdot, \cdot)$$ the pointwise metric (L1 by default; squared L2 optionally). The final distance is $$c_{n-1,m-1}$$.
+with $c_{0,0} = d(x_0, y_0)$ and $d(\cdot, \cdot)$ the pointwise metric (L1 by default; squared L2 optionally). The final distance is $c_{n-1,m-1}$.
 
-The sequential dependency is on the three predecessors of $$(i, j)$$. Two natural parallel decompositions exist:
+The sequential dependency is on the three predecessors of $(i, j)$. Two natural parallel decompositions exist:
 
-1. **Anti-diagonal wavefront.** Cells on the same anti-diagonal ($$i + j = k$$) are mutually independent — once diagonal $$k-1$$ and $$k-2$$ are done, diagonal $$k$$ can be computed in parallel.
-2. **Register tile.** Each thread holds a column *stripe* in registers and propagates the left-neighbour cost through the warp via `shfl_up` / `simd_shuffle_up`. No barrier is needed between cells in the same row — the shuffle is implicitly synchronised within a warp / SIMD-group.
+1. **Warp register-tile (`warptile` / `regtile`).** Each thread holds a column *stripe* of `TILE_W` elements in registers and propagates the left-neighbour cost across the warp/SIMD-group via `__shfl_up_sync` / `simd_shuffle_up` without shared-memory barriers between cells in a row. On CUDA, persistent multi-pass tiles extend this to arbitrary series lengths.
+2. **Anti-diagonal wavefront.** Cells on the same anti-diagonal ($i + j = k$) are mutually independent — once diagonals $k-1$ and $k-2$ complete, diagonal $k$ evaluates in parallel.
 
-DTWC++ uses both, plus, on Metal, a third row-major scheme for tight Sakoe-Chiba bands.
+DTWC++ uses both, plus a coalesced row-major scheme (`dtw_banded_row`) on Metal for tight Sakoe–Chiba bands.
 
 ## Kernel dispatch tables
 
-Each backend chooses its kernel itself; no option forces one. CUDA chooses by
-the longest series length. Metal chooses by that length, the band, and the
-device's threadgroup-memory cap.
+Each backend chooses its kernel itself (`dtwc/cuda/kernel_selection.hpp` on CUDA, host dispatcher in `dtwc/metal/metal_dtw.mm` on Metal); no option forces one.
+
+### CUDA — unified `dtw_warptile_kernel` and wavefront fallback
+
+On CUDA, `select_kernel` uses the unified multi-pass warp register-tiled kernel (`dtw_warptile_kernel`) by default for arbitrary series lengths (single-pass up to $32 \cdot \mathrm{TILE\_W}$ steps, persistent multi-pass above that using a warp border buffer in VRAM), falling back to the 3-buffer anti-diagonal wavefront only when pair parallelism is too low for warps on long series (`num_pairs < 8 * sm_count && max_L > 1024`) or when the persistent warp border buffer does not fit available VRAM (`!warptile_border_fits`):
+
+| Condition | `kernel_used` | Notes |
+|---|---|---|
+| default, `max_L <= 32` | `warptile_w1` | Warp register-tile, `TILE_W=1` (single-pass) |
+| default, `32 < max_L <= 128` or FP64 with `max_L > 32` | `warptile_w4` | Warp register-tile, `TILE_W=4` (1-pass `<= 128`, multi-pass `> 128`) |
+| default, FP32 with `max_L > 128` | `warptile_w8` | Warp register-tile, `TILE_W=8` (1-pass `<= 256`, multi-pass `> 256`) |
+| wavefront fallback and `3 * max_L * sample_bytes + block_overhead <= max_shared_per_block` | `wavefront` | Shared-memory 3-anti-diagonal wavefront |
+| wavefront fallback otherwise | `wavefront_global` | Global-memory / L2 3-anti-diagonal wavefront |
 
 ### Metal — five kernels
 
-| Condition | Kernel | Notes |
+Metal selects from five FP32 kernels by band ratio, longest length `max_L`, and `maxThreadgroupMemoryLength`. Before `regtile` routing, any non-negative `band` not selecting `banded_row` that covers the batch (`band >= max_L - 1`) normalises to `-1`. For `regtile`, the host computes dynamic `pairs_per_tg` (up to 8 warps bounded by both threadgroup thread count and threadgroup memory) and lane 0 broadcasts decoded 64-bit series indices as 32-bit `simd_broadcast_first` values. Chunks stay under ~5 billion cells per command buffer to avoid macOS watchdog timeouts, with double-buffered device scratch (`scratch[2]`) for multi-chunk `banded_row` and `wavefront_global` launches:
+
+| Condition | Kernel (`kernel_used`) | Notes |
 |---|---|---|
-| `band > 0` and `band·20 < max_L` and `band ≤ 512` | `dtw_banded_row` | Row-major, one thread / pair, no barriers |
-| `band == -1` and `max_L ≤ 128` | `dtw_regtile_w4` | Register-tile, `TILE_W=4`, `simd_shuffle_up` |
-| `band == -1` and `128 < max_L ≤ 256` | `dtw_regtile_w8` | Register-tile, `TILE_W=8` |
-| `3·max_L·sizeof(float)` exceeds the device cap | `dtw_wavefront_global` | Anti-diagonals in device memory |
-| otherwise | `dtw_wavefront` | Anti-diagonals in threadgroup memory |
-
-### CUDA — three kernels
-
-| Condition | Kernel | Notes |
-|---|---|---|
-| `max_L ≤ 32` | `dtw_warp_kernel` | One warp per pair, full series in registers |
-| `32 < max_L ≤ 256` | `dtw_regtile_kernel<TILE_W>` | `TILE_W=4` for `≤128`, `TILE_W=8` for `≤256` |
-| `max_L > 2048` and three blocks of `3·max_L·sizeof(T)` bytes (plus the kernel's static and the runtime's reserved shared memory each) do not fit an SM's shared memory | `dtw_wavefront_kernel` (global) | Anti-diagonals in global memory, one slice per resident block |
-| otherwise | `dtw_wavefront_kernel` | Anti-diagonals in shared memory |
-
-On an RTX 4000 Ada the warp and register-tile kernels are the fastest of those
-that accept their length ranges, FP32 and FP64 alike. Its SM (100 KB of shared
-memory) holds three shared-memory wavefront blocks up to `max_L` = 2,757 in FP32
-and none above 2,048 in FP64; beyond that the global-memory wavefront, which runs
-up to six blocks per SM with its anti-diagonals in the L2 cache, takes 0.64–0.68
-of the shared one's time at FP32 `max_L` 6,000–8,446 and 0.76–0.84 at FP64
-`max_L` 2,049–4,223. It runs the same cells, so its distances are the shared
-kernel's.
+| `band > 0`, `band * 20 < max_L`, and `band <= 512` | `banded_row` | Row-major coalesced scratch, 1 thread per pair |
+| `band == -1` and `max_L <= 128` | `regtile_w4` | SIMD-group register-tile, `TILE_W=4`, `simd_shuffle_up` |
+| `band == -1` and `128 < max_L <= 256` | `regtile_w8` | SIMD-group register-tile, `TILE_W=8`, dynamic `pairs_per_tg` |
+| `3 * max_L * sizeof(float) > maxThreadgroupMemoryLength` | `wavefront_global` | Anti-diagonals in device memory, double-buffered scratch |
+| otherwise | `wavefront` | Anti-diagonals in threadgroup memory |
 
 ### Options
 
-Both option structs inherit `band`, `use_squared_l2` and `verbose`, and take a
-`GpuPrecision`; CUDA adds `device_id`. Metal's kernels are FP32:
-`GpuPrecision::FP64` raises `DeviceError` at every Metal entry point.
+Both option structs inherit `band`, `use_squared_l2` and `verbose`, and take a `GpuPrecision`; CUDA adds `device_id`. Metal's kernels are FP32: `GpuPrecision::FP64` raises `DeviceError` at every Metal entry point.
+
+## GPU Cross-Collection (`cdist` / `cdist_f32`)
+
+- **CUDA (`Device::GPU`):** computes dense rectangular $(N_X \times N_Y)$ cross-collection distances via `compute_medoid_distances_cuda`, honouring `gpu_precision` (`Auto`, `FP32`, `FP64`).
+- **CUDA Hybrid (`Device::CPU_GPU`):** `GpuPrecision::Auto` resolves to `FP64` so GPU and CPU rows share precision (`FP32` runs both sides in single precision). When `gpu_share >= 0`, `gpu_share == 0.0` runs CPU-only and positive shares split rows `[0, gpu_rows)` to GPU and `[gpu_rows, N_X)` to CPU; when `gpu_share == -1.0` (auto), GPU and OpenMP CPU threads share a dynamic two-ended work queue (`gpu_batch` in `[64, 512]` from head, `cpu_batch` in `[1, 16]` from tail).
+- **Apple Metal:** cross-collection rectangular `cdist` is not implemented on Metal and raises `DeviceError` (or runs on CPU if `fallback = true` is set).
 
 ## Historical measurements (Apple M2 Max, 38-core GPU)
 
@@ -157,14 +146,13 @@ threads; the workload is unbanded DTW over random series.
 
 Select a GPU explicitly through Tier 1 (`device="gpu"`) or on a `Problem`
 with `set_device(Device::GPU)`. Apple unified memory reduces
-transfer overhead, but the implementation still converts input into padded
-Metal buffers and copies the result back to host storage.
+transfer overhead, while Metal converts Float64 input into shared FP32 staging
+buffers in parallel and widens the packed triangle back to host precision.
 
 A `Problem` computes on the CPU until `set_device` says otherwise. Tier-1
 `device="gpu"` chooses a compiled GPU backend explicitly and raises if that
-request cannot be delivered; there is no CUDA→Metal→CPU fallback chain. A call can
-ask for the CPU instead, and be told it ran there (`fallback`, in
-[Devices](../../guides/devices/)).
+request cannot be delivered; there is no CUDA→Metal→CPU fallback chain unless
+`fallback = true` is explicitly passed ([Devices](../../guides/devices/)).
 
 ## Citations
 
@@ -179,9 +167,11 @@ See [`docs/CITATIONS.md`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/bl
 
 | Component | File | Notes |
 |---|---|---|
-| CUDA kernels | [dtwc/cuda/cuda_dtw.cu](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cu) | Warp, regtile, wavefront |
-| CUDA API | [dtwc/cuda/cuda_dtw.cuh](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cuh) | `CUDADistMatOptions`, `CUDADistMatResult` |
-| Metal kernels | [dtwc/metal/metal_dtw.mm](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.mm) | Wavefront × 2, banded-row, regtile × 2 |
+| CUDA kernel selection | [dtwc/cuda/kernel_selection.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/kernel_selection.hpp) | `select_kernel` (`warptile_w1`/`w4`/`w8`, `wavefront`, `wavefront_global`) |
+| CUDA kernels | [dtwc/cuda/cuda_dtw.cu](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cu) | `dtw_warptile_kernel`, `dtw_wavefront_kernel`, `compute_medoid_argmin_cuda` |
+| CUDA API | [dtwc/cuda/cuda_dtw.cuh](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cuh) | `CUDADistMatOptions`, `CUDADistMatResult`, `DistanceFill`, `compute_medoid_argmin_cuda` |
+| Metal kernels | [dtwc/metal/metal_dtw.mm](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.mm) | `banded_row`, `regtile_w4`/`w8`, `wavefront`, `wavefront_global` |
 | Metal API | [dtwc/metal/metal_dtw.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.hpp) | `MetalDistMatOptions`, `MetalDistMatResult` |
-| CPU lower bounds | [dtwc/core/lower_bound_impl.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/lower_bound_impl.hpp) | `compute_envelope`, `lb_keogh_symmetric` |
-| Dispatcher | [dtwc/Problem.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/Problem.cpp) | `fill_distance_matrix` routes on the Problem's device: the CPU fill, or this build's GPU backend |
+| Cross-collection distances | [dtwc/cdist.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cdist.cpp) | CPU SIMD lanes, CUDA rectangular, `cpu+gpu` dynamic queue |
+| CPU lower bounds | [dtwc/core/lower_bound_impl.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/lower_bound_impl.hpp) | `compute_envelope`, `lb_keogh_symmetric`, `lb_keogh_at_least` |
+| Dispatcher | [dtwc/Problem.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/Problem.cpp) | `fill_distance_matrix` routes on CPU, CUDA, Metal, or `cpu+gpu` |

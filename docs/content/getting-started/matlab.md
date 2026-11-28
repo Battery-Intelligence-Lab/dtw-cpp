@@ -43,6 +43,7 @@ fprintf('DTW distance (band=2): %.4f\n', d_banded);
 
 % Any variant, by the names dtwc_cl takes
 d_soft = dtwc.distance.dtw(x, y, 'Variant', 'softdtw', 'SdtwGamma', 1.0);
+g_soft = dtwc.soft_dtw_gradient(x, y, 'Gamma', 1.0);
 fprintf('Soft-DTW distance: %.4f\n', d_soft);
 ```
 
@@ -155,9 +156,22 @@ Parameters:
 |-----------|------|---------|-------------|
 | `X` | numeric matrix (N x L) or cell of vectors | required | One series per row, or per cell (any lengths) |
 | `Band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
+| `Metric` | char | `'l1'` | Pointwise metric: `'l1'`, `'euclidean'`, or `'squared_euclidean'` |
+| `Device` | char | `''` | Compute device (`''` uses `dtwc.device()`; `'cpu'`, `'gpu'`, `'cuda:N'`, `'cpu+gpu'`) |
 | `MatrixDtype` | char | `'float64'` | `'float64'` or `'float32'`: the matrix's value type and the class of `D` (`double` or `single`); `'float32'` takes half the memory, each distance rounded to a single |
 
 The returned matrix `D` is symmetric with zeros on the diagonal.
+
+## Cross-collection distance matrix (`cdist`)
+
+Compute the rectangular `(M x N)` cross-collection distance matrix with `dtwc.cdist` (or `dtwc.distance.cdist`):
+
+```matlab
+D_xy = dtwc.cdist(X, Y, 'Band', 10, 'Metric', 'l1', 'Device', 'cpu', 'MatrixDtype', 'float64');
+D_xx = dtwc.cdist(X, 'Band', 10);  % omitting Y computes X against itself
+```
+
+Accepts the distance keys (`Variant`, `Band`, `Metric`, `MissingStrategy`, `WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`, `TweNu`, `TweLambda`, `MvMode`), `Ndim`, `Dtype`, `MatrixDtype`, `Device`, `GpuPrecision`, `GpuShare`, and `Fallback`.
 
 ## DTWClustering class
 
@@ -187,7 +201,7 @@ can take (`MaxIter` 0, an unknown `Metric`) raises `dtwc:invalidArgument`.
 |----------|---------|-------------|
 | `NClusters` | `3` | Number of clusters |
 | `Method` | `'pam'` | Any `dtwc.cluster` method |
-| `Variant`, `Band`, `Metric`, `MissingStrategy`, `WdtwG`, `AdtwPenalty`, `MsmC`, `TweNu`, `TweLambda` | empty | The distance, as `dtwc.distance.dtw` takes it |
+| `Variant`, `Band`, `Metric`, `MissingStrategy`, `WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`, `TweNu`, `TweLambda` | empty | The distance, as `dtwc.distance.dtw` takes it |
 | `MaxIter`, `NInit`, `MvMode`, `BatchSize`, `Device`, `Fallback` | empty | As the `dtwc.cluster` keys; `Device` empty is `dtwc.device()` |
 | `RandomState` | empty | Seed of the first restart (restart i uses `RandomState + i - 1`); empty is `dtwc.default_random_seed()` |
 
@@ -275,3 +289,20 @@ snake_case in Python and CamelCase in MATLAB's name-value keys and properties.
 | `prob.set_gpu_share(0.5)` | `prob.set_gpu_share(0.5)` | the share of the work device `cpu+gpu` splits; `-1` measures it |
 | `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()` (and `'Fallback', true`: `prob.set_device("gpu", fallback=True)`); `'hpc'` is an option of Python's `cluster()` and `dtwcpp.device()` only, and is `dtwc:deviceError` here |
 | `prob.read_distance_matrix(path, not_computed="negative")` | `prob.read_distance_matrix(path, 'NotComputed', 'negative')` | a v1.0.0 file's `-1` (any value below 0) marks a pair to compute; the default, `'nan'`, an empty field or NaN |
+
+## Checkpointing, utilities, and system probes
+
+```matlab
+% Save/resume a Problem's distance matrix (.dtwm)
+dtwc.save_checkpoint(prob, 'ckpt');
+ok = dtwc.load_checkpoint(prob, 'ckpt');
+opts = dtwc.CheckpointOptions();  % configure save_interval and directory on Problem
+
+% Series transforms
+xn = dtwc.z_normalize(x);
+dx = dtwc.derivative_transform(x);
+
+% Runtime parallel/GPU probes
+par = dtwc.test.parallelisation();
+gpu = dtwc.test.gpu();
+```

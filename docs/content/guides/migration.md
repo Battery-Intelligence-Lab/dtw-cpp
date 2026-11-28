@@ -151,11 +151,14 @@ Python `write_result_files(prob, directory)`; a result of `cluster()` has `save(
   cluster, where v1.0.0 gave it to the first tied medoid and left its cluster
   empty; a run that stops at `max_iter` assigns the series to its final medoids
   before its cost is taken.
-- The band is the window |i − j| ≤ band for every pair. v1.0.0 centred it on
-  the line joining the ends of two series of different lengths. In a `Problem`, a band
-  narrower than the difference in length of two series is `InvalidInput`,
-  naming the smallest band that works; `dtwBanded` and `distance::dtw` return
-  the no-path value, `std::numeric_limits<T>::max()`, for such a pair.
+- The band is the window $|i - j| \le \text{band}$ for every pair. v1.0.0 centred it on
+  the line joining the ends of two series of different lengths. In `Problem`, `cdist`,
+  `distance::*`, and `dtwc_cl`, `band < -1` now throws `InvalidInput` (only the unchecked
+  `warping*.hpp` per-pair helpers such as `dtwBanded` still treat any negative band as unconstrained).
+  In `Problem` and `cdist`, a band narrower than the difference in length of two series
+  (`0 <= band < |n - m|`) is `InvalidInput`, naming the smallest band that works;
+  `dtwBanded` and `distance::dtw` return the no-path sentinel, `std::numeric_limits<T>::max()`,
+  for such an infeasible non-negative pair.
 - The setters check their values: `set_n_clusters`, `set_max_iter` and
   `set_n_repetitions` below 1 and `set_band` below -1 are `InvalidInput`
   (v1.0.0 took any value written to its public fields).

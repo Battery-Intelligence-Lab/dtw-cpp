@@ -5,17 +5,17 @@ weight: 8
 
 # Multivariate Time Series
 
-DTW-C++ supports multi-dimensional (multivariate) time series, where each timestep has $$D$$ features. This is common in sensor fusion, motion capture, multi-channel physiological signals, and other domains where multiple measurements are recorded simultaneously.
+DTW-C++ supports multi-dimensional (multivariate) time series, where each timestep has $D$ features. This is common in sensor fusion, motion capture, multi-channel physiological signals, and other domains where multiple measurements are recorded simultaneously.
 
 ## Data Layout
 
-Multivariate series use an **interleaved** (row-major) memory layout. For a series with $$n$$ timesteps and $$D$$ dimensions, the flat buffer contains $$n \times D$$ elements:
+Multivariate series use an **interleaved** (row-major) memory layout. For a series with $n$ timesteps and $D$ dimensions, the flat buffer contains $n \times D$ elements:
 
 ```
 [x1_dim1, x1_dim2, ..., x1_dimD, x2_dim1, x2_dim2, ..., x2_dimD, ...]
 ```
 
-The value at timestep $$t$$ and dimension $$d$$ is at index $$t \times D + d$$.
+The value at timestep $t$ and dimension $d$ is at index $t \times D + d$.
 
 ### Data struct
 
@@ -52,7 +52,7 @@ size_t n_steps = data.series_length(0);  // 3 (not 9)
   and sums the results. The `Problem` route supports this mode only for
   Standard DTW with `MissingStrategy::Error`.
 
-For the same band, $$\mathrm{DTW_I} \le \mathrm{DTW_D}$$ follows for additive
+For the same band, $\mathrm{DTW_I} \le \mathrm{DTW_D}$ follows for additive
 L1 and squared-L2 channel costs because each independent channel can choose its
 own path. That ordering does not extend to Euclidean `MetricType::L2`, whose
 square root couples the channel costs. Independent mode runs a univariate DTW on
@@ -105,9 +105,9 @@ The Standard wrappers select these cost functors from `core/dtw_cost.hpp`:
 
 | Functor | Pointwise formula |
 |---------|-------------------|
-| `core::SpanMVL1Cost` | $$\sum_d \lvert a_d-b_d\rvert$$ |
-| `core::SpanMVSquaredL2Cost` | $$\sum_d (a_d-b_d)^2$$ |
-| `core::SpanMVL2Cost` | $$\sqrt{\sum_d (a_d-b_d)^2}$$ |
+| `core::SpanMVL1Cost` | $\sum_d \lvert a_d-b_d\rvert$ |
+| `core::SpanMVSquaredL2Cost` | $\sum_d (a_d-b_d)^2$ |
+| `core::SpanMVL2Cost` | $\sqrt{\sum_d (a_d-b_d)^2}$ |
 
 The Euclidean implementation (`MetricType::L2`, `--metric euclidean`) is
 `SpanMVL2Cost`.
@@ -137,11 +137,37 @@ prob.cluster();
 To request independent mode, copy `prob.variant_params()`, set its `mv_mode` to
 `MVMode::Independent`, and pass it to `prob.set_variant(...)`.
 
+### Tier-1 C++ (`dtwc::load` + `dtwc::cluster`)
+
+```cpp
+#include <api.hpp>
+
+dtwc::Dataset::series_type series{
+    {1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
+    {1.1, 2.1, 3.1, 4.1, 5.1, 6.1},
+    {8.0, 7.0, 6.0, 5.0, 4.0, 3.0},
+    {8.2, 7.1, 6.2, 5.1, 4.2, 3.1}};
+auto ds = dtwc::load(std::move(series), /*skip_cols=*/0, /*skip_rows=*/0,
+                     /*delimiter=*/0, /*name=*/"mv",
+                     dtwc::core::Precision::Float64, /*ndim=*/3);
+auto res = dtwc::cluster(std::move(ds), /*k=*/2);
+```
+
 ## Python API
 
-The `Data` object must carry `ndim`; passing only two vectors to
-`Problem.set_data(series, names)` uses its default `ndim=1`.
-Pass the constructed object with `prob.set_data(data)`.
+In Tier 1 (`dtwcpp.load` + `dtwcpp.cluster`), pass `ndim=3` with either an interleaved 2-D array / list of 1-D series or a 3-D `(N, L, ndim)` NumPy array:
+
+```python
+import numpy as np
+import dtwcpp
+
+# 3-D NumPy array (N=4, L=6 timesteps, ndim=3 channels)
+X_3d = np.random.default_rng(42).normal(size=(4, 6, 3))
+ds = dtwcpp.load(X_3d, ndim=3)
+res = dtwcpp.cluster(ds, k=2)
+```
+
+For Tier 2 (`Problem`), `Data` carries `ndim`; passing raw vectors to `Problem.set_data(series, names)` uses its default `ndim=1`, so pass a constructed `Data` object with `prob.set_data(data)`.
 
 ```python
 import dtwcpp
@@ -161,4 +187,12 @@ prob.set_n_clusters(2)
 result = dtwcpp.fast_pam(prob, n_clusters=2)
 
 n_steps = data.series_length(0)  # 2, because each timestep has 3 channels
+```
+
+## MATLAB API
+
+```matlab
+% Interleaved N x (L * 3) matrix or cell array of interleaved vectors
+ds = dtwc.load(X, 'Ndim', 3);
+res = dtwc.cluster(ds, 2);
 ```

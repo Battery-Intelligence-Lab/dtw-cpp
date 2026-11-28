@@ -112,9 +112,10 @@ a device error that names the setting and its value (`variant = WDTW`,
 view). Float64 series that a `Data` only views (an Arrow IPC file read in place,
 a decoded record batch, `set_view_data`) are checked where they lie. CUDA reads them
 there: the fill, FastCLARA's samples and its assignment pad them from the view into
-the GPU's staging, and make no copy of them. Metal's fill uploads an owned copy of a view's
-series, freed when the fill returns. `dtwc_cl`'s memory plan (`--ram-limit`) counts
-the GPU's staging buffer, and on Metal that copy. Metal also
+the GPU's staging, and make no copy of them. Metal's fill reads views directly via
+`SeriesAt` spans and converts them into an FP32 shared buffer in parallel (avoiding
+an intermediate owned host copy in `Problem`, while `dtwc_cl`'s memory planner still
+conservatively counts staging and an upload copy). Metal also
 rejects precision FP64 (its kernels are FP32);
 `set_device` already refused a GPU index other than 0 there (Metal runs on the
 system default GPU). On every device, a
@@ -240,15 +241,7 @@ A forced share does not reach every slab of a fill:
 
 ### What the split changes
 
-Under FP64 and L1 the GPU's distances equal the CPU's bit for bit in the tests that compare
-them (series of 17 to 211 steps, on the warp and register-tile kernels, which serve series of up to
-256 steps), so the matrix equals the CPU's
-and the GPU's whatever the split, and labels, medoids and cost equal both single-device
-runs'. Beyond that (FP32, squared L2, series of more than 256 steps) a distance of
-one device is within the route bound of the other's, not equal to it: the matrix mixes
-the two (under FP32 the GPU's rows are FP32's and the CPU's FP64's, which `-v` says),
-and a label or medoid can differ from a single device's run only at a near-tie whose
-two distances lie within that bound.
+Under FP64 and L1, CUDA's unified multi-pass warp register-tiled kernel (`dtw_warptile_kernel`, single-pass up to $32 \cdot \mathrm{TILE\_W}$ steps and persistent multi-pass for arbitrary lengths) and wavefront fallback match the CPU's distances bit for bit across tested series lengths, so the matrix equals both single-device runs' whatever the split, and labels, medoids and cost equal both single-device runs'. Under FP32 or squared L2, a GPU value lies within the floating-point rounding tolerance of the CPU's (under FP32 the GPU's rows are FP32 and the CPU's FP64, which `-v` notes), and a label or medoid can differ from a single-device run only at a near-tie whose two distances lie within that tolerance.
 
 `-v` prints the fill's split, the pass's split, and the run report's `fill` and
 `cluster` rows carry the same text:

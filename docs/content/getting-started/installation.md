@@ -56,7 +56,7 @@ cmake --build build --config Release -j4
 
 ### Linux (Debian / Ubuntu 20.04+)
 
-DTWC++ requires CMake 3.26 or newer and a C++20-capable compiler. Distribution packages that do not meet those floors must be upgraded before configuring the project. Install a newer GCC when the distribution compiler is too old; CI builds with GCC 11 and 12.
+DTWC++ requires CMake 3.26 or newer and a C++20-capable compiler. Distribution packages that do not meet those floors must be upgraded before configuring the project. Install a newer GCC or Clang when the distribution compiler is too old; CI builds with GCC 11 and 12 and Clang 14–17 (as well as Emscripten for WebAssembly SIMD128; maintainer builds also check GCC 13 and Clang 21; Windows CI checks MSVC, while release Windows wheels and `dtwc_cl.exe` are built with LLVM `clang-cl`).
 
 ```bash
 sudo apt update
@@ -98,13 +98,13 @@ Visual Studio Community can also [open the folder directly](https://docs.microso
 
 ## Python Installation
 
-The easiest way to use DTW-C++ from Python:
+The easiest way to use DTW-C++ from Python (`requires-python >= 3.9`, `numpy >= 1.26`, `highspy >= 1.8`):
 
 ```bash
 pip install dtwcpp
 ```
 
-The wheel links no HiGHS: exact MIP clustering (`method="mip"`) solves with highspy, which `pip install dtwcpp` installs with it.
+Wheels target Python 3.9–3.15+ across Linux (`x86_64`, `aarch64`), macOS (`arm64`), and Windows (`AMD64`), using the `cp312-abi3` stable ABI for Python 3.12+ (and per-version wheels for 3.9–3.11). The wheel links no HiGHS: exact MIP clustering (`method="mip"`) solves with `highspy`, which `pip install dtwcpp` installs automatically.
 
 The wheels carry LLVM's OpenMP runtime (`libomp`) on every platform. A process that also loads Intel's OpenMP runtime (`libiomp5`, as PyTorch and MKL builds do) can abort with "OMP: Error #15"; keep such work in a separate process.
 

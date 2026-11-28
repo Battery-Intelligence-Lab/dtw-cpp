@@ -41,7 +41,9 @@ References used during development. Verify each citation independently before pu
   **[confirmed]** The bibliographic metadata, DOI, and closed-access status
   were verified through DBLP; the closed full text was not accessed.
   Rakthanmanon et al. independently describe the original four-feature bound
-  and their reduced endpoint-only `LB_KimFL`. DTWC++ has no LB_Kim bound.
+  and their reduced endpoint-only `LB_KimFL`. DTWC++ implements a two-endpoint
+  $O(1)$ L1 bound (`lb_kim_l1` in `dtwc/algorithms/tadpole.cpp`), not the full
+  four-feature `LB_Kim` bound.
 - Rakthanmanon, T., Campana, B., Mueen, A., Batista, G. E. A. P. A.,
   Westover, M. B., Zhu, Q., Zakaria, J., & Keogh, E. (2012). Searching and
   Mining Trillions of Time Series Subsequences under Dynamic Time Warping.
@@ -62,7 +64,7 @@ References used during development. Verify each citation independently before pu
 - Lemire, D. (2009). Faster retrieval with a two-pass dynamic-time-warping
   lower bound. *Pattern Recognition*, 42(9), 2169–2180. — Source for the
   distinct two-pass LB_Improved result; do not conflate it with the 2006
-  streaming maximum-minimum filter.
+  streaming maximum-minimum filter. Not implemented in DTWC++.
 
 ## DTW Variants
 
@@ -179,7 +181,8 @@ References used during development. Verify each citation independently before pu
 - Zemin Chao, Boyu Xiao, Zitong Li, Zhixin Qi, Xianglong Liu, & Hongzhi
   Wang. (2026). A New Lower Bounding Paradigm and Tighter Lower
   Bounds for Elastic Similarity Measures. arXiv:2603.14899
-  (https://arxiv.org/abs/2603.14899). — BGLB for elastic measures.
+  (https://arxiv.org/abs/2603.14899). — BGLB for elastic measures. Not
+  implemented in DTWC++.
 - Daniel Shen & Min Chi. (2021). TC-DTW: Accelerating Multivariate Dynamic Time Warping Through Triangle Inequality and Point Clustering.
   arXiv:2101.07731 (https://arxiv.org/abs/2101.07731).
 - Tang, Y., et al. (2015). Cache-Oblivious Wavefront: Improving Parallelism of Recursive Dynamic Programming Algorithms without Losing Cache-Efficiency. *PPoPP 2015*.

@@ -92,10 +92,20 @@ settings -> data -> Problem -> clustering algorithm -> scores / outputs
 | Config file input | TOML or YAML (`--config`; `--print-config` writes one) | `dtwc::Config` read by `cli::bind` / `parse_config`, run by `dtwc::run` | none: the typed API takes the settings | none: the typed API takes the settings |
 | Stateful clustering object | `dtwc::Config` -> `dtwc::run` -> `Problem` | `dtwc::Problem` | `dtwcpp.Problem` and `dtwcpp.DTWClustering` | `dtwc.Problem` and `dtwc.DTWClustering` |
 | Pairwise distance | none (the variant flags set a clustering's distance) | `dtwc::distance::dtw` | `dtwcpp.distance.dtw` | `dtwc.distance.dtw` |
+| Cross-collection distance | none | `dtwc::cdist` / `dtwc::cdist_f32` | `dtwcpp.cdist(X, Y=None, ...)` | `dtwc.cdist` / `dtwc.distance.cdist` |
+| Soft-DTW gradient | none | `dtwc::soft_dtw_gradient` | `dtwcpp.soft_dtw_gradient` | `dtwc.soft_dtw_gradient` |
 | FastPAM entry point | `--method pam` | `dtwc::fast_pam(prob, ...)` | `dtwcpp.fast_pam(prob, ...)` or `DTWClustering.fit()` | `dtwc.fast_pam(prob, ...)` or `DTWClustering.fit()` |
+| OneBatchPAM | `--method onebatch` | `dtwc::algorithms::one_batch_pam` | `dtwcpp.one_batch_pam` | `dtwc.cluster(..., 'Method', 'onebatch')` |
+| LR-core exact solver | `--method lrcore` | `Problem::set_method(Method::LRCore)` / `LR_core_clustering` | `dtwcpp.cluster(..., method="lrcore")` / `Method.LRCore` | `dtwc.cluster(..., 'Method', 'lrcore')` |
+| TADPole density peaks | `--method tadpole --dc` | `dtwc::algorithms::tadpole` | `dtwcpp.cluster(..., method="tadpole")` | `dtwc.cluster(..., 'Method', 'tadpole')` |
 | Hierarchical clustering | `--method hierarchical` | `build_dendrogram` / `cut_dendrogram` | same names | same names |
+| DTW barycentres | none | `dtw_barycenter` / `barycenter_kmeans` | `dtw_barycenter` / `barycenter_kmeans` | none |
 | Missing-data strategy | `--missing-strategy` | `Problem::set_missing_strategy(...)` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
-| A `Problem`'s device | `--device` (`cpu`, `gpu`, `gpu:N`, `cpu+gpu`, `cpu+gpu:N`; `cuda`, `cuda:N` alike) | `Problem::set_device(Device, index)` | `Problem(..., device=...)`, `Problem.set_device(name)` | `dtwc.Problem(name, 'Device', d)`, `Problem.set_device(name)` |
+| Multivariate loading | Arrow IPC schema `ndim` | `dtwc::load(..., ndim)` / `Data(..., ndim)` | `dtwcpp.load(X_3d, ndim=...)` / `Data.from_numpy_3d` | `dtwc.load(X, 'Ndim', ...)` / `Problem.set_data(..., ndim)` |
+| Precision (`dtype`, `matrix_dtype`) | `--dtype`, `--matrix-dtype` | `load(..., dtype)` / `Problem::set_matrix_dtype` | `load(..., dtype=...)`, `matrix_dtype=...` | `load(..., 'Dtype', ...)`, `'MatrixDtype'` |
+| RAM budget | `--ram-limit` | `Config::ram_limit` / `Problem::set_ram_limit` | `ram_limit=` / `Problem.ram_limit` | `'RamLimit'` / `Problem.set_ram_limit` |
+| A `Problem`'s device & fallback | `--device`, `--fallback` | `Problem::set_device(Device, index, fallback)` | `Problem(..., device=, fallback=)` | `dtwc.Problem(name, 'Device', d, 'Fallback', f)` |
+| Run report | written to `<name>_report.txt` (`--no-report` disables) | `Result::report()` | `Result.report` | `Result.report` |
 
 ## Pairwise distance vs stateful `Problem`
 

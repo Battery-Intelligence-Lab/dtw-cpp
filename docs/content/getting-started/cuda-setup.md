@@ -113,6 +113,10 @@ cmake -S . -B build -DDTWC_ENABLE_CUDA=ON
 cmake --build build --config Release
 ```
 
+By default `DTWC_CUDA_ARCH_LIST` builds multi-architecture binaries for `80-real;86-real;89-real;90` (Ampere through Hopper, plus PTX JIT for newer architectures). For a single GPU cluster, pass `-DCMAKE_CUDA_ARCHITECTURES=80` (for example, A100) to speed up compilation.
+
+The CUDA backend accelerates distance matrix fills (including `cdist` / `cdist_f32` and `cpu+gpu` hybrid splitting) with the unified multi-pass `dtw_warptile_kernel` (`warptile_w1`, `warptile_w4`, `warptile_w8`) and anti-diagonal wavefront fallback, plus FastCLARA nearest-medoid reduction (`compute_medoid_argmin_cuda`) with `Auto`, `FP32`, or `FP64` precision and explicit `--fallback` (`Fallback`) support; see [GPU Backends](../../method/gpu-backends/) and [Devices](../../guides/devices/).
+
 ---
 
 ## Troubleshooting

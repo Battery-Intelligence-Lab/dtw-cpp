@@ -24,7 +24,7 @@ NaN is the only missing-value marker; ±inf never is. The checked entry points �
 
 **Reference:** Yurtman, Soenen, Meert & Blockeel, "Estimating DTW Distance Between Time Series with Missing Data," ECML-PKDD 2023, LNCS 14173.
 
-When either $$x[i]$$ or $$y[j]$$ is NaN, the pointwise cost is set to zero. The warping path can pass through missing regions without penalty. The recurrence is identical to standard DTW:
+When either $x[i]$ or $y[j]$ is NaN, the pointwise cost is set to zero. The warping path can pass through missing regions without penalty. The recurrence is identical to standard DTW:
 
 $$C(i,j) = \text{cost}(x[i], y[j]) + \min\big(C(i-1,j-1),\; C(i-1,j),\; C(i,j-1)\big)$$
 
@@ -77,6 +77,8 @@ DTW-AROW (Adaptive Restriction of Warping) restricts the warping path to the **d
 The recurrence is:
 
 $$C(i,j) = \begin{cases} C(i-1,j-1) & \text{if } x[i] \text{ or } y[j] \text{ is NaN (diagonal only, zero cost)} \\ \min(C(i-1,j-1),\; C(i-1,j),\; C(i,j-1)) + d(x[i], y[j]) & \text{otherwise} \end{cases}$$
+
+**Boundary rule (`AROWCell`):** At the origin cell $(0, 0)$, if $x[0]$ or $y[0]$ is NaN, $C(0, 0) = 0$. Along the first row ($i = 0$) and first column ($j = 0$), only a single predecessor exists, so NaN pairs propagate along that boundary with zero local cost ($C(i, 0) = C(i-1, 0)$ and $C(0, j) = C(0, j-1)$) rather than breaking reachability with $+\infty$. At band edges, if `diag` lies outside the Sakoe–Chiba band on a NaN cell, `AROWCell::combine` falls back to `up`, then `left`, then `0`.
 
 ### C++ API
 
@@ -146,7 +148,7 @@ bool any_nan = dtwc::has_missing(series);      // true if any NaN present
 
 ## Multivariate Missing Data
 
-Missing data support extends to multivariate time series with per-channel NaN handling. If channel $$d$$ at timestep $$i$$ is NaN, only that channel is skipped; other channels at the same timestep still contribute normally.
+Missing data support extends to multivariate time series with per-channel NaN handling. If channel $d$ at timestep $i$ is NaN, only that channel is skipped; other channels at the same timestep still contribute normally.
 
 ```cpp
 #include <warping_missing.hpp>
@@ -156,7 +158,7 @@ double dist = dtwc::dtwMissing_banded_mv(x_ptr, nx_steps, y_ptr, ny_steps, /*ndi
 double dist_b = dtwc::dtwMissing_banded_mv(x_ptr, nx_steps, y_ptr, ny_steps, /*ndim=*/3, /*band=*/5);
 ```
 
-When `ndim == 1`, the multivariate functions dispatch to the faster scalar implementations.
+When `ndim == 1`, the multivariate functions dispatch to the faster scalar implementations. Through a `Problem`, `ZeroCost`, `AROW`, and `Interpolate` all execute on the CPU SIMD lane kernels (`core::dtw_kernel_lanes_packed`, processing $W$ series in parallel) for univariate Standard DTW.
 
 Through a `Problem`, `ZeroCost` and `AROW` take multivariate series; `Interpolate`, and `AROW` with
 the Euclidean `MetricType::L2`, are univariate only and raise `InvalidInput` for `ndim > 1`.
@@ -185,6 +187,17 @@ dist_sq = dtwcpp.distance.dtw(x, y, missing_strategy="zero_cost", metric="square
 prob = dtwcpp.Problem()
 prob.set_data(series_with_nans, names)
 prob.missing_strategy = dtwcpp.MissingStrategy.ZeroCost  # or AROW, Interpolate
+```
+
+## MATLAB API
+
+```matlab
+x = [1.0, NaN, 3.0, 4.0];
+y = [1.0, 2.0, 3.0, 4.0];
+
+d_zero = dtwc.distance.dtw(x, y, 'MissingStrategy', 'zero_cost');
+d_arow = dtwc.distance.dtw(x, y, 'MissingStrategy', 'arow');
+d_interp = dtwc.distance.dtw(x, y, 'MissingStrategy', 'interpolate');
 ```
 
 ## CLI

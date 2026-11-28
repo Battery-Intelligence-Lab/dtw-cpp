@@ -9,7 +9,7 @@ weight: 1
 
 ## The DTW algorithm
 
-Consider a time series to be a vector of some arbitrary length. Consider that we have $$p$$ such vectors in total, each possibly differing in length. To find a subset of $$k$$ clusters from within the total set of $$p$$ vectors, where each cluster contains similar vectors, we must first make $${p \choose 2} = \frac{p(p-1)}{2}$$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance between a pair of vectors. Consider two time series $$x$$ and $$y$$ of differing lengths $$n$$ and $$m$$ respectively,
+Consider a time series to be a vector of some arbitrary length. Consider that we have $p$ such vectors in total, each possibly differing in length. To find a subset of $k$ clusters from within the total set of $p$ vectors, where each cluster contains similar vectors, we must first make ${p \choose 2} = \frac{p(p-1)}{2}$ pairwise comparisons between all vectors within the total set and find the similarity between each pair. In this case, the similarity is defined as the DTW distance between a pair of vectors. Consider two time series $x$ and $y$ of differing lengths $n$ and $m$ respectively,
 
 $$
 x=(x_1, x_2, ..., x_n)
@@ -19,11 +19,11 @@ $$
 y=(y_1, y_2, ..., y_m).
 $$
 
-The DTW distance is the sum of the pointwise distance between each point and its matched point(s) in the other vector. In DTW-C++, the default pointwise metric is the absolute difference (L1 metric), i.e., $$|x_i - y_j|$$. The following constraints must be met:
+The DTW distance is the sum of the pointwise distance between each point and its matched point(s) in the other vector. In DTW-C++, the default pointwise metric is the absolute difference (L1 metric), i.e., $|x_i - y_j|$. The following constraints must be met:
 
 1. The first and last elements of each series must be matched.
-2. Only unidirectional forward movement through relative time is allowed, i.e., if $$x_1$$ is mapped to $$y_2$$ then $$x_2$$ may not be mapped to
-    $$y_1$$ (this ensures monotonicity). 
+2. Only unidirectional forward movement through relative time is allowed, i.e., if $x_1$ is mapped to $y_2$ then $x_2$ may not be mapped to
+    $y_1$ (this ensures monotonicity). 
 3. Each point is mapped to at least one other point, i.e., there are no jumps in time (this ensures continuity).
 
 Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves each of them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in DTW-C++, it is useful to first examine the full-cost matrix solution. Using one-based series indices and a padded boundary, define
@@ -34,7 +34,7 @@ C_{i,0}=+\infty\ (i>0),\qquad
 C_{0,j}=+\infty\ (j>0).
 $$
 
-For $$1\le i\le n$$ and $$1\le j\le m$$, each element is the minimum cumulative cost of a path ending at the pair $$x_i,y_j$$:
+For $1\le i\le n$ and $1\le j\le m$, each element is the minimum cumulative cost of a path ending at the pair $x_i,y_j$:
 
 $$
 C_{i,j} = |x_i-y_j|+\min \begin{cases}
@@ -44,21 +44,21 @@ C_{i,j} = |x_i-y_j|+\min \begin{cases}
     \end{cases}
 $$
 
-The three predecessors correspond to a diagonal match, advancing only in $$x$$, or advancing only in $$y$$. Every admissible path reaches $$(i,j)$$ through exactly one of them, so an optimal path must contain an optimal predecessor path; otherwise replacing its prefix would lower the total cost.
+The three predecessors correspond to a diagonal match, advancing only in $x$, or advancing only in $y$. Every admissible path reaches $(i,j)$ through exactly one of them, so an optimal path must contain an optimal predecessor path; otherwise replacing its prefix would lower the total cost.
 
-> **Cost convention:** The formula above uses the absolute difference (L1 local cost), which is the default in DTW-C++. The alternative squared-L2 local cost is $$(x_i-y_j)^2$$. If amplitudes have unit $$U$$, the accumulated results have units $$U$$ and $$U^2$$ respectively; DTWC++ does not take a final square root. Warping means that both accumulated forms are dissimilarities, not a metric: distinct repeated-value sequences can have zero cost, and the triangle inequality can fail.
+> **Cost convention:** The formula above uses the absolute difference (L1 local cost), which is the default in DTW-C++. The alternative squared-L2 local cost is $(x_i-y_j)^2$. If amplitudes have unit $U$, the accumulated results have units $U$ and $U^2$ respectively; DTWC++ does not take a final square root. Warping means that both accumulated forms are dissimilarities, not a metric: distinct repeated-value sequences can have zero cost, and the triangle inequality can fail.
 
 > **Input values:** the recurrence is defined on finite values. NaN or ±inf passed to `dtwc::distance::*`, `soft_dtw_gradient`, Python's `dtwcpp.distance.dtw` and `compute_distance_matrix`, or MATLAB's `dtwc.distance.dtw` raises `InvalidInput` (Python `dtwcpp.InvalidInput`, a `ValueError`; MATLAB error id `dtwc:invalidArgument`) naming the series and the 0-based position, for example `distance::dtw: y[3] is NaN`. NaN is accepted only as a missing value, by the [missing-data](../missing-data/) distances; ±inf never is. The C++ per-pair wrappers in `warping*.hpp` (`dtwBanded` and the like) do not check: they, and the lane kernel below, are what the matrix fill calls once it has checked the data, so their caller must pass finite values (and NaN only to the missing-data wrappers). Scale the series so that every cost stays finite: values so large that a cost or a transform overflows give undefined results; `z_normalize`, `dtw_barycenter` (with every method: SSG, DBA and Soft-DTW) and `barycenter_kmeans` raise `InvalidInput` on such an overflow, and the hierarchical clustering (`build_dendrogram`) when no finite linkage distance remains.
 
-The final element $$C_{n,m}$$ is the DTW dissimilarity between the two series. Below is an example of the cost matrix $$C$$ and the warping path through it.
+The final element $C_{n,m}$ is the DTW dissimilarity between the two series. Below is an example of the cost matrix $C$ and the warping path through it.
 
-As an example, below are two time series with DTW pairwise alignment between elements. On the right is the cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at element $$C_{14,13}$$.
+As an example, below are two time series with DTW pairwise alignment between elements. On the right is the cost matrix $C$ for the two time series, showing the warping path and final DTW cost at element $C_{14,13}$.
 
-<img src="/method/dtw_image.png" alt="Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$ (right)." caption="Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$ (right).">
+<img src="../dtw_image.png" alt="Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{14,13}$ (right)." caption="Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{14,13}$ (right).">
 
-For the clustering problem, only the final cost for each pairwise comparison is required; the actual warping path (or mapping of each point in one time series to the other) is superfluous for clustering. The memory complexity of the cost matrix $$C$$ is $$O(nm)$$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $$C$$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $$c_{i-1,j-1}$$, $$c_{i-1,j}$$, $$c_{i,j-1}$$).
+For the clustering problem, only the final cost for each pairwise comparison is required; the actual warping path (or mapping of each point in one time series to the other) is superfluous for clustering. The memory complexity of the cost matrix $C$ is $O(nm)$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $C$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$).
 
-In DTW-C++, the DTW distance $$C_{x,y}$$ is found for each pairwise comparison and stored in a symmetric matrix $$D^{p\times p}$$, where $$p$$ is the total number of time series and $$d_{i,j}$$ is the distance between series $$i$$ and $$j$$. For univariate Standard DTW (L1 or squared-L2 cost, with no missing-data strategy or with `Interpolate`) and DDTW, the CPU fill computes one series against sixteen others at once on AArch64 and on x86-64 when built with Clang or GCC (thirty-two in `float32`), and against eight (sixteen in `float32`) in x86-64 builds made with MSVC, under WebAssembly SIMD128 and on other processors, one pair per SIMD lane (`core::dtw_kernel_lanes_packed`). The series may have any lengths, with or without a band, each lane stopping at its own, except on other processors, where they have the row's length. Each lane repeats the one-pair arithmetic, so every $$d_{i,j}$$ is what the one-pair kernel returns, bit for bit unless the compiler contracts a multiply-add into an FMA in one kernel and not the other (GCC does by default), in which case the two differ in the last bits. FastCLARA's assignment runs on the same lanes, each medoid against as many series at once (on other processors only under a band, for series of the medoid's length); its labels, medoids and costs are the one-pair kernel's, with the same caveat.
+In DTW-C++, the DTW distance $C_{x,y}$ is found for each pairwise comparison and stored in a symmetric matrix $D^{p\times p}$, where $p$ is the total number of time series and $d_{i,j}$ is the distance between series $i$ and $j$. For univariate Standard DTW (L1 or squared-L2 cost, under `Error`, `Interpolate`, `ZeroCost`, or `AROW`), DDTW, ADTW, and equal-length WDTW, the CPU path evaluates one series against $W = 16$ others at once in `float64` (`32` in `float32`) on AArch64 and x86-64 builds with Clang or GCC, and $W = 8$ (`16` in `float32`) on MSVC x64, WebAssembly SIMD128, and other processors (`core::dtw_kernel_lanes_packed`). Matrix fills, `cdist`, and `one_batch_pam` pre-pack column slabs into reusable `PackedLanesPanel` blocks up to 64 MiB per slab, and unbanded sweeps register-block 4 columns on AVX-512 (2 elsewhere). The series may have any lengths, with or without a band, each lane stopping at its own (except un-packed non-x86/AArch64 targets and WDTW, where unequal-length lanes fall back to the per-pair kernel). Each lane repeats the one-pair arithmetic, so every $d_{i,j}$ matches the one-pair kernel bit for bit unless FMA contraction differs between kernels. FastCLARA and `one_batch_pam` medoid assignment use the same packed lane kernels.
 
 ## Z-Normalization
 
@@ -68,7 +68,7 @@ $$
 \hat{x}_i = \frac{x_i - \mu_x}{\sigma_x}
 $$
 
-where $$\mu_x = \frac{1}{n}\sum_{i=1}^{n} x_i$$ and $$\sigma_x = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i - \mu_x)^2}$$.
+where $\mu_x = \frac{1}{n}\sum_{i=1}^{n} x_i$ and $\sigma_x = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i - \mu_x)^2}$.
 
 ### Why z-normalize?
 
@@ -93,7 +93,7 @@ The C++ core (`dtwc::core`) provides two functions for z-normalization:
 
 Python's `dtwcpp.z_normalize(series)` and MATLAB's `dtwc.z_normalize(x)` return a normalized copy and leave the input unchanged.
 
-Each returns a zero series for a constant series ($$\sigma_x = 0$$) and raises `InvalidInput` for one that holds NaN or ±inf.
+Each returns a zero series for a constant series ($\sigma_x = 0$) and raises `InvalidInput` for one that holds NaN or ±inf.
 
 ## Warping Window
 
@@ -101,15 +101,15 @@ For longer time series it is possible to reduce the calculation domain by using 
 
 $$|i-j| \le w$$
 
-for a non-negative integer half-width $$w$$. For example, with two length-100 series and $$w=10$$, $$x_1$$ may be matched only to $$y_1,\ldots,y_{11}$$. Setting $$w=0$$ forces strictly diagonal alignment for equal-length series, while $$w=1$$ permits a shift of one position.
+for a non-negative integer half-width $w$. For example, with two length-100 series and $w=10$, $x_1$ may be matched only to $y_1,\ldots,y_{11}$. Setting $w=0$ forces strictly diagonal alignment for equal-length series, while $w=1$ permits a shift of one position.
 
-For non-empty series, because the terminal cell is $$(n,m)$$, an endpoint-preserving path exists if and only if
+For non-empty series, because the terminal cell is $(n,m)$, an endpoint-preserving path exists if and only if
 
 $$w \ge |n-m|.$$
 
-Below this threshold the CPU routes return the finite no-path sentinel `numeric_limits<T>::max()`. The unchecked per-pair kernels (`dtwBanded` and the like) return the same value for empty input and for an exceeded early-abandon cutoff, so a mere `isfinite(result)` check does not prove that a path was evaluated; `distance::dtw` refuses an empty series (`InvalidInput`), and so does every `Problem` fill and `dtw_function()`, which also refuse a band narrower than a pair's length difference. A band of `-1` requests unconstrained DTW; a `Problem` refuses a band below `-1` (`InvalidInput`), while `distance::dtw` and the per-pair kernels read any negative band as unconstrained.
+Below this threshold the CPU routes return the finite no-path sentinel `numeric_limits<T>::max()`. The unchecked per-pair kernels (`dtwBanded` and the like) return the same value for empty input and for an exceeded early-abandon cutoff, so a mere `isfinite(result)` check does not prove that a path was evaluated; `distance::*`, `cdist`, `dtw_function()`, and every `Problem` fill refuse empty series and reject `band < -1` (`InvalidInput`), and also refuse a band narrower than a pair's length difference. A band of `-1` requests unconstrained DTW; only the unchecked low-level wrappers in `warping*.hpp` treat any negative band as unconstrained.
 
-Widening the window only adds admissible paths. Therefore the exact banded value is non-increasing in $$w$$ and is always at least the full-DTW value. A narrower band can reduce work, but it can also increase the dissimilarity or eliminate every path; choose it from the timing variation allowed by the application. The fixed-window definition and endpoint conditions come from [Sakoe and Chiba (1978)](https://doi.org/10.1109/TASSP.1978.1163055).
+Widening the window only adds admissible paths. Therefore the exact banded value is non-increasing in $w$ and is always at least the full-DTW value. A narrower band can reduce work, but it can also increase the dissimilarity or eliminate every path; choose it from the timing variation allowed by the application. The fixed-window definition and endpoint conditions come from [Sakoe and Chiba (1978)](https://doi.org/10.1109/TASSP.1978.1163055).
 
 CUDA and Metal implement the same fixed geometry and public no-path sentinel.
 Their real-device tests (on CUDA the pairwise kernel families, infeasible

@@ -133,8 +133,7 @@ set: a thread's scratch for the DTW kernels, sized for the longest series it
 expects (the longest series read, a mapped Arrow IPC file's longest, else twice
 the mean length), and the method's tables, times the threads, and a tenth more.
 What the reserve leaves is the data cap, for the series, the method's own terms
-(TADPole's flag a pair, its cache of the pairs and, where it prunes, the series'
-envelopes; the hierarchical clustering's packed working copy of the matrix,
+(TADPole's sparse per-row caches of unevaluated exact pairs, up to 16 UB seeds per point, and per-series envelopes — though `dtwc_cl`'s memory plan conservatively budgets the worst-case pair cache in RAM and never memory-maps it; the hierarchical clustering's packed working copy of the matrix,
 N(N+1)/2 doubles; OneBatchPAM's batch table: in RAM however the matrix is stored)
 and the distance matrix:
 
@@ -245,9 +244,7 @@ series outside the page cache (decoded, read without LLFIO, or in the other
 not streamed. With `--device gpu` the plan counts the GPU's staging buffer for
 every input (CUDA: the series padded to the longest, 8 bytes a value, 4 under
 `--gpu-precision fp32`, or for FastCLARA's assignment its pipeline's pinned
-buffers; Metal: the series and the matrix as floats) and, on Metal only, for an
-Arrow IPC file, whose series are views of it, the owned copy its fill uploads of
-them: CUDA reads the views where they lie and makes no copy. Other inputs (CSV/TSV, a CSV directory) are
+buffers; Metal: the series and the matrix as floats, plus the planner conservatively prices an owned copy for Arrow IPC views even though `Problem`'s Metal fill now reads views via `SeriesAt` spans into FP32 staging): CUDA reads the views where they lie and makes no copy. Other inputs (CSV/TSV, a CSV directory) are
 always read whole; the plan then sets the threads and where the distance matrix is
 held. A run gives its threads' scratch back, CUDA's staging and device buffers
 among it, as it starts and when it ends.
@@ -304,10 +301,11 @@ The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.m
 
 A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry, which no `--variant` gives (under `softdtw` the matrix holds the Soft-DTW divergence), unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes before the result files, but a save that fails (a full disk) is reported only once they are written, so the results stay. `--dist-matrix` and `--checkpoint` each supply the matrix: given both, `dtwc_cl` exits 1 before any data is read.
 
-TADPole's pruning schedule avoids eagerly filling all pairs, but every
-exact/fallback distance still goes into its packed cache, which it keeps in RAM:
-the memory plan counts the cache there, and TADPole's matrix is never mapped.
-TADPole reads a `--dist-matrix` only when it is complete: on one with pairs not
+TADPole's pruning schedule avoids eagerly filling all pairs, storing only
+unevaluated exact pairs in sparse sorted per-row vectors (`upper_cache`/`lower_cache`)
+plus up to 16 tight UB seeds per point (`upper_ub`/`lower_ub`) in RAM; `dtwc_cl`'s
+memory plan still conservatively prices the worst-case pair cache in RAM, and TADPole's
+storage is never memory-mapped. TADPole reads a `--dist-matrix` only when it is complete: on one with pairs not
 computed it exits 1, as it would read none of it and compute every pair again.
 OneBatchPAM is the exception:
 its fixed O(Nm) table never allocates the Problem distance matrix, so it refuses

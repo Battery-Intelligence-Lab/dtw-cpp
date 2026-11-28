@@ -31,7 +31,7 @@ $$
 \end{aligned}
 $$
 
-When $D_{ii} = 0$ and $D_{ij} \ge 0$ (every distance a `Problem` computes: DTW, DDTW, WDTW, ADTW, MSM, TWE and the Soft-DTW divergence), every open medoid $i$ optimally assigns to itself ($x_{ii} = y_i$), reducing directly to Balinski's (1965) $N^2$-variable formulation implemented in `mip_Highs.cpp` and `mip_Gurobi.cpp`. At $N = 10^4$, the compact formulation has $10^8$ binary variables and $\approx 3 \times 10^8$ nonzeros, motivating an implicit $y$-space exact method that never materializes the $N^2$-column LP.
+When $D_{ii} = 0$ and $D_{ij} \ge 0$ (every distance a `Problem` computes: DTW, DDTW, WDTW, ADTW, MSM, TWE and the Soft-DTW divergence), every open medoid $i$ optimally assigns to itself ($x_{ii} = y_i$), reducing directly to Balinski's (1965) $N^2$-variable formulation implemented in `mip_Highs.cpp` and `mip_Gurobi.cpp` with $N$ binary diagonal indicators $y_i = x_{ii} \in \{0, 1\}$ and $N(N-1)$ continuous assignment variables $x_{ij} \in [0, 1]$ ($i \ne j$). At $N = 10^4$, the compact formulation has $10^4$ binary variables and $99{,}990{,}000$ continuous variables ($N^2 = 10^8$ total columns) and $\approx 3 \times 10^8$ nonzeros, motivating an implicit $y$-space exact method that never materializes the $N^2$-column LP.
 
 ---
 
@@ -99,3 +99,12 @@ On well-separated time-series clusters (Awasthi et al. 2015), $z_{\text{LP}}$ eq
    - Any candidate $i \notin S_k(\mu^*)$ with $L(\mu^*) + (\rho_i(\mu^*) - \rho_{(k)}) > U$ cannot appear in any optimal medoid set and is permanently **fixed closed ($y_i = 0$)**.
    - Any candidate $i \in S_k(\mu^*)$ with $L(\mu^*) + (\rho_{(k+1)} - \rho_i(\mu^*)) > U$ must appear in every optimal medoid set and is permanently **fixed open ($y_i = 1$)**.
 3. **Core-Restricted $y$-Space Branch-and-Bound:** If $(U - L(\mu^*)) / |U| > \varepsilon_{\text{gap}}$ (the gap taken as 0 when $U = L(\mu^*)$), `LRCore` branches only on surviving core candidates $i \in \mathcal{C}$. At a tree node with forced-open medoids $F_1$ ($d_{F_1}(j) = \min_{i \in F_1} D_{ij}$) and remaining candidates $\mathcal{C}_{\text{rem}}$ (client floor $m_j(A) = \min_{i \in F_1 \cup \mathcal{C}_{\text{rem}}} D_{ij}$), clamping multipliers onto $\tilde{\mu}_j = \max(m_j(A), \min(\mu_j^*, d_{F_1}(j)))$ strictly dominates frozen root multipliers by eliminating double-counted client surpluses across $F_1$ and remaining candidates while preserving client-floor tightening.
+
+---
+
+## 5. `v2.0-fast` Implementation Details (`lagrangian_root.cpp`)
+
+- **Zero-copy `PackedMatrixView<T>`:** `LR_core_clustering` wraps `DistanceMatrix` (in-RAM `float`/`double` or memory-mapped `.dtwm`) directly without copying into a dense $N \times N$ buffer, evaluating $\mu^{(0)}$ and $\rho(\mu)$ via cache-line-blocked 8-row sweeps (`core::for_each_point<8>`).
+- **Volume-style primal averages:** Dual ascent maintains exponential primal weights $\bar{y}_i \leftarrow (1 - \alpha)\bar{y}_i + \alpha\,\mathbb{I}[i \in S_k(\mu)]$ with $\alpha = \max(0.05,\, 2 / (t + 2))$, periodically extracting top-$k$ candidates by $\bar{y}$ alongside $S_k(\mu)$.
+- **Cluster-grouped Lloyd + FastPAM 1-swap polish (`pmedian_local_search`):** Periodic and final primal polishes run $O(\sum_c |C_c|^2)$ cluster-grouped Lloyd sweeps followed by exact $O(N^2)$ FastPAM 1-swap passes (`enable_1swap` for $N \le 256$ during ascent and $N \le 2048$ on finalisation).
+- **Zero-allocation B&B tightening:** When `(C + 1) * N` and `(need + 1) * N` do not exceed `kMaxSuffixMinCells` (`4,194,304` cells, $\approx 32$ MiB), the search precomputes `suffix_min[pos][j]` and depth-indexed `open_mins[opened][j]` once, eliminating per-node allocations while evaluating exact additive Erlenkotter client-floor lifts ($\max(0,\, m_j - \mu_j)$) and $d_{F_1}(j)$ dual clamping.

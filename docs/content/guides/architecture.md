@@ -18,14 +18,14 @@ flowchart TB
     PY[Python nanobind + Python orchestration]
     MAT[MATLAB classes + MEX gateway]
     CLI[dtwc_cl CLI]
-    ENV[device: cpu / gpu, loud errors]
-    LOAD[Lazy Dataset / DataLoader / Arrow ingest]
-    PROB[Problem: data, DTW policy, distance storage, result state]
-    MATRIX[Distance schedules: CPU OpenMP / CUDA / Metal / mmap]
-    FREE[No parent matrix: OneBatchPAM / non-full CLARA]
-    ALG[Matrix consumers: FastPAM / Lloyd / hierarchy / TADPole]
-    SOLVE[Exact routes: HiGHS / Gurobi / LR-core]
-    OUT[Result, scores, checkpoints, CSV outputs]
+    ENV[device: cpu / gpu / cpu+gpu, fallback]
+    LOAD[Lazy Dataset / DataLoader / Arrow IPC & Parquet]
+    PROB[Problem: data, DistanceConfig, storage, result state]
+    MATRIX[Distance fills & cdist: CPU SIMD lanes / CUDA warptile / Metal SeriesAt / .dtwm mmap]
+    FREE[No parent matrix: OneBatchPAM / non-full CLARA / TADPole sparse cache / barycentres]
+    ALG[Matrix consumers: FastPAM / Lloyd / Day-Edelsbrunner hierarchy]
+    SOLVE[Exact routes: HiGHS 1.16 / Gurobi / LR-core PackedMatrixView]
+    OUT[Result, matrix-free & matrix scores, checkpoints, reports]
 
     CPP --> ENV
     PY --> ENV
@@ -47,5 +47,4 @@ flowchart TB
 ```
 
 The important scaling decision is the branch after `Problem`: changing file
-format reduces ingestion cost, while choosing an algorithm that holds no parent
-matrix (OneBatchPAM, non-full CLARA) avoids the quadratic distance matrix itself.
+format (such as memory-mapped Arrow IPC) reduces ingestion cost, while choosing an algorithm that holds no full $N \times N$ distance matrix (OneBatchPAM, non-full FastCLARA, or `barycenter_kmeans`, plus matrix-free `davies_bouldin` / `inertia` scoring) avoids quadratic distance storage altogether.

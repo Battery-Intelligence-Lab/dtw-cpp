@@ -9,6 +9,8 @@ The `dtwcpp` package provides fast DTW distance computation and time-series clus
 
 ## Installation
 
+Requires Python 3.9 or newer (`numpy >= 1.26`, `highspy >= 1.8`). Published wheels support Python 3.9–3.15+ using the `cp312-abi3` stable ABI for 3.12+ (and per-version wheels for 3.9–3.11).
+
 ```bash
 pip install dtwcpp
 ```
@@ -78,6 +80,29 @@ Parameters:
 | `device` | str | `None` | `"cpu"`, `"gpu"`, `"gpu:N"` (`"cuda"` / `"cuda:N"` are aliases), `"cpu+gpu"`, `"cpu+gpu:N"` (CUDA only); `None` uses `dtwcpp.device()` |
 | `matrix_dtype` | str | `"float64"` | `"float64"` or `"float32"`: the matrix's value type and the array's dtype; `"float32"` takes half the memory, each distance rounded to a float |
 
+### Cross-collection distance matrix (`cdist`)
+
+Compute the rectangular `(len(X), len(Y))` cross-collection matrix (omitting `Y` or passing `Y=None` computes `cdist(X, X)`):
+
+```python
+D_xy = dtwcpp.cdist(X, Y, band=10, metric="l1", matrix_dtype="float64", fallback=True)
+```
+
+Accepts all DTW variants (`variant`, `wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`, `twe_lambda`), missing-data strategies, `mv_mode`, `ndim`, `dtype`, `matrix_dtype`, `device`, `gpu_precision`, `gpu_share`, and `fallback`.
+
+### Multivariate arrays and `Data`
+
+For multivariate series (`ndim > 1`), `dtwcpp.load`, `Problem.set_data`, `dtwcpp.cdist`, and `dtwcpp.Data.from_numpy_3d` accept 3-D NumPy arrays of shape `(n_series, n_timesteps, ndim)` alongside interleaved 2-D arrays or ragged lists:
+
+```python
+X_3d = np.random.default_rng(0).normal(size=(10, 20, 3))
+data = dtwcpp.Data.from_numpy_3d(X_3d, [f"s{i}" for i in range(10)], dtype="float64")
+res = dtwcpp.cluster(dtwcpp.load(X_3d, ndim=3), k=2)
+
+prob = dtwcpp.Problem("mv")
+prob.set_data(X_3d, ndim=3, dtype="float64")
+```
+
 ## DTWClustering class
 
 `DTWClustering` provides an sklearn-compatible interface for k-medoids clustering with DTW distance. Its fit sets up
@@ -115,6 +140,7 @@ print(f"Iterations:     {clf.n_iter_}")
 | `n_init` | int | `1` | Seeded restarts `random_state + i`, the best kept (at least 1) |
 | `wdtw_g` | float | `0.05` | WDTW logistic weight steepness (only for `variant="wdtw"`) |
 | `adtw_penalty` | float | `1.0` | ADTW non-diagonal step penalty (only for `variant="adtw"`) |
+| `sdtw_gamma` | float | `1.0` | Soft-DTW smoothing parameter (only for `variant="softdtw"`) |
 | `msm_c` | float | `1.0` | MSM split/merge cost (only for `variant="msm"`) |
 | `twe_nu` | float | `0.001` | TWE stiffness (only for `variant="twe"`) |
 | `twe_lambda` | float | `1.0` | TWE edit penalty (only for `variant="twe"`) |
@@ -178,7 +204,11 @@ d = dtwcpp.distance.dtw(x, y, variant="twe", twe_nu=0.001, twe_lambda=1.0)  # Ti
 ```
 
 `metric` is `"l1"`, `"euclidean"` or `"squared_euclidean"` for Standard DTW and DDTW; the other
-variants compute an L1 cost and refuse another metric.
+variants compute an L1 cost and refuse another metric. To differentiate Soft-DTW with respect to the first series, call `dtwcpp.soft_dtw_gradient(x, y, gamma=1.0)`:
+
+```python
+grad = dtwcpp.soft_dtw_gradient(x, y, gamma=1.0)
+```
 
 ### DTW with missing data
 
@@ -217,6 +247,36 @@ from dtwcpp import fast_clara
 result = fast_clara(prob, n_clusters=3, sample_size=-1, n_samples=5, seed=42)
 ```
 
+### OneBatchPAM, LR-core, and TADPole
+
+```python
+# O(Nm) fixed-batch k-medoids (batch_size=-1 chooses logarithmic batch size)
+res_obp = dtwcpp.one_batch_pam(prob, n_clusters=3, batch_size=-1, max_iter=100, seed=42)
+
+# Exact y-space branch-and-bound without MIP solver dependencies
+prob.set_n_clusters(3)
+prob.set_method(dtwcpp.Method.LRCore)
+res_lr = prob.cluster()
+
+# Admissible LB_Kim / LB_Keogh density-peaks clustering via Tier 1
+res_tad = dtwcpp.cluster(series, 3, method="tadpole", dc=1.5)
+```
+
+### DTW barycentres and barycentre k-means
+
+Compute sequence-valued average shapes (Standard, unbanded squared-L2 DTW) or cluster using barycentric centroids (`BarycenterMethod.SSG`, `DBA`, or `SoftDTW`):
+
+```python
+bopts = dtwcpp.BarycenterOptions()
+bopts.method = dtwcpp.BarycenterMethod.SSG
+bary = dtwcpp.dtw_barycenter(prob, [0, 1, 2], target_length=len(series[0]), options=bopts)
+
+kopts = dtwcpp.BarycenterClusteringOptions()
+kopts.n_clusters = 3
+kopts.barycenter.max_iter = 20
+bres = dtwcpp.barycenter_kmeans(prob, kopts)
+```
+
 ### Hierarchical clustering
 
 Build a dendrogram, then cut it at the desired number of clusters:
@@ -241,7 +301,7 @@ first and only read afterwards.
 
 ## Quality scores
 
-All scoring functions operate on a `Problem` object that has been clustered (distance matrix computed and labels assigned).
+Scoring functions operate on a `Problem` object that has been clustered. `davies_bouldin(prob)` and `inertia(prob)` run **matrix-free** when no full distance matrix is stored; `silhouette(prob)`, `dunn(prob)`, and `calinski_harabasz(prob)` fill the distance matrix on demand.
 
 ```python
 from dtwcpp import (

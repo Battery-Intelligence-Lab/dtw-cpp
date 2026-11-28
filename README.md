@@ -27,17 +27,17 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 
 **Key features:**
 
-- **7 elastic distances**: Standard DTW, DDTW, WDTW, ADTW, Soft-DTW, MSM, TWE
-- **Missing data support**: NaN-aware DTW (DTW-AROW)
-- **8 CLI-selectable clustering methods**: PAM/FastPAM, OneBatchPAM, FastCLARA, k-medoids, MIP, LR-core, hierarchical, TADPole
-- **Lower bounds**: LB_Keogh and admissible TADPole pair pruning
-- **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
-- **Parallelism**: OpenMP threads, CUDA and Metal GPUs (optional)
-- **Runtime precision**: Float64 by default; `--dtype float32` halves series-storage bytes and uses Float32 recurrence arithmetic, `--matrix-dtype float32` halves the distance matrix
-- **RAM-aware**: `--ram-limit` (automatic by default: 90 % of the memory available) is a memory plan: a reserve for the threads, then the series and the distance matrix, mapped to a file when it does not fit; it streams a Parquet or Arrow IPC file of one series per row (a list column, or for Parquet several float columns) through non-full FastCLARA, and an explicit limit that cannot hold the run is an error
-- **Checkpointing**: Save/resume long-running distance matrix computations
+- **7 elastic distances & cross-collection `cdist`**: Standard DTW, DDTW, WDTW, ADTW, Soft-DTW (plus differentiable `soft_dtw_gradient`), MSM, and TWE, plus rectangular `cdist` / `cdist_f32`
+- **Missing data & multivariate support**: NaN-aware `ZeroCost`, `DTW-AROW`, and `Interpolate` strategies; `Dependent` and `Independent` multivariate modes (`ndim > 1`)
+- **8 CLI-selectable clustering methods + DTW barycentres**: PAM/FastPAM, OneBatchPAM, FastCLARA, Lloyd k-medoids, exact MIP (HiGHS 1.16.0 / Gurobi), exact `LR-core`, Day–Edelsbrunner hierarchical clustering, and TADPole, alongside `dtw_barycenter` and `barycenter_kmeans` (`SSG`, `DBA`, `SoftDTW`)
+- **Lower bounds**: two-endpoint $O(1)$ `LB_Kim` (`lb_kim_l1`), cascading `LB_Keogh`, and admissible TADPole pair pruning
+- **Multi-language**: C++20 core (Tier 1 & Tier 2 APIs), Python (`dtwcpp` for Python 3.9–3.15+, `cp312-abi3`, sklearn-compatible `DTWClustering`), and MATLAB MEX (`+dtwc`)
+- **Parallelism & GPU backends**: OpenMP + packed SIMD lanes (`PackedLanesPanel`), NVIDIA CUDA (unified multi-pass `dtw_warptile_kernel`, `compute_medoid_argmin_cuda`, `cpu+gpu`), Apple Metal (parallel `SeriesAt` shared buffer fill), and explicit `--fallback` support
+- **Runtime precision & matrix-free scoring**: Float64 by default; `--dtype float32` halves series-storage bytes and uses Float32 recurrence arithmetic, `--matrix-dtype float32` halves the distance matrix; `davies_bouldin` and `inertia` run matrix-free
+- **RAM-aware**: `--ram-limit` (automatic by default: 90 % of the memory available) is a memory plan: a reserve for the threads, then the series and the distance matrix, mapped to a `.dtwm` file when it does not fit; it streams a Parquet or Arrow IPC file of one series per row (a list column, or for Parquet several float columns) through non-full FastCLARA, and an explicit limit that cannot hold the run is an error
+- **Checkpointing**: Save/resume long-running `.dtwm` distance matrix computations
 - **Run report**: every `dtwc_cl` run writes `<name>_report.txt` beside its results, plain text: the machine, the memory plan and the peak resident memory, each stage's wall time, share and CPU utilisation, the stopping criterion and the result (`--no-report` writes none)
-- **I/O**: CSV and Arrow IPC (mapped and read in place; a compressed file is decoded into RAM) in every build, Parquet in a build with Arrow, auto-detected from extension; HDF5 in Python (h5py)
+- **I/O**: CSV and Arrow IPC (mapped and read in place; a compressed file is decoded into RAM) in every build, Parquet in a build with Arrow, auto-detected from extension; HDF5 in Python (`h5py`)
 
 Recorded, workload-specific measurements are published in the
 [UCR benchmark ledger](benchmarks/ucr_benchmark_results.md); do not extrapolate

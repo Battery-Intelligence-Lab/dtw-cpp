@@ -7,12 +7,14 @@ weight: 30
 
 ## HiGHS (default)
 
-HiGHS is the default open-source MIP backend. `dtwc_cl`, C++ and the MATLAB MEX
+HiGHS (1.16.0) is the default open-source MIP backend. `dtwc_cl`, C++ and the MATLAB MEX
 link it (`-DDTWC_ENABLE_HIGHS=ON`, the default). The Python wheel does not:
 `method="mip"` builds the same model in C++ and solves it with highspy, which
 dtwcpp requires (`pip install dtwcpp` installs it). If neither can be loaded,
 requesting HiGHS raises `SolverError` naming the fix; it never returns an empty or
 partially solved clustering as though it succeeded.
+
+Both HiGHS and Gurobi build Balinski's compact CSC model directly with $N$ binary diagonal medoid variables and $N(N-1)$ continuous assignment variables ($N^2$ columns, $\approx 3N^2$ nonzeros). Trivial shortcuts handle $k = 1$ (zero-swap FastPAM) and $k = N$ directly, and zero-cost warm starts decode immediately; otherwise objective coefficients are scaled by `min(max_distance / 2, pam_cost)`. HiGHS runs serially (`mip_rel_gap = mip_gap`, `mip_abs_gap = 0.0`, `parallel = "off"`, `threads = 1`, resetting the thread scheduler around each solve) so equal-cost medoid tie-breaking is deterministic across machines and root solves avoid multi-thread contention. Because CSC column/row indices use 32-bit `int`, `N > ~26,750` exceeds `INT_MAX` nonzeros and raises `SolverError` directing the caller to `Method::LRCore`.
 
 ## Gurobi (optional, external)
 
@@ -31,10 +33,15 @@ licensed SDK.
 
 ## LR-core exact route
 
-`method="lrcore"` combines a Lagrangian root bound, reduced-cost candidate
-fixing, and exact branch-and-bound over medoid-open decisions. The root bound is
-matrix-free with respect to the compact MIP formulation, but it still streams a
-dense distance matrix: memory is Θ(N²) doubles. It is strongest on separated,
+`method="lrcore"` combines an Erlenkotter second-nearest Lagrangian root bound,
+Volume-style exponential primal averages, cluster-grouped $O(\sum_c |C_c|^2)$
+Lloyd + FastPAM 1-swap polish, Beasley reduced-cost candidate fixing, and
+zero-allocation $y$-space branch-and-bound with precomputed suffix minima and
+Erlenkotter client-floor lifts. `LR_core_clustering` reads the packed
+lower-triangular `DistanceMatrix` (in-RAM `float`/`double` or memory-mapped
+`.dtwm`) zero-copy via `PackedMatrixView<T>` and cache-line-blocked 8-row sweeps
+without materialising a dense $N \times N$ double array or calling any external
+MIP solver. It is strongest on separated,
 clustered data where the LP root is tight. Uniform non-metric/adversarial data can
 leave a wide gap and grow the tree; `mip::lagrangian_root_exact` then reports
 `certified_optimal=false` rather than claiming an unproved optimum, and

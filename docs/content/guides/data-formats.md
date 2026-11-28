@@ -74,6 +74,9 @@ not fit beside the series in its `--ram-limit` plan); the Python wheels and the 
 that support (llfio). `matrix_dtype` float32 (`--matrix-dtype`) stores the matrix
 at half the bytes, each distance rounded to a float.
 
-For data larger than an all-pairs matrix, choose a method that holds no parent matrix,
-OneBatchPAM or non-full CLARA (TADPole keeps the pairs it computes in a packed matrix),
-rather than changing only the input container.
+For data larger than an all-pairs matrix, choose a method that holds no full parent matrix,
+OneBatchPAM or non-full CLARA (TADPole avoids filling a dense matrix by storing
+sparse sorted per-row caches of unevaluated exact pairs, up to 16 UB seeds per
+point, and per-series envelopes, though `dtwc_cl`'s conservative RAM planner still
+reserves worst-case pair flags/caches in RAM and never memory-maps TADPole
+caches), rather than changing only the input container.
