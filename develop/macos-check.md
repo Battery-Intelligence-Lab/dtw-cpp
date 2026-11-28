@@ -1,52 +1,114 @@
-# macOS / Metal check before tagging 2.0.0
+# macOS / Apple Silicon & Metal Verification Handoff (v2.0.0)
 
-The Metal backend is compiled only on Apple hardware, and every Metal edit since the design-2.0 work was written on
-Windows and Linux without being built. Run these steps once on a Mac (Apple silicon), from a clean checkout of
-`v2.0-fast`, then record the outcome as step 7 says and delete this file in that commit.
+Run this checklist once on an Apple Silicon Mac from a clean checkout of `v2.0-fast`.
+It verifies everything that cannot be compiled or executed on Windows/Linux (Objective-C++ `metal_dtw.mm`, runtime MSL shader compilation and execution, ARM64 NEON SIMD lanes and AppleClang codegen, strict-FP conformance, and the macOS `cp312-abi3` wheel).
 
-Rule for every step: a test that is skipped proves nothing (ctest counts a skip as a pass). Where a step says RAN,
-show the test's own output with its assertion count and no `SKIPPED` line.
+Everything on Windows Clang 21, Windows MSVC + CUDA 13, WSL GCC 13, and WSL Clang 18 is already green through `cffbd58f`.
 
-## 1. Build
+**Rules for every step:**
+- **Never trust a silent skip.** CTest counts Catch2 `SKIP` as a pass. Where a step says **RAN**, confirm the test names and assertion counts appear with zero `SKIPPED` lines.
+- **Keep working tree clean.** All scratch build/output directories below live under `build*/` or `.venv-mac/` (all git-ignored).
+- **No attribution footers** in code, comments, or commit messages.
+
+---
+
+## What Changed Since the Last Mac Run
+
+If anything fails, these are the exact macOS-reachable changes being compiled and run on Apple hardware for the first time:
+
+1. **Metal kernels & zero-copy host path (`dtwc/metal/metal_dtw.mm`, `dtwc/metal/metal_dtw.hpp`, `dtwc/Problem.cpp`):**
+   - `e2246edc`: Dynamic `pairs_per_tg` passed via `[[buffer(9)]]` to `dtw_regtile_w4` / `dtw_regtile_w8` (replaces hardcoded `PAIRS_PER_TG = 8` so hardware `maxTotalThreadsPerThreadgroup` / threadgroup memory clamping cannot skip pairs).
+   - `e2246edc`: Zero-copy `compute_distance_matrix_metal(n_series, SeriesAt, opts, ParallelFor, out)` overload called directly from `dtwc/Problem.cpp:1506` with OpenMP FP64→FP32 staging and FP32→FP64 output widening (no owned copy of views).
+   - `e2246edc`: Double-buffered `scratch[2]` for multi-chunk `wavefront_global` and `banded_row` dispatches with per-command-buffer error checking.
+   - `bc30b29f` (CRIT-5): Early exit for `|La - Lb| > band` in `dtw_wavefront_body` and `dtw_banded_row` (tested directly in Step 3).
+2. **Unified GPU policy & CLI/streaming paths (`dtwc/core/gpu_policy.hpp`, `dtwc/cdist.cpp`, `dtwc/cli/run.cpp`, `dtwc/algorithms/detail/fast_clara_stream.hpp`, `dtwc/algorithms/fast_clara.cpp`):**
+   - Shared `kGpuBackendName = "Metal"` capability checks in `dtwc/core/gpu_policy.hpp`.
+   - `cdist` / `cdist_f32` Metal refusal (`"cross-collection rectangular cdist is not implemented on Metal"`) and `--fallback` CPU routing.
+   - `gpu_staging_bytes` Metal accounting in `dtwc/cli/run.cpp:185-201`; `on_gpu = false` in `fast_clara_stream.hpp` (Metal assigns CLARA medoids on CPU).
+   - `cffbd58f`: Generic lambdas extracted to plain function templates in `fast_clara_stream.hpp` and `fast_clara.cpp`.
+3. **ARM64 NEON CPU kernels & codegen (`8799f44f`, `cffbd58f`):**
+   - `dtwc/core/dtw_kernel.hpp:611-654`: `LanesCell` using `std::fmin` (`fminnm`), `dtw_lanes<double> = 16` / `dtw_lanes<float> = 32`, 2-column blocking, expanded SIMD lanes (`ADTW`, `WDTW`, `ZeroCost`, `AROW`), branchless MSM (`dtwc/core/msm.hpp`), peeled TWE (`dtwc/core/twe.hpp`), Soft-DTW backward gradient.
+   - `test_codegen_no_calls` (`scripts/codegen_report.py --no-calls`) runs on AppleClang + Ninja Release to confirm zero stray function calls inside any DP loop.
+
+---
+
+## Step 0 — Prerequisites & Clean Checkout
 
 ```bash
-brew install ninja libomp
-cmake --preset clang-macos -DDTWC_BUILD_TESTING=ON -DDTWC_ENABLE_HIGHS=ON -DOpenMP_ROOT="$(brew --prefix libomp)"
+git fetch origin
+git checkout v2.0-fast
+git pull --ff-only origin v2.0-fast
+git log -n 3 --oneline
+```
+
+Verify tools (Xcode Command Line Tools, Homebrew `cmake`, `ninja`, `libomp`, and `uv`):
+
+```bash
+xcode-select -p
+brew install cmake ninja libomp uv
+sw_vers && clang++ --version | head -n 1
+```
+
+> **Note:** The `clang-macos` preset explicitly pins `/usr/bin/clang` and `/usr/bin/clang++` (Apple Clang) so Homebrew LLVM cannot shadow it and cause a `libc++` mismatch with HiGHS. Passing `OpenMP_ROOT="$(brew --prefix libomp)"` lets CMake and `uv build` find keg-only Homebrew `libomp` without needing `brew link --force libomp`.
+
+---
+
+## Step 1 — Configure & Build (Release + HiGHS + Metal)
+
+Metal (`DTWC_ENABLE_METAL`) defaults to `ON` on macOS.
+
+```bash
+cmake --preset clang-macos \
+  -DDTWC_BUILD_TESTING=ON \
+  -DDTWC_ENABLE_HIGHS=ON \
+  -DOpenMP_ROOT="$(brew --prefix libomp)"
 cmake --build build -j
 ```
 
-Metal is on by default on Apple. A compile error in `dtwc/metal/metal_dtw.mm` or in a Metal test is the first thing
-to fix: those files have never been compiled since the edits listed in step 5. Off the Mac, every C++ translation
-unit of a Windows build, its dependencies' included, passes `clang++ -fsyntax-only -DDTWC_HAS_METAL`, so a build error most likely sits in
-the Objective-C++ of `metal_dtw.mm`. Its kernels (MSL source) are compiled at run time by `newLibraryWithSource`: a
-shader error is no build error, it makes `Metal backend is available` skip with the Metal compiler's message, and
-step 2 counts that skip as a failure.
+Confirm CMake configured with Metal enabled (`DTWC_HAS_METAL` active) and zero build errors.
 
-## 2. The full suite
+If a build error occurs, check `dtwc/metal/metal_dtw.mm` first (every C++ translation unit already passed `clang++ -fsyntax-only -DDTWC_HAS_METAL` off-Mac, so compile errors are most likely in Objective-C++ syntax or AppleClang `-fno-objc-arc` handling). Runtime MSL shader errors do not fail the build — they cause `Metal backend is available` to `SKIP` in Step 2, which counts as a failure.
+
+---
+
+## Step 2 — Full CTest Suite & Proof Every Metal/NEON Gate RAN
+
+Run the full CTest suite serially (GPU tests share one Metal device):
 
 ```bash
-ctest --test-dir build -C Release --output-on-failure   # serial: the GPU tests share one device
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-Every entry must pass. Then show that the Metal tests RAN:
+Every CTest entry must pass. Then explicitly verify that Metal, zero-copy GPU views, Apple Silicon `cpuinfo`/NEON, ARM64 codegen, CLI device matrix, and conformance actually **RAN** without skipping:
 
 ```bash
 ./build/bin/dtwc_unit_gpu "[metal]" -d yes
+./build/bin/dtwc_unit_gpu "[gpu]" -d yes
+./build/bin/dtwc_unit_core "[machine]" -d yes
+ctest --test-dir build -C Release -R "^(test_codegen_no_calls|test_cli_device_matrix|cpp_conformance)$" -V
 ```
 
-`-d yes` names every test case it ran, with its time. `Metal backend is available` and the cases of
-`test_metal_correctness` and `test_metal_mmap` must be among them; no `SKIPPED` may appear (a skip prints its reason,
-such as the Metal compiler's message or `DTWC_HAS_METAL not defined`, which is what Windows prints: two skipped
-cases); and the last line must read `All tests passed (N assertions in M test cases)`.
+**Required outcomes:**
+- `dtwc_unit_gpu "[metal]" -d yes`:
+  - `Metal backend is available`, `test_metal_correctness` (`regtile_w4`, `regtile_w8`, `wavefront`, `wavefront_global`, `banded_row`, `float32`), `test_metal_mmap` (dense, mmap, squared-L2, float32 mmap, `fast_clara`), and `FX-1: Metal rejects a GPU index and a precision it cannot honour` all **RAN**.
+  - **Zero `SKIPPED` lines.** Ends with `All tests passed (N assertions in M test cases)`.
+- `dtwc_unit_gpu "[gpu]" -d yes`:
+  - `A view on a GPU fills the matrix the owned store does` **RAN** and passed (exercises the new zero-copy `SeriesAt` + OpenMP Metal overload in `dtwc/Problem.cpp:1506`).
+- `dtwc_unit_core "[machine]" -d yes`:
+  - Passes with Apple CPU model and `NEON` detected (`cpuinfo` enabled).
+- `test_codegen_no_calls`:
+  - Prints `CODEGEN_NO_CALLS ... missing=none calls=0 verdict=PASS`.
+- `test_cli_device_matrix`:
+  - Prints `gpu=metal device=present ... skips=0` (verifies CLI PAM/CLARA/KMedoids/LR-core/Hierarchical/MIP on Metal, `gpu:1` and `cpu+gpu` refusals, and CLARA's `"medoids on the CPU (Metal has no kernel for the assignment)"` message).
+- `cpp_conformance`: passes.
 
-## 3. The guard for a pair whose length gap exceeds the band (review CRIT-5, commit bc30b29f)
+---
 
-`dtw_banded_row` and the wavefront body had no early exit for `|La - Lb| > band`, which the CUDA kernels have: with
-the longer series at the lower index, `banded_row` wrote before its scratch buffer, and the wavefront returned a
-stale finite cost. Only a direct backend call reaches it (Problem, the CLI and the bindings refuse such data first).
-The existing fixed-band test puts the long filler last, so it misses the trigger. Add this case to
-`tests/unit/test_metal_correctness.cpp` just above its last line, `#endif // DTWC_HAS_METAL`: it uses the Metal-only
-`gpu_fill` and `fixed_band` helpers defined there, and below that line it would break every build without Metal.
+## Step 3 — Add & Verify the CRIT-5 Metal Infeasible-Band Regression Test (`bc30b29f`)
+
+`dtw_banded_row` and `dtw_wavefront_body` previously lacked an early exit for `|La - Lb| > band`, causing an out-of-bounds write before the scratch buffer (when the longer series had the lower index) or a stale finite cost. The existing fixed-band test puts the long filler last, so it misses this trigger.
+
+Insert the following `TEST_CASE` into `tests/unit/test_metal_correctness.cpp` **immediately above its final line `#endif // DTWC_HAS_METAL`** (placing it below `#endif` breaks non-Metal builds):
 
 ```cpp
 TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band with the longer series first",
@@ -80,77 +142,180 @@ TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band with
 }
 ```
 
-Rebuild (`cmake --build build -j`) and run `./build/bin/dtwc_unit_gpu "[metal][banded]" -d yes`: the new case
-must pass on all three routes, beside the existing route test. Then rerun `./build/bin/dtwc_unit_gpu "[metal]" -d yes`:
-its counts, with the new case, are the ones step 7 records.
-
-Checked off the Mac: the file's Metal branch, with this case, passes `clang++ -fsyntax-only -DDTWC_HAS_METAL`; the
-CPU half holds (`dtwBanded` gives the sentinel for the three pairs, in either order); and the kernels named are the
-ones `metal_dtw.mm` selects (regtile, the fourth, is unbanded only, where every pair has a path). A failure here is
-therefore Metal's, unless the route assertion fails, which means the route selection changed: adjust the lengths or
-bands. The test name has no comma, which Catch2 would read as a separator.
-
-If quick, show the case fails without the guards: `git revert --no-commit bc30b29f` (it applies cleanly to this
-branch), rebuild, and run `./build/bin/dtwc_unit_gpu "[metal][banded]"`: the new case must fail. Then restore the
-guards with `git revert --abort` (it keeps the uncommitted test case and clears the revert state; a `git checkout`
-of the file would leave that state behind and turn the step-7 commit into a revert), rebuild, and rerun the same
-filter: it must pass before step 4.
-
-## 4. GPU results equal the CPU's
+Rebuild and run both the banded filter and the full `[metal]` filter (record the final `[metal]` assertion/case counts for Step 9):
 
 ```bash
-o=build/mac-check   # under build/, which git ignores
+cmake --build build -j
+./build/bin/dtwc_unit_gpu "[metal][banded]" -d yes
+./build/bin/dtwc_unit_gpu "[metal]" -d yes
+```
+
+*(Optional negative proof, takes ~15 s)* Verify the new test actually catches the bug when `bc30b29f` is absent (`bc30b29f` reverts cleanly on `cffbd58f`):
+
+```bash
+git revert --no-commit bc30b29f
+cmake --build build -j
+./build/bin/dtwc_unit_gpu "[metal][banded]"   # MUST FAIL on the new case
+git revert --abort                            # restores metal_dtw.mm, keeps the uncommitted test case
+cmake --build build -j
+./build/bin/dtwc_unit_gpu "[metal][banded]" -d yes   # MUST PASS again
+```
+
+> Use `git revert --abort` (not `git checkout -- dtwc/metal/metal_dtw.mm`), otherwise `REVERT_HEAD` stays behind and turns the Step 9 commit into a revert.
+
+---
+
+## Step 4 — End-to-End CLI Parity (Metal GPU vs CPU) & System Diagnostics
+
+All outputs go under `build/mac-check` (git-ignored):
+
+```bash
+o=build/mac-check
+rm -rf "$o"
 for m in pam clara; do
-  ./build/bin/dtwc_cl -i tests/data/reader/clara_256.arrow -k 4 -m $m --device cpu -o $o/cpu_$m --name r
-  ./build/bin/dtwc_cl -i tests/data/reader/clara_256.arrow -k 4 -m $m --device gpu -o $o/gpu_$m --name r
-  cmp $o/cpu_$m/r_labels.csv $o/gpu_$m/r_labels.csv && cmp $o/cpu_$m/r_medoids.csv $o/gpu_$m/r_medoids.csv \
+  ./build/bin/dtwc_cl -i tests/data/reader/clara_256.arrow -k 4 -m "$m" --device cpu -o "$o/cpu_$m" --name r
+  ./build/bin/dtwc_cl -i tests/data/reader/clara_256.arrow -k 4 -m "$m" --device gpu -o "$o/gpu_$m" --name r
+  cmp "$o/cpu_$m/r_labels.csv" "$o/gpu_$m/r_labels.csv" \
+    && cmp "$o/cpu_$m/r_medoids.csv" "$o/gpu_$m/r_medoids.csv" \
     && echo "$m: labels and medoids equal"
 done
 ```
 
-Metal computes in float32, so the distance matrices differ in the last digits; labels and medoids must be equal
-(CUDA in float32, `--gpu-precision fp32`, gives the CPU's labels and medoids on this file for both methods).
+Metal computes in FP32, so the distance matrices differ in the last digits, while labels and medoids on `clara_256.arrow` must be byte-identical.
 
-## 5. Metal-reachable code changed without a Metal build
+Check verbose `System Diagnostics` and `--fallback`:
 
-Covered by steps 2 and 4 if they pass; look here first if they fail:
+```bash
+./build/bin/dtwc_cl -i tests/data/reader/clara_256.arrow -k 4 --device gpu -o "$o/diag" --name r -v
+./build/bin/dtwc_cl -i tests/data/reader/clara_256.arrow -k 4 --device gpu --variant wdtw --fallback -o "$o/fb" --name r
+```
 
-- the Metal route of `Problem`'s fill in `dtwc/Problem.cpp` (a view's owned copy goes to
-  `metal::compute_distance_matrix_metal`);
-- `gpu_staging_bytes` in `dtwc/cli/run.cpp` (the Metal formula: the floats plus a float32 matrix);
-- `dtwc/algorithms/detail/fast_clara_stream.hpp` (`on_gpu` is false on Metal: the assignment runs on the CPU);
-- `tests/unit/test_fill_request.cpp` (Auto means float32 on Metal) and `tests/unit/io/test_ipc_stream.cpp`;
-- `tests/unit/test_metal_mmap.cpp`.
+Confirm:
+- `System Diagnostics` names the Apple Silicon chip, prints `SIMD: NEON (CPU), NEON (build)`, and prints `GPU: Metal: ...`.
+- The `--fallback` run exits `0` and emits a single `[dtwc] gpu requested: ...; running on cpu (fallback)` line on stderr.
 
-## 6. The rest of the Mac build
+---
 
-- cpuinfo builds on arm64; `./build/bin/dtwc_unit_core "[machine]" -d yes` passes (with cpuinfo on,
-  `tests/unit/core/test_machine.cpp` asserts a known CPU model; 34 assertions in 2 test cases on Windows); and
-  `./build/bin/dtwc_cl -i tests/data/reader/clara_256.arrow -k 4 -o build/mac-check/v --name r -v` prints a
-  `System Diagnostics` block whose CPU line names the Apple chip and whose SIMD line reads `NEON (CPU), NEON (build)`.
-- `cpp_conformance` passes (part of step 2).
-- The Python package (highspy comes with it as a dependency; `OpenMP_ROOT` lets the wheel's build find Homebrew's
-  libomp, which is keg-only):
+## Step 5 — Strict-FP Conformance & `DTWC_DEV_MODE=ON` (`-Werror`)
 
-  ```bash
-  rm -rf .venv-mac build/mac-wheel && uv venv .venv-mac --python 3.13
-  OpenMP_ROOT="$(brew --prefix libomp)" uv build --wheel --python 3.12 -o build/mac-wheel
-  uv pip install --python .venv-mac/bin/python build/mac-wheel/*.whl numpy scipy h5py pyarrow scikit-learn \
-    matplotlib pandas pytest
-  .venv-mac/bin/python -c "import dtwcpp, pathlib; n = pathlib.Path(dtwcpp._dtwcpp_core.__file__).name; print(n); assert n == '_dtwcpp_core.abi3.so'"
-  DTWC_CL_PATH="$PWD/build/bin/dtwc_cl" .venv-mac/bin/python -m pytest tests/python tests/conformance -q -rs
-  ```
+1. **Strict-FP conformance** (mirrors `.github/workflows/macos-unit.yml`'s `conformance-strict` job):
 
-  The wheel is built on Python 3.12 and run on 3.13: a stable-ABI wheel (`cp312-abi3`, module `_dtwcpp_core.abi3.so`)
-  must serve both. It has been checked on Windows and Linux, not yet on macOS. pytest: 731 passed and 18 skipped on
-  Windows; another split is fine where `-rs` shows, for each skip, a reason that holds here.
+```bash
+cmake --preset clang-macos -B build-strict \
+  -DDTWC_BUILD_TESTING=ON \
+  -DDTWC_ENABLE_HIGHS=ON \
+  -DDTWC_FP_MODEL=strict \
+  -DOpenMP_ROOT="$(brew --prefix libomp)"
+cmake --build build-strict --target cpp_conformance -j
+ctest --test-dir build-strict -C Release -R '^cpp_conformance$' --output-on-failure
+```
 
-## 7. Record the outcome
+2. **Dev-mode `-Werror` check** (verifies AppleClang + Objective-C++ `metal_dtw.mm` builds warning-free):
 
-If every step passes: commit the step-3 test case and the removal of this file, staging those two paths only
-(`git add tests/unit/test_metal_correctness.cpp && git rm develop/macos-check.md`), as
-`test(metal): a pair whose length gap exceeds the band gets no path on every Metal kernel`, noting in the commit body
-what ran (the `[metal]` counts with the new case, the step-4 comparison). If something fails: fix it in its own
-commit with the failing output in the body, rerun the steps, and only then make the commit above. The branch may
-have moved while the steps ran: `git pull --rebase origin v2.0-fast` (rerun step 2 if it brought commits), then push
-with `git push origin HEAD:v2.0-fast`, a fast-forward.
+```bash
+cmake --preset clang-macos -B build-dev \
+  -DDTWC_BUILD_TESTING=ON \
+  -DDTWC_ENABLE_HIGHS=ON \
+  -DDTWC_DEV_MODE=ON \
+  -DOpenMP_ROOT="$(brew --prefix libomp)"
+cmake --build build-dev --target dtwc_cl dtwc_unit_gpu dtwc_unit_core -j
+```
+
+*(You may `rm -rf build-strict build-dev` right after both pass.)*
+
+---
+
+## Step 6 — Python Stable-ABI Wheel (`cp312-abi3`) & Full Pytest Gate
+
+Builds the stable-ABI wheel on Python 3.12 and runs it on Python 3.13 (proving `cp312-abi3` portability, live Metal execution, OpenMP threading, and `highspy` MIP):
+
+```bash
+rm -rf .venv-mac build/mac-wheel
+uv venv .venv-mac --python 3.13
+OpenMP_ROOT="$(brew --prefix libomp)" uv build --wheel --python 3.12 -o build/mac-wheel
+uv pip install --python .venv-mac/bin/python build/mac-wheel/*.whl \
+  numpy scipy h5py pyarrow scikit-learn matplotlib pandas pytest
+
+# Verify abi3 filename, live Metal, OpenMP, and highspy MIP wiring
+.venv-mac/bin/python -c "
+import pathlib, highspy, dtwcpp
+so = pathlib.Path(dtwcpp._dtwcpp_core.__file__).name
+print('ext:', so)
+assert so == '_dtwcpp_core.abi3.so', so
+assert not dtwcpp.HIGHS_AVAILABLE
+print('parallel:', dtwcpp.test.parallelisation())
+print('gpu_info:', dtwcpp.gpu_info())
+assert dtwcpp.gpu_available(), 'Metal GPU not detected in wheel'
+assert dtwcpp.gpu_info().startswith('Metal:'), dtwcpp.gpu_info()
+"
+
+# Verify live Metal test explicitly RAN (not skipped)
+.venv-mac/bin/python -m pytest tests/python/test_device.py -k "metal" -v
+
+# Full Python + conformance suite (DTWC_REQUIRE_HIGHSPY=1 prevents silent MIP skips)
+DTWC_CL_PATH="$PWD/build/bin/dtwc_cl" DTWC_REQUIRE_HIGHSPY=1 \
+  .venv-mac/bin/python -m pytest tests/python tests/conformance -q -rs
+```
+
+**Expected outcomes:**
+- `test_gpu_problem_fills_through_metal` **PASSED** (not skipped).
+- Full pytest suite passes (~744+ passed; inspect `-rs` so every skip is legitimate on macOS, e.g. CUDA-only or Gurobi).
+
+---
+
+## Step 7 — Optional Checks (Run if Available on This Mac)
+
+### A. MATLAB MEX (skip if MATLAB is not installed on this Mac)
+
+```bash
+cmake -S . -B build-mex \
+  -DDTWC_BUILD_MATLAB=ON \
+  -DDTWC_BUILD_TESTING=ON \
+  -DDTWC_ENABLE_HIGHS=ON \
+  -DDTWC_ENABLE_GUROBI=OFF \
+  -DDTWC_ENABLE_YAML=OFF \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DOpenMP_ROOT="$(brew --prefix libomp)"
+cmake --build build-mex --target dtwc_mex -j
+ctest --test-dir build-mex -C Release -R '^matlab_suite$' --output-on-failure
+```
+
+### B. Portable macOS 13.3+ `libomp` (only if testing distributable archive/wheel packaging locally)
+
+Homebrew's `libomp` sets `minos` to the host macOS version. To test the portable runtime used by `release-artifacts.yml` and `python-wheels.yml`, run `bash scripts/build_libomp_macos.sh build/libomp-13.3` and point `-DOpenMP_ROOT="$PWD/build/libomp-13.3"`. Not required for standard local verification.
+
+---
+
+## Step 8 — Troubleshooting Map (Where to Look First)
+
+| Symptom | First place to inspect |
+|---|---|
+| Compile error in `metal_dtw.mm` | `dtwc/metal/metal_dtw.mm` (built with `-fno-objc-arc`); check lines 716–793 (`compute_distance_matrix_metal` `SeriesAt`/`ParallelFor` overload) and 923–1069 (`pairs_per_tg`, `scratch[2]`, `out.visit`). |
+| `Metal backend is available` skips | Check the printed `newLibraryWithSource` MSL compiler error in `dtwc/metal/metal_dtw.mm` lines 55–558 (especially `dtw_regtile_w4` / `dtw_regtile_w8` `[[buffer(9)]]` and `dtw_wavefront_body` / `dtw_banded_row` early returns). |
+| `regtile_w4` / `regtile_w8` wrong values or zeros | `dtwc/metal/metal_dtw.mm:479`, `:528`, `:547`, `:930-935`, `:1011-1014` (`pairs_per_tg` binding at `buffer(9)`). |
+| `test_codegen_no_calls` fails on a Soft-DTW `bl _exp` / `bl _log` line | `scripts/codegen_report.py:218` strips `#` comments before `libm_target(...)`; AppleClang ARM64 assembly uses `;` comments. If an inline `;` comment trails `bl _exp`, split on `;` as well as `#`. |
+| `dtwc_unit_core "[oracle]"` mismatch on ARM64 | `dtwc/core/dtw_kernel.hpp:611-654` (`LanesCell` `std::fmin` and 128-byte AArch64 lanes) and `dtwc/core/msm.hpp` / `dtwc/core/twe.hpp`. |
+| `DTWC_DEV_MODE=ON` warning in `metal_dtw.mm` | Likely an implicit float/size conversion (e.g. `cells_budget = 5e9` at line 880) or Objective-C++ warning flag under AppleClang. |
+| `OpenMP` not found in CMake or `uv build` | Ensure `OpenMP_ROOT="$(brew --prefix libomp)"` is set and `brew --prefix libomp` points to a valid directory containing `include/omp.h` and `lib/libomp.dylib`. |
+
+---
+
+## Step 9 — Record the Outcome & Push Back to `v2.0-fast`
+
+1. Clean up temporary directories if desired (`rm -rf .venv-mac build-strict build-dev build-mex`).
+2. Check `git status` — only `tests/unit/test_metal_correctness.cpp` (modified) and `develop/macos-check.md` (to be removed) should be changed (plus any bugfix commits if Step 1–6 uncovered an issue).
+3. **If something failed:** fix it in its own commit with the failing output in the commit body, rerun Steps 1–6 until completely green, and only then make the closing commit below.
+4. **Once everything passes:** stage only the Step 3 test case and the removal of this file, recording the exact hardware and gate numbers in the commit body:
+
+```bash
+git add tests/unit/test_metal_correctness.cpp
+git rm develop/macos-check.md
+git commit -m "test(metal): verify infeasible-band guards on all Metal kernels and complete macOS check" -m "<record: Apple chip, macOS/Xcode version, ctest X/X, [metal] N assertions in M cases, [gpu] view parity, codegen_no_calls PASS, strict conformance PASS, DEV_MODE clean, CLI pam+clara GPU=CPU parity, pytest X passed / Y skipped with live Metal>"
+```
+
+5. If `origin/v2.0-fast` moved while running on the Mac, rebase and rerun Step 2 before pushing:
+
+```bash
+git pull --rebase origin v2.0-fast
+git push origin HEAD:v2.0-fast
+```
