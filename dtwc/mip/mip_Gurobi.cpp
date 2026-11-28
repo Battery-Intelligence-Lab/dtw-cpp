@@ -8,17 +8,13 @@
 
 #include "mip.hpp"
 #include "decode_assignment.hpp"
-#include "../algorithms/fast_pam.hpp"
 #include "../Problem.hpp"
 #include "../base/error.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <iostream>
-#include <limits>
 #include <memory>
 #include <new>
-#include <numeric>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -39,40 +35,14 @@ void MIP_clustering_byGurobi(Problem &prob)
   const auto n_uz = static_cast<std::size_t>(Nb);
 
   try {
-    if (Nc == 1 && Nb >= 1) {
-      prob.set_result(fast_pam_solve(prob, 1, 0, prob.random_seed()));
-      return;
-    }
-    if (Nc == Nb && Nb >= 1) {
-      core::ClusteringResult result;
-      result.medoid_indices.resize(n_uz);
-      result.labels.resize(n_uz);
-      std::iota(result.medoid_indices.begin(), result.medoid_indices.end(), index_t{ 0 });
-      std::iota(result.labels.begin(), result.labels.end(), index_t{ 0 });
-      result.converged = true;
-      prob.set_result(result);
-      return;
-    }
+    if (mip::detail::try_solve_trivial_pmedian(prob)) return;
+
+    // The compact p-median model without CSC arrays (Gurobi adds constraints row-wise).
+    auto pmedian = mip::detail::build_p_median_model_impl(prob, false);
+    if (mip::detail::try_accept_zero_cost_start(prob, pmedian, "Gurobi")) return;
 
     GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);
-
-    // GRBModel::addVars takes an `int` count: an N*N above INT_MAX would narrow
-    // into a wrong-sized (or negative) model.
-    if (n_uz > static_cast<std::size_t>(std::numeric_limits<int>::max()) / std::max<std::size_t>(n_uz, 1))
-      throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
-
-    // The model the HiGHS backend solves: N diagonal binaries y_f = x[f, f] and N*(N-1) continuous assignment variables.
-    auto pmedian = mip::build_p_median_model(prob);
-    if (!pmedian.start.empty()) {
-      double start_obj = 0.0;
-      for (std::size_t i = 0; i < pmedian.start.size(); ++i)
-        start_obj += pmedian.col_cost[i] * pmedian.start[i];
-      if (start_obj == 0.0) {
-        prob.set_result(mip::decode_assignment_nearest(pmedian.start, prob.distance_matrix(), n_uz, Nc, "Gurobi"));
-        return;
-      }
-    }
 
     const int num_col = pmedian.num_col;
     std::vector<char> vtype(static_cast<std::size_t>(num_col), GRB_CONTINUOUS);

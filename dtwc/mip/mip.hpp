@@ -8,12 +8,17 @@
 
 #pragma once
 
+#include <string_view>
 #include <vector>
 
 namespace dtwc {
 class Problem;
 
+/// Solve the exact p-median MIP clustering formulation using Gurobi and store the result in @p prob.
+/// @throws SolverError if Gurobi support is disabled, the model exceeds INT_MAX variables, or Gurobi fails/stops non-optimally.
 void MIP_clustering_byGurobi(Problem &prob);
+/// Solve the exact p-median MIP clustering formulation using HiGHS and store the result in @p prob.
+/// @throws SolverError if HiGHS support is disabled, the model exceeds INT_MAX nonzeros, or HiGHS fails/stops non-optimally.
 void MIP_clustering_byHiGHS(Problem &prob);
 
 /// Runtime capability query used by bindings and artifact smoke tests.
@@ -51,6 +56,14 @@ struct PMedianModel
 /// With MIPSettings::warm_start it computes a FastPAM incumbent start via `fast_pam_solve`
 /// without mutating @p prob.
 PMedianModel build_p_median_model(Problem &prob);
+
+namespace detail {
+
+bool try_solve_trivial_pmedian(Problem &prob);
+PMedianModel build_p_median_model_impl(Problem &prob, bool build_csc);
+bool try_accept_zero_cost_start(Problem &prob, const PMedianModel &model, std::string_view backend);
+
+} // namespace detail
 
 } // namespace mip
 } // namespace dtwc

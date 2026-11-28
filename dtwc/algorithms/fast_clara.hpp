@@ -8,7 +8,7 @@
  *     Wiley Series in Probability and Statistics.
  *   - Schubert, E. & Rousseeuw, P.J. (2021). "Fast and eager k-medoids
  *     clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS
- *     algorithms." JMLR, 22(1), 4653-4688.
+ *     algorithms." Information Systems, 101, 101804.
  *
  * CLARA avoids O(N^2) memory by running PAM on subsamples of size s << N,
  * then assigning all N points to the best medoids found.
@@ -74,10 +74,10 @@ namespace algorithms {
    * and the assignment pass is split: the GPU takes the leading share of the
    * points (opts.gpu_share), the CPU's team the rest, in one parallel region;
    * under FP64 L1 the results equal both single-device runs whatever the split.
- * @throws InvalidInput for invalid dimensions/options;
- *         DeviceError for a request the GPU cannot honour (Float32 series, a
- *         variant or missing-data strategy its kernels lack).
- */
+   * @throws InvalidInput for invalid dimensions/options;
+   *         DeviceError for a request the GPU cannot honour (Float32 series, a
+   *         variant or missing-data strategy its kernels lack).
+   */
   core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
 
   /// cpu+gpu's split of a pass over `n_points` series in words: the GPU's points and share (17 digits: forced again,

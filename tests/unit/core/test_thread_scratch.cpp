@@ -12,11 +12,14 @@
  * @details Registered with OMP_NUM_THREADS=4: a team of 4. A thread's bytes are what the buffers on the closed list
  *          hold (core::thread_scratch_held(), by thread number). The plan's numbers are read from the run's own text:
  *          -v's "Memory plan: ..." line and the refusal's "at least N bytes".
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Nov 2026
  */
 
 #include <dtwc.hpp>
 #include <algorithms/barycenter.hpp>
+#include <algorithms/one_batch_pam.hpp>
 #include <algorithms/tadpole.hpp>
 #include <base/parallelisation.hpp>
 #include <cli/run.hpp>
@@ -34,6 +37,7 @@
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <regex>
@@ -635,5 +639,108 @@ TEST_CASE("The plan holds TADPole's envelopes exactly where tadpole prunes", "[t
     CHECK(stats.pruning_enabled == (std::string(c.what) == "L1"));
     const bool priced = one_byte.refusal.find("the series' envelopes") != std::string::npos;
     CHECK(priced == stats.pruning_enabled);
+  }
+}
+
+TEST_CASE("release_thread_scratch zeros held scratch after one_batch_pam and barycenter_kmeans",
+          "[thread_scratch][one_batch_pam][barycenter]")
+{
+  dtwc::core::release_thread_scratch();
+  REQUIRE(all_threads_bytes() == 0);
+
+  for (const bool f32 : { false, true }) {
+    auto series = walks(48, 16);
+    std::vector<std::string> names(series.size());
+    for (std::size_t i = 0; i < names.size(); ++i) names[i] = "s" + std::to_string(i);
+    dtwc::Data data = [&] {
+      if (!f32) return dtwc::Data(std::move(series), std::move(names), 1);
+      std::vector<std::vector<float>> single(series.size());
+      for (std::size_t i = 0; i < series.size(); ++i)
+        for (const double v : series[i]) single[i].push_back(static_cast<float>(v));
+      return dtwc::Data(std::move(single), std::move(names), 1);
+    }();
+    for (const dtwc::index_t k : { 2, 10 }) {
+      dtwc::Problem prob{ "obp_scratch" };
+      prob.set_data(data);
+      const auto res = dtwc::algorithms::one_batch_pam(
+        prob, { .n_clusters = k, .batch_size = std::max<dtwc::index_t>(k, 4), .max_iter = 5, .random_seed = 7 });
+      CHECK(res.medoid_indices.size() == static_cast<std::size_t>(k));
+      CHECK(all_threads_bytes() > 0);
+      dtwc::core::release_thread_scratch();
+      CHECK(all_threads_bytes() == 0);
+    }
+  }
+
+  for (const dtwc::index_t k : { 2, 9 }) {
+    dtwc::Problem prob{ "bary_kmeans_scratch" };
+    prob.set_data(data_of(walks(24, 16)));
+    const auto res = dtwc::algorithms::barycenter_kmeans(
+      prob,
+      { .n_clusters = k,
+        .max_iter = 2,
+        .barycenter = { .method = dtwc::algorithms::BarycenterMethod::DBA, .max_iter = 2 } });
+    CHECK(res.barycenters.size() == static_cast<std::size_t>(k));
+    CHECK(all_threads_bytes() > 0);
+    dtwc::core::release_thread_scratch();
+    CHECK(all_threads_bytes() == 0);
+  }
+}
+
+TEST_CASE("thread_scratch_bytes tracks held scratch across ZeroCost, AROW, ADTW, WDTW, and TWE",
+          "[thread_scratch]")
+{
+  using dtwc::core::DTWVariant, dtwc::core::MissingStrategy;
+  const dtwc::TeamCap single_thread(1);
+  constexpr std::size_t n = 12;
+  constexpr std::size_t steps = 64;
+
+  struct VariantCase
+  {
+    const char *name;
+    DTWVariant variant;
+    double param;
+    double nu;
+    MissingStrategy missing;
+  };
+
+  for (const VariantCase c : {
+         VariantCase{ "ZeroCost", DTWVariant::Standard, 0.0, 0.0, MissingStrategy::ZeroCost },
+         VariantCase{ "AROW", DTWVariant::Standard, 0.0, 0.0, MissingStrategy::AROW },
+         VariantCase{ "ADTW", DTWVariant::ADTW, 1.0, 0.0, MissingStrategy::Error },
+         VariantCase{ "WDTW", DTWVariant::WDTW, 0.05, 0.0, MissingStrategy::Error },
+         VariantCase{ "TWE", DTWVariant::TWE, 0.5, 0.001, MissingStrategy::Error },
+       }) {
+    INFO(c.name);
+    dtwc::core::release_thread_scratch();
+    REQUIRE(all_threads_bytes() == 0);
+
+    auto raw = walks(n, steps);
+    if (c.missing != MissingStrategy::Error) raw[0][1] = std::numeric_limits<double>::quiet_NaN();
+    dtwc::Problem prob{ c.name };
+    dtwc::Config cfg;
+    cfg.k = 2;
+    cfg.variant.variant = c.variant;
+    if (c.variant == DTWVariant::ADTW) cfg.variant.adtw_penalty = c.param;
+    if (c.variant == DTWVariant::WDTW) cfg.variant.wdtw_g = c.param;
+    if (c.variant == DTWVariant::TWE) {
+      cfg.variant.twe_lambda = c.param;
+      cfg.variant.twe_nu = c.nu;
+    }
+    cfg.missing = c.missing;
+    dtwc::apply(cfg, prob);
+    prob.set_data(data_of(std::move(raw)));
+
+    (void)prob.pair_distance(0, 1);
+    prob.fill_distance_matrix();
+
+    const std::size_t held = dtwc::core::thread_scratch_held()[0];
+    const std::size_t expected = dtwc::core::thread_scratch_bytes(prob.distance(), steps, dtwc::core::Precision::Float64);
+    CHECK(held > 0);
+    CHECK(expected > 0);
+    CHECK(held <= expected * 2);
+    if (c.variant == DTWVariant::TWE) CHECK(held >= expected);
+
+    dtwc::core::release_thread_scratch();
+    CHECK(all_threads_bytes() == 0);
   }
 }

@@ -184,7 +184,7 @@ Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim, core::Pr
     ~StreamGuard() { if (s->release != nullptr) s->release(s); }
   } sguard{ stream };
 
-  ArrowSchema schema;
+  ArrowSchema schema{};
   if (stream->get_schema(stream, &schema) != NANOARROW_OK) {
     const char *e = stream->get_last_error != nullptr ? stream->get_last_error(stream) : nullptr;
     fail(std::string("data_from_arrow_stream: get_schema failed: ") + (e ? e : "unknown"));

@@ -228,9 +228,6 @@ void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std:
   }
 }
 
-// Below this many points the sweep evaluates one candidate at a time on the calling thread, the sequential sweep
-// itself: there a parallel region, or a group's evaluations dropped after each swap, cost more than they save.
-
 // ---------------------------------------------------------------------------
 // FasterPAM SWAP (Schubert & Rousseeuw 2021, Algorithm 3). Eager: cycle through
 // candidate points; for each, find the best medoid to swap it in for in O(N)

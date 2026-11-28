@@ -2,7 +2,9 @@
  * @file arrow_ipc.cpp
  * @brief dtwc::io::read_arrow_ipc and io::IpcFile (see arrow_ipc.hpp): the messages walked and decoded by nanoarrow's
  *        IPC extension, each record batch's buffers viewed where they lie.
+ *
  * @author Volkan Kumtepeli
+ * @date 21 Oct 2026
  */
 
 #include "arrow_ipc.hpp"
@@ -1668,15 +1670,21 @@ std::size_t IpcFile::reader_bytes() const { return state_->reader; }
 
 int IpcFile::row_groups_per_batch(std::size_t ram_budget, bool f32) const
 {
+  if (num_row_groups() == 0) return 0;
   const std::size_t largest = largest_row_group_bytes(f32);
   if (largest > ram_budget)
     throw InvalidInput("io::IpcFile: --ram-limit leaves " + std::to_string(ram_budget) + " bytes for record batches, "
                        "but one record batch holds " + std::to_string(largest) + " bytes once read; rewrite the file "
                        "in smaller record batches or raise the limit");
+  if (largest == 0) return num_row_groups();
   // `count` record batches are read by min(count, threads) threads, each but the first (decode_bytes holds its scratch)
   // holding a reader's scratch beside its batch.
   const std::size_t scratch = state_->reader, threads = thread_count();
-  std::size_t count = (ram_budget + scratch) / (largest + scratch);
+  constexpr std::size_t max_sz = std::numeric_limits<std::size_t>::max();
+  // Rewrite (ram_budget + scratch) / (largest + scratch) as 1 + (ram_budget - largest) / (largest + scratch)
+  // after verifying largest <= ram_budget, avoiding unsigned overflow when largest + scratch wraps.
+  std::size_t count =
+    1 + (scratch > max_sz - largest ? std::size_t{ 0 } : (ram_budget - largest) / (largest + scratch));
   if (count >= threads) count = (ram_budget - (threads - 1) * scratch) / largest;
   return static_cast<int>(std::max<std::size_t>(1, std::min<std::size_t>(num_row_groups(), count)));
 }
@@ -1686,6 +1694,12 @@ Data IpcFile::read_rows(std::vector<index_t> rows, std::size_t ram_budget) const
 {
   static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>);
   if (rows.empty()) return Data{};
+  const index_t n_rows = num_rows();
+  for (const index_t row : rows) {
+    if (row < 0 || row >= n_rows)
+      throw InvalidInput("io::IpcFile::read_rows: row index " + std::to_string(row) + " is outside [0, "
+                         + std::to_string(n_rows) + ").");
+  }
   constexpr bool f32 = std::is_same_v<T, float>;
   const State &state = *state_;
   try {

@@ -1,7 +1,9 @@
 /**
  * @file cdist.hpp
  * @brief Cross-collection DTW distance matrix computation across CPU SIMD lanes and GPU.
+ *
  * @author Volkan Kumtepeli
+ * @date 13 Nov 2026
  */
 
 #pragma once

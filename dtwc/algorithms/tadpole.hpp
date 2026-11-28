@@ -25,7 +25,7 @@
  *   (valid because the diagonal always satisfies any Sakoe-Chiba band ≥ 0).
  *
  * @author Volkan Kumtepeli
- * @date 8 Jul 2026
+ * @date 08 Jul 2026
  */
 
 #pragma once

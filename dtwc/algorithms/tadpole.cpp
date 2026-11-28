@@ -12,7 +12,7 @@
  *   win a tie against `best_parent`; Begum Table 7).
  *
  * @author Volkan Kumtepeli
- * @date 8 Jul 2026
+ * @date 08 Jul 2026
  */
 
 #include "tadpole.hpp"
@@ -111,23 +111,6 @@ namespace algorithms {
       return rho[a] > rho[b] || (rho[a] == rho[b] && a < b);
     }
 
-    /// A thread's failure in a parallel stage, as run_openmp keeps it (parallelisation.hpp, which says why): an exception
-    /// may not leave an OpenMP region, so each thread keeps the failure of the lowest index it saw fail and skips only the
-    /// indices above it; `failed_at` (the stage's end: none) is what the loop tests.
-    struct Failure
-    {
-      std::exception_ptr failure;
-      index_t failed_at;
-    };
-
-    /// After a stage's join: the failure with the lowest index over every thread, rethrown unchanged, the one a serial
-    /// run raises.
-    void rethrow_lowest(const std::vector<Failure> &failures, index_t end)
-    {
-      const auto lowest = std::min_element(failures.begin(), failures.end(), [](const Failure &a, const Failure &b) { return a.failed_at < b.failed_at; });
-      if (lowest->failed_at < end) std::rethrow_exception(lowest->failure);
-    }
-
   } // anonymous namespace
 
 
@@ -215,9 +198,11 @@ namespace algorithms {
 
     auto eval_pair = [&](index_t i, index_t j) -> double {
       double d = distance(i, j);
+      if (!std::isfinite(d))
+        throw InvalidInput("tadpole: distance function returned a non-finite value.");
       if (f32_matrix) {
         const float f = static_cast<float>(d);
-        if (!std::isfinite(f) && std::isfinite(d))
+        if (!std::isfinite(f))
           core::refuse_float32_range("tadpole", static_cast<std::size_t>(std::min(i, j)),
                                      static_cast<std::size_t>(std::max(i, j)), d);
         d = static_cast<double>(f);
@@ -245,7 +230,8 @@ namespace algorithms {
     const auto threads = static_cast<std::size_t>(n_threads);
     std::vector<index_t> rho_rows(threads * points, 0);
     std::vector<std::size_t> plb_by_thread(threads, 0), pub_by_thread(threads, 0);
-    std::vector<Failure> failures(threads, Failure{ nullptr, N });
+    using FailureSlots = dtwc::detail::FailureSlots<index_t>;
+    FailureSlots stage1_failures(threads, N);
 
 #pragma omp parallel num_threads(n_threads)
     {
@@ -256,7 +242,7 @@ namespace algorithms {
 #endif
       index_t *const rho_local = rho_rows.data() + thread * points;
       std::size_t loc_plb = 0, loc_pub = 0;
-      Failure &slot = failures[thread];
+      auto &slot = stage1_failures[thread];
 
 #pragma omp for schedule(dynamic, 8) nowait
       for (index_t i = 0; i < N; ++i) {
@@ -309,14 +295,13 @@ namespace algorithms {
             }
           }
         } catch (...) {
-          slot.failure = std::current_exception();
-          slot.failed_at = i;
+          FailureSlots::record(slot, i, std::current_exception());
         }
       }
       plb_by_thread[thread] = loc_plb;
       pub_by_thread[thread] = loc_pub;
     }
-    rethrow_lowest(failures, N);
+    stage1_failures.rethrow_lowest();
 
     std::vector<index_t> rho(N, 0);
     for (std::size_t t = 0; t < threads; ++t)
@@ -351,6 +336,17 @@ namespace algorithms {
     std::vector<double> delta(N, kInf);
     std::vector<index_t> parent(N, -1);
     std::vector<std::size_t> stage2_by_thread(threads, 0);
+    FailureSlots stage2_failures(threads, N);
+    const auto scan_cached = [&rho](index_t row_i, const std::vector<std::pair<index_t, double>> &cache,
+                                    double &best_d, index_t &parent_idx) {
+      for (const auto &[q, d] : cache) {
+        if (!higher_density(q, row_i, rho)) continue;
+        if (d < best_d || (d == best_d && q < parent_idx)) {
+          best_d = d;
+          parent_idx = q;
+        }
+      }
+    };
 
 #pragma omp parallel num_threads(n_threads)
     {
@@ -359,7 +355,7 @@ namespace algorithms {
 #else
       const std::size_t thread = 0;
 #endif
-      Failure &slot = failures[thread];
+      auto &slot = stage2_failures[thread];
       std::size_t loc_stage2 = 0;
 
 #pragma omp for schedule(dynamic, 8) nowait
@@ -374,20 +370,8 @@ namespace algorithms {
             const auto &uc = upper_cache[static_cast<std::size_t>(i)];
 
             // Seed `best` from any higher-density pairs already evaluated in Stage 1.
-            for (const auto &[q, d] : lc) {
-              if (!higher_density(q, i, rho)) continue;
-              if (d < best || (d == best && q < best_parent)) {
-                best = d;
-                best_parent = q;
-              }
-            }
-            for (const auto &[q, d] : uc) {
-              if (!higher_density(q, i, rho)) continue;
-              if (d < best || (d == best && q < best_parent)) {
-                best = d;
-                best_parent = q;
-              }
-            }
+            scan_cached(i, lc, best, best_parent);
+            scan_cached(i, uc, best, best_parent);
 
             // Seed `best` from Stage 1 close neighbours (UB < dc) when helpful.
             index_t ub_seed_q = -1;
@@ -444,31 +428,18 @@ namespace algorithms {
               }
             }
           } else {
-            for (const auto &[q, d] : lower_cache[static_cast<std::size_t>(i)]) {
-              if (!higher_density(q, i, rho)) continue;
-              if (d < best || (d == best && q < best_parent)) {
-                best = d;
-                best_parent = q;
-              }
-            }
-            for (const auto &[q, d] : upper_cache[static_cast<std::size_t>(i)]) {
-              if (!higher_density(q, i, rho)) continue;
-              if (d < best || (d == best && q < best_parent)) {
-                best = d;
-                best_parent = q;
-              }
-            }
+            scan_cached(i, lower_cache[static_cast<std::size_t>(i)], best, best_parent);
+            scan_cached(i, upper_cache[static_cast<std::size_t>(i)], best, best_parent);
           }
           delta[i] = best;
           parent[i] = best_parent;
         } catch (...) {
-          slot.failure = std::current_exception();
-          slot.failed_at = i;
+          FailureSlots::record(slot, i, std::current_exception());
         }
       }
       stage2_by_thread[thread] = loc_stage2;
     }
-    rethrow_lowest(failures, N);
+    stage2_failures.rethrow_lowest();
     const std::size_t stage2_calls = std::accumulate(stage2_by_thread.begin(), stage2_by_thread.end(), std::size_t{ 0 });
 
     // Global densest point (unique under the strict order: no higher-density
@@ -541,6 +512,8 @@ namespace algorithms {
       const index_t c = center_of_label[label[i]];
       if (i != c) total_cost += lookup_or_distance(i, c);
     }
+    if (!std::isfinite(total_cost))
+      throw InvalidInput("tadpole: total cost is non-finite.");
 
     if (stats) {
       stats->total_pairs = points * (points - 1) / 2;

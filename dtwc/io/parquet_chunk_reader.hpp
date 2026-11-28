@@ -1,13 +1,16 @@
-/// @file parquet_chunk_reader.hpp — The Parquet reader.
-///
-/// read_arrow() reads a file whole; streaming CLARA reads row groups and
-/// sparse rows, each row group independently, without loading the entire
-/// dataset into memory.
-///
-/// Requires DTWC_HAS_PARQUET (Apache Arrow + Parquet, Apache-2.0 license).
-///
-/// @author Volkan Kumtepeli
-/// @date 08 Apr 2026
+/**
+ * @file parquet_chunk_reader.hpp
+ * @brief The Parquet reader.
+ *
+ * @details read_arrow() reads a file whole; streaming CLARA reads row groups
+ *          and sparse rows, each row group independently, without loading the
+ *          entire dataset into memory.
+ *
+ *          Requires DTWC_HAS_PARQUET (Apache Arrow + Parquet, Apache-2.0 license).
+ *
+ * @author Volkan Kumtepeli
+ * @date 08 Apr 2026
+ */
 
 #pragma once
 
@@ -453,7 +456,8 @@ public:
   /// Within ram_budget: every decode starts with the series read so far
   /// (series_bytes, as copied) and one decode_bytes() inside it.
   ///
-  /// @param indices  Global row indices to read.
+  /// @param indices     Global row indices to read.
+  /// @param ram_budget  Maximum bytes allowed for retained series plus one decode buffer.
   /// @return Data with series in the same order as indices.
   template <typename T = data_t>
   Data read_rows(

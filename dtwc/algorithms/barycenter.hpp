@@ -1,7 +1,9 @@
 /**
  * @file barycenter.hpp
  * @brief DTW barycenters and barycentric k-means clustering.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #pragma once
@@ -19,26 +21,29 @@ class Problem;
 
 namespace algorithms {
 
+/// Optimization algorithm used to compute a DTW barycenter.
 enum class BarycenterMethod {
   SSG,      ///< Stochastic subgradient averaging (default; Schultz & Jain 2018).
   DBA,      ///< Classic majorize-minimize DTW Barycenter Averaging.
   SoftDTW  ///< Gradient descent on squared-cost soft-DTW (Cuturi & Blondel 2017).
 };
 
+/// Parameters controlling single-barycenter optimization in dtw_barycenter().
 struct BarycenterOptions {
-  BarycenterMethod method = BarycenterMethod::SSG;
-  int max_iter = 50;
+  BarycenterMethod method = BarycenterMethod::SSG; ///< Barycenter averaging algorithm.
+  int max_iter = 50;                               ///< Maximum optimization iterations.
   /// Initial SSG/soft-DTW step; SSG caps it at the selected path's inverse
   /// Lipschitz constant.
   double learning_rate = 0.2;
-  double learning_rate_decay = 0.01;
-  double gamma = 1.0;
-  double tolerance = 1e-6;
-  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
+  double learning_rate_decay = 0.01;               ///< Per-iteration step-size decay factor.
+  double gamma = 1.0;                              ///< Soft-DTW smoothing parameter (> 0).
+  double tolerance = 1e-6;                         ///< Relative convergence tolerance.
+  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED; ///< RNG seed for SSG sampling order.
 };
 
+/// Parameters controlling barycentric k-means clustering in barycenter_kmeans().
 struct BarycenterClusteringOptions {
-  index_t n_clusters = 3;
+  index_t n_clusters = 3; ///< Number of clusters (k).
   int max_iter = 50;      ///< Lloyd iterations (assign, then update each centre).
   int target_length = -1; ///< -1 keeps each initial centre's length.
   /// Each centre update, as dtw_barycenter() takes it, but at 30 iterations (a

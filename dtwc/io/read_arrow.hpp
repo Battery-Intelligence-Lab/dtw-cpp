@@ -2,7 +2,9 @@
  * @file read_arrow.hpp
  * @brief dtwc::io::read_arrow: Parquet, read with Arrow C++ (dtwc_io: a build with Arrow only), and Arrow IPC, read by
  *        the core's reader (io/arrow_ipc.hpp) in every build.
+ *
  * @author Volkan Kumtepeli
+ * @date 06 Oct 2026
  */
 
 #pragma once

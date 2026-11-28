@@ -454,14 +454,188 @@ const char *format_name(std::optional<InputFormat> format)
   return *format == InputFormat::Parquet ? "Parquet" : *format == InputFormat::ArrowIPC ? "Arrow IPC" : "text";
 }
 
-/// The run itself; `data` holds in-memory series, else config.input is read; `solver`, where given, clusters MIP on
-/// HiGHS in RAM (detail::run). `stage` follows it: the stage it is in, its memory plan once made, and the report's
-/// figures. A GPU request it cannot honour is a GpuRefusal thrown in its check or plan stage, where `data` is still
-/// whole and no series was read: run_with decides what to do with it (`fallback`), and `config.fallback` is cleared.
-Outcome execute(const Config &config, std::optional<Data> &data, const ExternalSolver &solver, RunStage &stage)
+const char *unmapped_matrix_reason(const Config &config)
 {
-  // ---- 1. Every check that needs no series, before any file is touched (stage check, run_with's) ----
-  if (!data && config.input.empty())
+  if (!config.dist_matrix.empty()) return "which --dist-matrix reads into RAM";
+#if defined(DTWC_HAS_MMAP) && defined(DTWC_HAS_CUDA)
+  if (config.output.empty()) return "which a run without an output directory keeps in RAM";
+  if (uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto)
+    return "which a CUDA run with --gpu-precision auto cannot map (select fp32 or fp64)";
+  return nullptr;
+#elif defined(DTWC_HAS_MMAP)
+  return config.output.empty() ? "which a run without an output directory keeps in RAM" : nullptr;
+#else
+  (void)config;
+  return "which a build without llfio cannot map (DTWC_ENABLE_LLFIO=OFF)";
+#endif
+}
+
+struct RunContext
+{
+  const Config &config;
+  std::optional<Data> &data;
+  const ExternalSolver &solver;
+  RunStage &stage;
+
+  std::shared_ptr<Problem> problem;
+  algorithms::CLARAOptions clara;
+  fs::path input;
+  std::optional<InputFormat> &format;
+  fs::path output;
+
+  Clock clk;
+  Method method;
+  bool stream_payload = false;
+  std::size_t n_series = 0;
+  bool clara_uses_full_sample = false;
+  bool clara_planned = false;
+
+  std::size_t budget = 0;
+  int requested = 1;
+  std::optional<MemoryPlan> &memory;
+  std::optional<TeamCap> team;
+  const char *held = nullptr;
+  bool upload_copy = false;
+
+  std::optional<io::IpcFile> ipc;
+  std::string storage;
+  bool fills_first = false;
+  std::vector<std::string> streamed_names;
+  core::ClusteringResult result;
+};
+
+void plan_clara(RunContext &ctx)
+{
+  if (ctx.method != Method::CLARA || ctx.clara_planned) return;
+  const auto plan = resolve_clara_plan(static_cast<std::int64_t>(ctx.n_series), ctx.clara, "run");
+  ctx.clara_uses_full_sample = plan.sample_size == plan.n_points;
+  if (ctx.stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
+  ctx.clara_planned = true;
+}
+
+void check_stream(const RunContext &ctx, const char *what, const char *by, std::size_t resident)
+{
+  if (ctx.config.device == Device::CPU_GPU) throw detail::hybrid_streamed_refusal();
+  if (!ctx.config.checkpoint.empty())
+    throw InvalidInput("--checkpoint requires resident series data and cannot be combined with RAM-limited "
+                       + std::string(what) + " streaming.");
+  if (!ctx.config.dist_matrix.empty())
+    throw InvalidInput("--dist-matrix requires resident series data and cannot be combined with RAM-limited "
+                       + std::string(what) + " streaming.");
+  if (ctx.config.verbose)
+    std::cout << by << " selected streaming: " << ctx.n_series << " series, ~" << (resident / (1ULL << 20))
+              << " MB resident estimate exceeds the RAM limit [" << ctx.clk << "]\n";
+}
+
+std::size_t clara_bytes(const RunContext &ctx, const algorithms::detail::ClaraPlan &sample)
+{
+  const std::size_t pam = core::packed_size(static_cast<std::size_t>(sample.sample_size))
+                          * core::value_bytes(ctx.config.matrix_dtype);
+  const auto n = static_cast<std::size_t>(sample.n_points);
+  const std::size_t pass = algorithms::detail::clara_pass_bytes(
+    sample, static_cast<std::size_t>(ctx.clara.n_samples), ctx.config.device == Device::CPU_GPU);
+  return std::max(pam, pass + n * sizeof(index_t) + n / 8);
+}
+
+std::optional<algorithms::detail::ClaraPlan> clara_sample(const RunContext &ctx, Method resolved)
+{
+  if (ctx.n_series == 0 || resolved != Method::CLARA) return std::nullopt;
+  require_clusterable(ctx.config.k, ctx.n_series);
+  return resolve_clara_plan(static_cast<std::int64_t>(ctx.n_series), ctx.clara, "run");
+}
+
+bool can_stream_file(const RunContext &ctx, const std::optional<algorithms::detail::ClaraPlan> &sample,
+                     bool rows_are_series)
+{
+  return sample && sample->sample_size < sample->n_points && rows_are_series
+         && (ctx.config.ram_limit != 0 || (ctx.config.checkpoint.empty() && ctx.config.dist_matrix.empty()));
+}
+
+Method resolve_planned_method(const RunContext &ctx, std::size_t series, std::size_t length, std::size_t ndim,
+                              core::Precision precision)
+{
+  if (ctx.method != Method::Auto) return ctx.method;
+  const std::size_t matrix = core::packed_size(ctx.n_series) * core::value_bytes(ctx.config.matrix_dtype);
+  const std::size_t pam = thread_bytes(*ctx.problem, ctx.config, Method::PAM, false, ctx.n_series, length, ndim, precision);
+  const std::size_t staging = gpu_staging_bytes(ctx.config, Method::PAM, std::nullopt, ctx.n_series, length, ndim);
+  return resolve_method(ctx.method, ctx.config.device, ctx.n_series,
+                        ctx.budget == 0 || ctx.held == nullptr
+                          || series + staging + matrix + working_set(pam, 1) <= ctx.budget);
+}
+
+MemoryPlan plan_of(RunContext &ctx, Method resolved, const std::optional<algorithms::detail::ClaraPlan> &sample,
+                   std::size_t series, std::size_t values, std::size_t length, std::size_t ndim,
+                   core::Precision precision, bool can_stream, bool streams, std::size_t streamed)
+{
+  const bool full = sample && sample->sample_size == sample->n_points;
+  SourceFacts facts;
+  facts.series = series;
+  facts.copy = ctx.upload_copy;
+  facts.staging = gpu_staging_bytes(ctx.config, resolved, sample, ctx.n_series, length, ndim);
+  facts.clara = sample && !full ? clara_bytes(ctx, *sample) : 0;
+  const std::size_t pairs = core::packed_size(ctx.n_series);
+  facts.matrix = holds_matrix(resolved, full) ? pairs * core::value_bytes(ctx.config.matrix_dtype) : 0;
+  facts.unpriced = resolved == Method::MIP;
+  if (resolved == Method::TADPole) {
+    const auto distance = ctx.problem->distance();
+    const bool prunes = algorithms::detail::bounds_valid(distance.variant.variant, distance.metric, ndim, precision,
+                                                         ctx.config.matrix_dtype, distance.missing);
+    facts.fixed = pairs + (prunes ? 2 * (values * sizeof(double) + ctx.n_series * sizeof(std::vector<double>)) : 0);
+    facts.fixed_what = prunes ? "TADPole's flag a pair and the series' envelopes" : "TADPole's flag a pair";
+    facts.cache = true;
+  } else if (resolved == Method::Hierarchical) {
+    facts.fixed = pairs * sizeof(double);
+    facts.fixed_what = "the hierarchical clustering's packed working copy of the matrix";
+  } else if (resolved == Method::OneBatch) {
+    const std::size_t m = algorithms::detail::resolve_batch_size(ctx.n_series, ctx.config.k, ctx.config.batch_size);
+    facts.fixed = ctx.n_series * (m + 8) * sizeof(double);
+    facts.fixed_what = "OneBatchPAM's batch table and per-point vectors";
+  }
+  facts.clara_method = resolved == Method::CLARA;
+  facts.held = ctx.held;
+  facts.can_stream = can_stream;
+  facts.streams = streams;
+  facts.halves = ctx.format == InputFormat::Text && precision == core::Precision::Float64 && !uses_gpu(ctx.config.device);
+  facts.device = ctx.config.device;
+  facts.streamed = streamed;
+  facts.n_series = ctx.n_series;
+  facts.length = length;
+  const std::size_t per_thread = thread_bytes(*ctx.problem, ctx.config, resolved, full, ctx.n_series, length, ndim, precision);
+  ctx.memory = plan_memory(facts, ctx.budget, ctx.config.ram_limit != 0, per_thread, ctx.requested);
+  if (ctx.memory->route == Route::Refused && ctx.config.ram_limit != 0 && gpu_reads_views(ctx.config)
+      && resolved == Method::CLARA && sample && sample->sample_size < sample->n_points) {
+    const std::size_t others = facts.series + facts.clara + facts.fixed + working_set(per_thread, 1);
+    if (ctx.budget > others) {
+      facts.staging = gpu_staging_bytes(ctx.config, resolved, sample, ctx.n_series, length, ndim, ctx.budget - others);
+      ctx.clara.gpu_staging_bytes = ctx.budget - others;
+      ctx.memory = plan_memory(facts, ctx.budget, true, per_thread, ctx.requested);
+      if (ctx.memory->route == Route::Refused) ctx.clara.gpu_staging_bytes = 0;
+    }
+  }
+  if (ctx.config.verbose) std::cout << "Memory plan: " << ctx.memory->text() << "\n";
+  if (ctx.stage.report)
+    ctx.stage.report->plan = detail::RunReport::Plan{ ctx.memory->budget,   ctx.memory->reserve(),
+                                                      ctx.memory->data_cap(), ctx.memory->held,
+                                                      ctx.memory->per_thread, ctx.memory->length,
+                                                      ctx.memory->threads,   ctx.memory->requested,
+                                                      ctx.memory->route_name() };
+  if (ctx.memory->route != Route::Refused) ctx.team.emplace(ctx.memory->threads);
+  return *ctx.memory;
+}
+
+void report_input(RunContext &ctx, std::size_t series, std::size_t values, std::size_t ndim, std::size_t bytes,
+                  std::size_t shortest, std::size_t longest, bool streamed, core::Precision precision)
+{
+  if (ctx.stage.report)
+    ctx.stage.report->input = detail::RunReport::Input{
+      format_name(ctx.format), series, values, ndim, bytes, shortest, longest, streamed, precision
+    };
+}
+
+void validate_run_config(RunContext &ctx)
+{
+  const Config &config = ctx.config;
+  if (!ctx.data && config.input.empty())
     throw InvalidInput("--input is required via CLI or config file (TOML or YAML)");
   if (config.k == 0) throw InvalidInput("-k/--n-clusters, the number of clusters, is required.");
   if (config.k < 1)
@@ -480,16 +654,11 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
                        "its own: the file would hold none of them. Omit --checkpoint, or give tadpole a complete matrix "
                        "with --dist-matrix.");
 
-  auto problem = std::make_shared<Problem>(run_name(config));
-  Problem &prob = *problem;
-  apply(config, prob);
-  // The GPU request, judged before a file is touched: the kernels' rules for the series known now (the precision they
-  // are stored in, and for series in memory their features a time step; an Arrow IPC file's are known at its walk), then
-  // the device itself, so that beside --checkpoint a device that cannot run is what is refused, not the precision rule
-  // below.
-  const bool stored_f32 = config.dtype == core::Precision::Float32 || (data && data->is_f32());
-  validate_gpu_request("run", prob, stored_f32 ? core::Precision::Float32 : core::Precision::Float64,
-                       data ? data->ndim : 1);
+  ctx.problem = std::make_shared<Problem>(run_name(config));
+  apply(config, *ctx.problem);
+  const bool stored_f32 = config.dtype == core::Precision::Float32 || (ctx.data && ctx.data->is_f32());
+  validate_gpu_request("run", *ctx.problem, stored_f32 ? core::Precision::Float32 : core::Precision::Float64,
+                       ctx.data ? ctx.data->ndim : 1);
   if (uses_gpu(config.device)) require_gpu_device("run", config.device_index);
 #ifdef DTWC_HAS_CUDA
   if (!config.checkpoint.empty() && uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto)
@@ -497,22 +666,18 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
                        "on the GPU, so it is not a stable cache identity.");
 #endif
 
-  algorithms::CLARAOptions clara;
-  clara.n_clusters = config.k;
-  clara.sample_size = config.sample_size;
-  clara.n_samples = config.n_samples;
-  clara.max_iter = config.max_iter;
-  clara.random_seed = config.seed;
-  clara.gpu_share = config.gpu_share; // the run calls fast_clara itself, so Problem::cluster's copy of the share is not made
-  if (config.method == Method::CLARA) algorithms::detail::validate_clara_controls(clara, "run");
+  ctx.clara.n_clusters = config.k;
+  ctx.clara.sample_size = config.sample_size;
+  ctx.clara.n_samples = config.n_samples;
+  ctx.clara.max_iter = config.max_iter;
+  ctx.clara.random_seed = config.seed;
+  ctx.clara.gpu_share = config.gpu_share;
+  if (config.method == Method::CLARA) algorithms::detail::validate_clara_controls(ctx.clara, "run");
 
-  const fs::path input = utf8_to_path(config.input);
-  std::optional<InputFormat> &format = stage.format; // empty: the series are in memory
-  if (!data) format = format_of(input);
-  require_input_options_apply(config, format);
+  ctx.input = utf8_to_path(config.input);
+  if (!ctx.data) ctx.format = format_of(ctx.input);
+  require_input_options_apply(config, ctx.format);
 
-  // A --checkpoint that cannot hold a checkpoint stops the run here, before any
-  // work: the save comes after clustering, so a typo would cost the whole run.
   const fs::path checkpoint_dir = utf8_to_path(config.checkpoint);
   if (!config.checkpoint.empty()) {
     std::error_code ec;
@@ -522,327 +687,149 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
                     + (ec ? ec.message() : std::string("not a directory"))
                     + "); pass a directory path (it is created if missing), or omit --checkpoint.");
   }
-  const fs::path output = utf8_to_path(config.output);
+  ctx.output = utf8_to_path(config.output);
   if (!config.output.empty()) {
     std::error_code ec;
-    fs::create_directories(output, ec);
+    fs::create_directories(ctx.output, ec);
     if (ec) throw IOError("--output '" + config.output + "' cannot be created: " + ec.message());
   }
-
-  // ---- 2. The method, and N and the memory plan where Parquet metadata or an Arrow IPC file's walk give them ----
-  stage.begin("plan");
-  const Clock clk;
-  Method method = config.method;
-  bool stream_payload = false;
-  std::size_t n_series = 0;
-  bool clara_uses_full_sample = false;
-  bool clara_planned = false;
-  const auto plan_clara = [&] {
-    if (method != Method::CLARA || clara_planned) return;
-    const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-    clara_uses_full_sample = plan.sample_size == plan.n_points;
-    if (stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
-    clara_planned = true;
-  };
-  // A streamed run holds no series: the options that need the series are checked before it (what it holds after the
-  // stream, every series' name and label, the plan holds within the data cap); `what` is the input's format,
-  // `resident` the price that chose the stream.
-  const auto check_stream = [&](const char *what, const char *by, std::size_t resident) {
-    if (config.device == Device::CPU_GPU) throw detail::hybrid_streamed_refusal();
-    if (!config.checkpoint.empty())
-      throw InvalidInput("--checkpoint requires resident series data and cannot be combined with RAM-limited "
-                         + std::string(what) + " streaming.");
-    if (!config.dist_matrix.empty())
-      throw InvalidInput("--dist-matrix requires resident series data and cannot be combined with RAM-limited "
-                         + std::string(what) + " streaming.");
-    if (config.verbose)
-      std::cout << by << " selected streaming: " << n_series << " series, ~" << (resident / (1ULL << 20))
-                << " MB resident estimate exceeds the RAM limit [" << clk << "]\n";
-  };
-  // CLARA's terms beside the series, in RAM as streamed: a sample PAM's matrix, then every sample's labels and
-  // nearest distances, and with them the winner's labels that Problem::set_result copies (and the medoid flags it
-  // makes), as the stream's `finish` counts them.
-  const auto clara_bytes = [&](const algorithms::detail::ClaraPlan &sample) {
-    const std::size_t pam = core::packed_size(static_cast<std::size_t>(sample.sample_size))
-                            * core::value_bytes(config.matrix_dtype);
-    const auto n = static_cast<std::size_t>(sample.n_points);
-    const std::size_t pass = algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples),
-                                                                  config.device == Device::CPU_GPU);
-    return std::max(pam, pass + n * sizeof(index_t) + n / 8);
-  };
-  // FastCLARA's plan where `resolved` is clara and there are series (none otherwise). k above the number of series is
-  // refused here as for every input, before CLARA's plan.
-  const auto clara_sample = [&](Method resolved) -> std::optional<algorithms::detail::ClaraPlan> {
-    if (n_series == 0 || resolved != Method::CLARA) return std::nullopt;
-    require_clusterable(config.k, n_series);
-    return resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-  };
-  // Whether FastCLARA can stream a file of one series per row (`rows_are_series`): a sample smaller than N; the automatic
-  // budget not beside --checkpoint or --dist-matrix, which an explicit one refuses (check_stream).
-  const auto can_stream_file = [&](const std::optional<algorithms::detail::ClaraPlan> &sample, bool rows_are_series) {
-    return sample && sample->sample_size < sample->n_points && rows_are_series
-           && (config.ram_limit != 0 || (config.checkpoint.empty() && config.dist_matrix.empty()));
-  };
-
-  // The memory plan (plan_memory), made once where the input's facts are known: an Arrow IPC file's walk, a Parquet
-  // file's metadata where they route it, else the series read. -v prints it; its threads cap every region from there
-  // to the end of the run (TeamCap; the release reaches the full team, full_team_threads()).
-  const std::size_t budget = core::memory_budget(config.ram_limit);
-  const int requested = get_max_threads();
-  std::optional<MemoryPlan> &memory = stage.plan;
-  std::optional<TeamCap> team;
-  // Why a distance matrix that does not fit beside the series stays in RAM (nullptr: it is mapped). It maps only with
-  // an output directory, into the --checkpoint directory when one is given.
-#if defined(DTWC_HAS_MMAP) && defined(DTWC_HAS_CUDA) // CUDA's auto is not a stable cache identity: it maps nothing
-  const char *const unmapped = config.output.empty() ? "which a run without an output directory keeps in RAM"
-                               : uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto
-                                 ? "which a CUDA run with --gpu-precision auto cannot map (select fp32 or fp64)"
-                                 : nullptr;
-#elif defined(DTWC_HAS_MMAP)
-  const char *const unmapped = config.output.empty() ? "which a run without an output directory keeps in RAM" : nullptr;
-#else
-  const char *const unmapped = "which a build without llfio cannot map (DTWC_ENABLE_LLFIO=OFF)";
-#endif
-  const char *const held = !config.dist_matrix.empty() ? "which --dist-matrix reads into RAM" : unmapped;
-  // `auto` by the plan: clara where pam's matrix can be held neither in RAM beside the series and one thread's working
-  // set nor mapped.
-  const auto resolve = [&](std::size_t series, std::size_t length, std::size_t ndim, core::Precision precision) {
-    if (method != Method::Auto) return method;
-    const std::size_t matrix = core::packed_size(n_series) * core::value_bytes(config.matrix_dtype);
-    const std::size_t pam = thread_bytes(prob, config, Method::PAM, false, n_series, length, ndim, precision);
-    const std::size_t staging = gpu_staging_bytes(config, Method::PAM, std::nullopt, n_series, length, ndim);
-    return resolve_method(method, config.device, n_series,
-                          budget == 0 || held == nullptr || series + staging + matrix + working_set(pam, 1) <= budget);
-  };
-  // Whether `series`, as plan_of takes it, holds the owned copy a GPU uploads of a view's series.
-  bool upload_copy = false;
-  // The plan of `resolved` on series that hold `series` bytes, `values` values of up to `length` time steps of `ndim`
-  // features in `precision`; FastCLARA's `sample` where it runs; `streams`: a file FastCLARA streams.
-  const auto plan_of = [&](Method resolved, const std::optional<algorithms::detail::ClaraPlan> &sample,
-                           std::size_t series, std::size_t values, std::size_t length, std::size_t ndim,
-                           core::Precision precision, bool can_stream, bool streams, std::size_t streamed) {
-    const bool full = sample && sample->sample_size == sample->n_points;
-    SourceFacts facts;
-    facts.series = series;
-    facts.copy = upload_copy;
-    facts.staging = gpu_staging_bytes(config, resolved, sample, n_series, length, ndim);
-    facts.clara = sample && !full ? clara_bytes(*sample) : 0;
-    const std::size_t pairs = core::packed_size(n_series);
-    facts.matrix = holds_matrix(resolved, full) ? pairs * core::value_bytes(config.matrix_dtype) : 0;
-    // The method's own terms, in RAM whatever the matrix's storage: TADPole's flag a pair (tadpole.cpp's `computed`),
-    // its cache of the matrix's pairs (`cache`, unless a complete --dist-matrix is read in its place) and, where it
-    // prunes (`can_prune`: bounds_valid's Standard DTW under L1 on univariate float64 series into a float64 matrix, no
-    // missing-data strategy, no complete --dist-matrix, which is not read yet: the plan prices the envelopes beside
-    // any), each series' envelope (`envs`: an upper and a lower vector of its values); the hierarchical
-    // clustering's packed copy of N (N+1)/2 doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table, N x m doubles,
-    // m as one_batch_pam.cpp's resolve_batch_size takes it, and its per-point vectors, at most 8
-    // doubles a point. MIP's and LR-core's solver memory is not planned: MIP's outweighs the matrix (150 series of 10
-    // steps: the plan held 102,600 bytes, the run needed about 118 MB), LR-core's does not (2,000 series: float32 or the
-    // matrix mapped got runs through where the plain run was refused, 2026-11-03).
-    facts.unpriced = resolved == Method::MIP;
-    if (resolved == Method::TADPole) {
-      const auto distance = prob.distance();
-      const bool prunes = algorithms::detail::bounds_valid(distance.variant.variant, distance.metric, ndim, precision,
-                                                           config.matrix_dtype, distance.missing);
-      facts.fixed = pairs + (prunes ? 2 * (values * sizeof(double) + n_series * sizeof(std::vector<double>)) : 0);
-      facts.fixed_what = prunes ? "TADPole's flag a pair and the series' envelopes" : "TADPole's flag a pair";
-      facts.cache = true;
-    } else if (resolved == Method::Hierarchical) {
-      facts.fixed = pairs * sizeof(double);
-      facts.fixed_what = "the hierarchical clustering's packed working copy of the matrix";
-    } else if (resolved == Method::OneBatch) {
-      const std::size_t m = algorithms::detail::resolve_batch_size(n_series, config.k, config.batch_size);
-      facts.fixed = n_series * (m + 8) * sizeof(double);
-      facts.fixed_what = "OneBatchPAM's batch table and per-point vectors";
-    }
-    facts.clara_method = resolved == Method::CLARA;
-    facts.held = held;
-    facts.can_stream = can_stream;
-    facts.streams = streams;
-    facts.halves = format == InputFormat::Text && precision == core::Precision::Float64 && !uses_gpu(config.device);
-    facts.device = config.device;
-    facts.streamed = streamed;
-    facts.n_series = n_series;
-    facts.length = length;
-    const std::size_t per_thread = thread_bytes(prob, config, resolved, full, n_series, length, ndim, precision);
-    memory = plan_memory(facts, budget, config.ram_limit != 0, per_thread, requested);
-    // An explicit limit that leaves CUDA's assignment no room for its blocks shrinks them to what it leaves beside one
-    // thread's working set, down to one series (cuda::detail::medoid_blocks); a block of one that does not fit is
-    // refused as before.
-    if (memory->route == Route::Refused && config.ram_limit != 0 && gpu_reads_views(config)
-        && resolved == Method::CLARA && sample && sample->sample_size < sample->n_points) {
-      const std::size_t others = facts.series + facts.clara + facts.fixed + working_set(per_thread, 1);
-      if (budget > others) {
-        facts.staging = gpu_staging_bytes(config, resolved, sample, n_series, length, ndim, budget - others);
-        clara.gpu_staging_bytes = budget - others;
-        memory = plan_memory(facts, budget, true, per_thread, requested);
-        if (memory->route == Route::Refused) clara.gpu_staging_bytes = 0;
-      }
-    }
-    if (config.verbose) std::cout << "Memory plan: " << memory->text() << "\n";
-    if (stage.report)
-      stage.report->plan = detail::RunReport::Plan{ memory->budget,   memory->reserve(), memory->data_cap(),
-                                                    memory->held,     memory->per_thread, memory->length,
-                                                    memory->threads,  memory->requested, memory->route_name() };
-    if (memory->route != Route::Refused) team.emplace(memory->threads);
-    return *memory;
-  };
-  // The series as the report gives them: `values` values of `ndim` features, `bytes` of them in RAM, of `shortest`
-  // to `longest` time steps (0: not known, a stream's), in `precision`.
-  const auto report_input = [&](std::size_t series, std::size_t values, std::size_t ndim, std::size_t bytes,
-                                std::size_t shortest, std::size_t longest, bool streamed,
-                                core::Precision precision) {
-    if (stage.report)
-      stage.report->input =
-        detail::RunReport::Input{ format_name(format), series, values, ndim, bytes, shortest, longest, streamed, precision };
-  };
+}
 
 #ifdef DTWC_HAS_PARQUET
-  // A cap changes the load decision, so only the metadata is read here: the
-  // readers map the file and its footer; no row group is decoded.
-  if (format == InputFormat::Parquet
-      && (config.ram_limit > 0 || method == Method::Auto || method == Method::CLARA)) {
-    const bool f32 = config.dtype == core::Precision::Float32;
-    std::error_code ec;
-    const bool folder = fs::is_directory(input, ec);
-    auto layout = detail::ParquetLayout::Directory;
-    std::size_t resident_bytes = 0;
-    std::size_t names_bytes = 0;
-    std::size_t values = 0;
-    for (const auto &file : parquet_files(input)) {
-      const io::ParquetChunkReader metadata(file, config.column, config.skip_cols, config.skip_rows);
-      if (!folder)
-        layout = metadata.rows_are_series() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
-      n_series += static_cast<std::size_t>(metadata.logical_series_count());
-      resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
-      names_bytes += metadata.series_names_bytes();
-      values += metadata.total_value_count();
-    }
-    // The metadata hold no lengths: series of twice the mean expected.
-    const std::size_t length = n_series > 0 ? 2 * values / n_series : 0;
-    const Method resolved = resolve(resident_bytes, length, 1, config.dtype);
-    // A CLARA run holds beside the series a sample's PAM matrix, then every sample's labels and nearest distances,
-    // in RAM as streamed.
-    const auto sample = clara_sample(resolved);
-    const std::size_t resident = resident_bytes + (sample ? clara_bytes(*sample) : 0);
-    const bool can_stream = can_stream_file(sample, layout == detail::ParquetLayout::ListColumn);
-    const MemoryPlan planned = plan_of(resolved, sample, resident_bytes, values, length, 1, config.dtype, can_stream,
-                                       layout == detail::ParquetLayout::ListColumn,
-                                       names_bytes + 2 * n_series * sizeof(index_t));
-    // The series alone beyond the budget: a route that cannot stream them is refused as it says why (the method or
-    // the layout, plan_parquet_load; a sample of every series, FastCLARA's plan). An input of no series is refused.
-    const bool over = planned.route == Route::Refused && !can_stream && resident > budget;
-    (void)detail::plan_parquet_load(resolved, config.device, n_series, resident, over ? budget : 0, layout);
-    if (over && sample) algorithms::detail::validate_streaming_clara_plan(*sample, "run");
-    if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
-    method = resolved;
-    stream_payload = planned.route == Route::Streamed;
-    if (stream_payload) clara.ram_limit_bytes = planned.data_cap();
-    plan_clara();
-    if (stream_payload) check_stream("Parquet", "Parquet metadata", resident);
-    stage.note("Parquet metadata");
-    if (stream_payload) report_input(n_series, values, 1, 0, 0, 0, true, config.dtype);
+void plan_parquet_input(RunContext &ctx)
+{
+  const Config &config = ctx.config;
+  if (ctx.format != InputFormat::Parquet
+      || (config.ram_limit == 0 && ctx.method != Method::Auto && ctx.method != Method::CLARA))
+    return;
+
+  const bool f32 = config.dtype == core::Precision::Float32;
+  std::error_code ec;
+  const bool folder = fs::is_directory(ctx.input, ec);
+  auto layout = detail::ParquetLayout::Directory;
+  std::size_t resident_bytes = 0;
+  std::size_t names_bytes = 0;
+  std::size_t values = 0;
+  for (const auto &file : parquet_files(ctx.input)) {
+    const io::ParquetChunkReader metadata(file, config.column, config.skip_cols, config.skip_rows);
+    if (!folder)
+      layout = metadata.rows_are_series() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
+    ctx.n_series += static_cast<std::size_t>(metadata.logical_series_count());
+    resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
+    names_bytes += metadata.series_names_bytes();
+    values += metadata.total_value_count();
   }
+  const std::size_t length = ctx.n_series > 0 ? 2 * values / ctx.n_series : 0;
+  const Method resolved = resolve_planned_method(ctx, resident_bytes, length, 1, config.dtype);
+  const auto sample = clara_sample(ctx, resolved);
+  const std::size_t resident = resident_bytes + (sample ? clara_bytes(ctx, *sample) : 0);
+  const bool can_stream = can_stream_file(ctx, sample, layout == detail::ParquetLayout::ListColumn);
+  const MemoryPlan planned =
+    plan_of(ctx, resolved, sample, resident_bytes, values, length, 1, config.dtype, can_stream,
+            layout == detail::ParquetLayout::ListColumn, names_bytes + 2 * ctx.n_series * sizeof(index_t));
+  const bool over = planned.route == Route::Refused && !can_stream && resident > ctx.budget;
+  (void)detail::plan_parquet_load(resolved, config.device, ctx.n_series, resident, over ? ctx.budget : 0, layout);
+  if (over && sample) algorithms::detail::validate_streaming_clara_plan(*sample, "run");
+  if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
+  ctx.method = resolved;
+  ctx.stream_payload = planned.route == Route::Streamed;
+  if (ctx.stream_payload) ctx.clara.ram_limit_bytes = planned.data_cap();
+  plan_clara(ctx);
+  if (ctx.stream_payload) check_stream(ctx, "Parquet", "Parquet metadata", resident);
+  ctx.stage.note("Parquet metadata");
+  if (ctx.stream_payload) report_input(ctx, ctx.n_series, values, 1, 0, 0, 0, true, config.dtype);
+}
 #endif
 
-  // Arrow IPC: its walk gives N and every record batch's rows and decoded bytes before any batch is decoded, so what
-  // the in-RAM route would hold at once is priced first (io::IpcFile::resident_bytes; a mapped view's values are the
-  // page cache's). Beyond the data cap FastCLARA reads the file a record batch at a time, where that holds less
-  // (decoded batches, the file read without llfio, a copy in the other precision); beyond an explicit limit the series
-  // alone, any other route is refused as it says why.
-  std::optional<io::IpcFile> ipc;
-  std::string storage; // how the file's series are held once read (-v and the report's read row name it)
-  if (format == InputFormat::ArrowIPC) {
-    ipc.emplace(input);
-    validate_gpu_request("run", prob, config.dtype, ipc->ndim()); // the file's features a time step: a GPU takes one
-    n_series = static_cast<std::size_t>(ipc->num_rows());
-    // Metal's GPU uploads an owned copy of the views read_arrow_ipc gives in the file's precision (resident_bytes
-    // prices it); CUDA reads them where they lie.
-    const bool reads_views = gpu_reads_views(config);
-    const std::size_t ipc_bytes = ipc->resident_bytes(config.dtype, uses_gpu(config.device) && !reads_views);
-    // Series of up to the longest the walk read from a mapped file's offsets, else of twice the mean length.
-    std::size_t length = ipc->longest_steps();
-    if (length == 0 && n_series > 0) length = 2 * ipc->num_values() / (n_series * ipc->ndim());
-    const Method resolved = resolve(ipc_bytes, length, ipc->ndim(), config.dtype);
-    const auto sample = clara_sample(resolved);
-    const std::size_t resident = ipc_bytes + (sample ? clara_bytes(*sample) : 0);
-    const bool streams = ipc->streams(config.dtype);
-    const bool can_stream = can_stream_file(sample, streams);
-    // The names are read after the stream, beside the labels: their read is priced with them.
-    const std::size_t names_bytes = ipc->series_names_bytes() + ipc->names_read_bytes();
-    upload_copy = uses_gpu(config.device) && (config.dtype == core::Precision::Float32) == ipc->is_f32()
-                  && !reads_views;
-    const MemoryPlan planned = plan_of(resolved, sample, ipc_bytes, ipc->num_values(), length, ipc->ndim(),
-                                       config.dtype, can_stream, streams, names_bytes + 2 * n_series * sizeof(index_t));
-    method = resolved;
-    if (planned.route == Route::Streamed) {
-      stream_payload = true;
-      clara.ram_limit_bytes = planned.data_cap();
-      plan_clara();
-      check_stream("Arrow IPC", "Arrow IPC walk", resident);
-    } else if (planned.route == Route::Refused && !can_stream && resident > config.ram_limit) {
-      // CLARA is named only where its stream could read the file: a file that streams, sampled in fewer than its series
-      // (the plan of these options; none where CLARA cannot run on them).
-      const auto clara_streams = [&] {
-        try {
-          const auto plan = sample ? *sample : resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-          return plan.sample_size < plan.n_points;
-        } catch (const InvalidInput &) {
-          return false;
-        }
-      };
-      const std::string other = config.dtype == core::Precision::Float32 ? "float64" : "float32";
-      std::string why;
-      if (!streams && upload_copy)
-        why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
-              "views of its " + std::to_string(n_series) + " series and the owned copy the GPU uploads of them are "
-              "held at once. Raise --ram-limit, or run on the CPU (--device cpu), which holds no copy.";
-      else if (!streams)
-        // A GPU takes Float64 series only, so the other precision is the CPU's way out, not its own.
-        why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
-              "views of its " + std::to_string(n_series) + " series are held at once. Raise --ram-limit"
-              + (clara_streams() ? std::string(uses_gpu(config.device) ? ", or run on the CPU (--device cpu) and "
-                                                                       : ", or ")
-                                     + "read its values as " + other + " (--dtype " + other + ")"
-                                     + (resolved == Method::CLARA ? "" : " with --method clara")
-                                     + ", whose copy FastCLARA reads a record batch at a time."
-                                 : std::string("."));
-      else if (resolved != Method::CLARA)
-        why = "method '" + method_name(resolved) + "' cannot stream it. "
-              + (clara_streams() ? "Use --method clara, which reads the file a record batch at a time, or raise "
-                                   "--ram-limit."
-                                 : std::string("Raise --ram-limit."));
-      else
-        why = "FastCLARA streams it only with a sample smaller than its " + std::to_string(n_series)
-              + " series; lower --sample-size, or raise --ram-limit.";
-      throw InvalidInput("Arrow IPC input needs approximately " + std::to_string(resident)
-                         + " bytes of resident series storage, exceeding --ram-limit="
-                         + std::to_string(config.ram_limit) + "; " + why);
-    }
-    if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
-    stage.note("Arrow IPC walk");
-    if (stream_payload) report_input(n_series, ipc->num_values(), ipc->ndim(), 0, 0, 0, true, config.dtype);
-    if (!stream_payload) {
-      storage = ipc->storage(config.dtype); // the read below repeats the walk's decisions on the same file
-      ipc.reset();                          // read below as every Arrow IPC file is read
-    }
-  }
+void plan_arrow_ipc_input(RunContext &ctx)
+{
+  const Config &config = ctx.config;
+  if (ctx.format != InputFormat::ArrowIPC) return;
 
-  // ---- 3. Load the series into RAM ----
-  if (stage.planned) stage.planned();
-  stage.begin("read");
-  if (stream_payload) stage.note("none: FastCLARA streams them, inside cluster");
-  if (!stream_payload) {
-    Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
-    const std::string loaded = std::to_string(series.size()) + " series" + (storage.empty() ? "" : ", " + storage);
+  ctx.ipc.emplace(ctx.input);
+  validate_gpu_request("run", *ctx.problem, config.dtype, ctx.ipc->ndim());
+  ctx.n_series = static_cast<std::size_t>(ctx.ipc->num_rows());
+  const bool reads_views = gpu_reads_views(config);
+  const std::size_t ipc_bytes = ctx.ipc->resident_bytes(config.dtype, uses_gpu(config.device) && !reads_views);
+  std::size_t length = ctx.ipc->longest_steps();
+  if (length == 0 && ctx.n_series > 0) length = 2 * ctx.ipc->num_values() / (ctx.n_series * ctx.ipc->ndim());
+  const Method resolved = resolve_planned_method(ctx, ipc_bytes, length, ctx.ipc->ndim(), config.dtype);
+  const auto sample = clara_sample(ctx, resolved);
+  const std::size_t resident = ipc_bytes + (sample ? clara_bytes(ctx, *sample) : 0);
+  const bool streams = ctx.ipc->streams(config.dtype);
+  const bool can_stream = can_stream_file(ctx, sample, streams);
+  const std::size_t names_bytes = ctx.ipc->series_names_bytes() + ctx.ipc->names_read_bytes();
+  ctx.upload_copy = uses_gpu(config.device) && (config.dtype == core::Precision::Float32) == ctx.ipc->is_f32()
+                    && !reads_views;
+  const MemoryPlan planned =
+    plan_of(ctx, resolved, sample, ipc_bytes, ctx.ipc->num_values(), length, ctx.ipc->ndim(), config.dtype, can_stream,
+            streams, names_bytes + 2 * ctx.n_series * sizeof(index_t));
+  ctx.method = resolved;
+  if (planned.route == Route::Streamed) {
+    ctx.stream_payload = true;
+    ctx.clara.ram_limit_bytes = planned.data_cap();
+    plan_clara(ctx);
+    check_stream(ctx, "Arrow IPC", "Arrow IPC walk", resident);
+  } else if (planned.route == Route::Refused && !can_stream && resident > config.ram_limit) {
+    const auto clara_streams = [&] {
+      try {
+        const auto plan = sample ? *sample : resolve_clara_plan(static_cast<std::int64_t>(ctx.n_series), ctx.clara, "run");
+        return plan.sample_size < plan.n_points;
+      } catch (const InvalidInput &) {
+        return false;
+      }
+    };
+    const std::string other = config.dtype == core::Precision::Float32 ? "float64" : "float32";
+    std::string why;
+    if (!streams && ctx.upload_copy)
+      why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
+            "views of its " + std::to_string(ctx.n_series) + " series and the owned copy the GPU uploads of them are "
+            "held at once. Raise --ram-limit, or run on the CPU (--device cpu), which holds no copy.";
+    else if (!streams)
+      why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
+            "views of its " + std::to_string(ctx.n_series) + " series are held at once. Raise --ram-limit"
+            + (clara_streams() ? std::string(uses_gpu(config.device) ? ", or run on the CPU (--device cpu) and " : ", or ")
+                                   + "read its values as " + other + " (--dtype " + other + ")"
+                                   + (resolved == Method::CLARA ? "" : " with --method clara")
+                                   + ", whose copy FastCLARA reads a record batch at a time."
+                               : std::string("."));
+    else if (resolved != Method::CLARA)
+      why = "method '" + method_name(resolved) + "' cannot stream it. "
+            + (clara_streams() ? "Use --method clara, which reads the file a record batch at a time, or raise "
+                                 "--ram-limit."
+                               : std::string("Raise --ram-limit."));
+    else
+      why = "FastCLARA streams it only with a sample smaller than its " + std::to_string(ctx.n_series)
+            + " series; lower --sample-size, or raise --ram-limit.";
+    throw InvalidInput("Arrow IPC input needs approximately " + std::to_string(resident)
+                       + " bytes of resident series storage, exceeding --ram-limit="
+                       + std::to_string(config.ram_limit) + "; " + why);
+  }
+  if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
+  ctx.stage.note("Arrow IPC walk");
+  if (ctx.stream_payload) report_input(ctx, ctx.n_series, ctx.ipc->num_values(), ctx.ipc->ndim(), 0, 0, 0, true, config.dtype);
+  if (!ctx.stream_payload) {
+    ctx.storage = ctx.ipc->storage(config.dtype);
+    ctx.ipc.reset();
+  }
+}
+
+void load_in_ram_series(RunContext &ctx)
+{
+  const Config &config = ctx.config;
+  if (ctx.stage.planned) ctx.stage.planned();
+  ctx.stage.begin("read");
+  if (ctx.stream_payload) ctx.stage.note("none: FastCLARA streams them, inside cluster");
+  if (!ctx.stream_payload) {
+    Data series = ctx.data ? std::move(*ctx.data) : read_input(ctx.input, ctx.format.value_or(InputFormat::Text), config);
+    const std::string loaded = std::to_string(series.size()) + " series" + (ctx.storage.empty() ? "" : ", " + ctx.storage);
     if (config.verbose) {
-      const char *from = !format                            ? " in memory"
-                         : format == InputFormat::Parquet  ? " from Parquet"
-                         : format == InputFormat::ArrowIPC ? " from Arrow IPC"
-                                                           : "";
-      std::cout << "Data loaded" << from << ": " << loaded << " [" << clk << "]\n";
+      const char *from = !ctx.format                            ? " in memory"
+                         : ctx.format == InputFormat::Parquet  ? " from Parquet"
+                         : ctx.format == InputFormat::ArrowIPC ? " from Arrow IPC"
+                                                               : "";
+      std::cout << "Data loaded" << from << ": " << loaded << " [" << ctx.clk << "]\n";
     }
-    // A reader stores what --dtype names; Float64 series passed in memory, a view among them, are converted here.
     if (config.dtype == core::Precision::Float32 && !series.is_f32()) {
       series = detail::owned_copy(series, core::Precision::Float32);
       if (config.verbose) std::cout << "Converted to float32 (2x memory saving)\n";
@@ -854,9 +841,9 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
       shortest = std::min(shortest, series.series_flat_size(i) / series.ndim);
     }
     const std::size_t value_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
-    report_input(static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false,
+    report_input(ctx, static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false,
                  series.precision);
-    stage.note(loaded);
+    ctx.stage.note(loaded);
     if (config.verbose && series.size() > 0)
       std::cout << "  Data memory: ~" << (value_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
                 << (elements / series.size()) << " avg length, " << name_of(core::precision_names, series.precision)
@@ -864,207 +851,186 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     const std::size_t ndim = series.ndim;
     const core::Precision precision = series.precision;
     const bool view = series.is_view();
-    prob.set_data(std::move(series));
-    n_series = prob.size();
-    // Planned on the series read (CSV, a folder, series in memory, Parquet its metadata did not route): their values,
-    // the longest of them, and on a GPU the owned copy it uploads of a view.
-    if (!memory) {
-      require_clusterable(config.k, n_series); // before CLARA's plan
-      method = resolve(value_bytes, longest, ndim, precision);
+    ctx.problem->set_data(std::move(series));
+    ctx.n_series = ctx.problem->size();
+    if (!ctx.memory) {
+      require_clusterable(config.k, ctx.n_series);
+      ctx.method = resolve_planned_method(ctx, value_bytes, longest, ndim, precision);
       std::optional<algorithms::detail::ClaraPlan> sample;
-      if (method == Method::CLARA) sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      upload_copy = uses_gpu(config.device) && view && !gpu_reads_views(config);
-      const std::size_t copy = upload_copy ? detail::owned_series_bytes(elements, n_series, false) : 0;
+      if (ctx.method == Method::CLARA) sample = resolve_clara_plan(static_cast<std::int64_t>(ctx.n_series), ctx.clara, "run");
+      ctx.upload_copy = uses_gpu(config.device) && view && !gpu_reads_views(config);
+      const std::size_t copy = ctx.upload_copy ? detail::owned_series_bytes(elements, ctx.n_series, false) : 0;
       if (const MemoryPlan planned =
-            plan_of(method, sample, value_bytes + copy, elements, longest, ndim, precision, false, false, 0);
+            plan_of(ctx, ctx.method, sample, value_bytes + copy, elements, longest, ndim, precision, false, false, 0);
           planned.route == Route::Refused)
         throw InvalidInput(planned.refusal);
     }
   }
-  require_clusterable(config.k, n_series); // before a cache or checkpoint is touched
-
+  require_clusterable(config.k, ctx.n_series);
   if (config.method == Method::Auto && config.verbose)
-    std::cout << "Auto-selected method: " << method_name(method) << " (N=" << n_series << ")\n";
-  plan_clara();
-  prob.set_method(method);
-  if (stage.report) stage.report->method = method;
+    std::cout << "Auto-selected method: " << method_name(ctx.method) << " (N=" << ctx.n_series << ")\n";
+  plan_clara(ctx);
+  ctx.problem->set_method(ctx.method);
+  if (ctx.stage.report) ctx.stage.report->method = ctx.method;
+}
 
-  // ---- 4. Distance storage, once every distance setting is in place ----
-  // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
-  // the checkpoint, else in the output directory; a run that writes nothing
-  // keeps its matrix in RAM. Its refusals of what the method cannot use apply to every run.
-  stage.begin("storage");
-  std::optional<fs::path> cache;
+void setup_distance_storage(RunContext &ctx)
+{
+  const Config &config = ctx.config;
+  Problem &prob = *ctx.problem;
+  ctx.stage.begin("storage");
   const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
-  cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, memory->mapped, path);
+  const std::optional<fs::path> cache =
+    configure_distance_storage(prob, config, ctx.method, ctx.clara_uses_full_sample, ctx.memory->mapped, path);
   if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
-  // A matrix the user supplied but that cannot be loaded is an error: going on
-  // without it would silently recompute every distance and exit 0.
   if (!config.dist_matrix.empty()) {
     try {
       prob.read_distance_matrix(utf8_to_path(config.dist_matrix), config.not_computed);
     } catch (const std::bad_alloc &) {
-      throw; // the system refused memory, no fault of the file's: run() reports it with the stage
+      throw;
     } catch (const std::exception &e) {
       throw IOError("--dist-matrix '" + config.dist_matrix
                     + "' cannot be loaded; fix the file, or omit --dist-matrix to compute the distances. Cause: "
                     + e.what());
     }
-    // TADPole reads a matrix only where every pair is in it: of an incomplete one it would read none, computing every
-    // pair from the series into a cache beside it, a second matrix the memory plan does not hold.
-    if (method == Method::TADPole && !prob.is_distance_matrix_filled())
+    if (ctx.method == Method::TADPole && !prob.is_distance_matrix_filled())
       throw InvalidInput("tadpole reads a --dist-matrix only when it is complete, and '" + config.dist_matrix
                          + "' leaves pairs not computed: tadpole would read none of it and compute every pair again "
                            "beside it. Give a complete matrix (a pam run with -o writes one), or omit --dist-matrix.");
     if (config.verbose) std::cout << "Loaded distance matrix from " << config.dist_matrix << "\n";
   }
-  if (config.checkpoint_interval != 0) { // 0: saved once, at the end
+  if (config.checkpoint_interval != 0) {
     prob.checkpoint.directory = config.checkpoint;
     prob.checkpoint.save_interval = config.checkpoint_interval;
     prob.checkpoint.enabled = true;
   }
   bool resumed = false;
-  // A mapped matrix is its own checkpoint; a method that holds no matrix reads none, and writes none (below).
-  if (!config.checkpoint.empty() && !cache && holds_matrix(method, clara_uses_full_sample)) {
-    resumed = load_checkpoint(prob, config.checkpoint); // false: no file, start fresh
+  if (!config.checkpoint.empty() && !cache && holds_matrix(ctx.method, ctx.clara_uses_full_sample)) {
+    resumed = load_checkpoint(prob, config.checkpoint);
     if (config.verbose)
       std::cout << (resumed ? "Resumed from checkpoint: " + config.checkpoint + "\n"
                             : "No checkpoint in " + config.checkpoint + ", starting fresh.\n");
   }
-  std::string storage_note = stream_payload || !holds_matrix(method, clara_uses_full_sample)
+  std::string storage_note = ctx.stream_payload || !holds_matrix(ctx.method, ctx.clara_uses_full_sample)
                                ? std::string("no distance matrix of every series")
                              : cache ? "the distance matrix mapped, " + path_to_utf8(cache->filename())
                                      : std::string("the distance matrix in RAM");
   if (!config.dist_matrix.empty()) storage_note += "; --dist-matrix read";
   if (resumed) storage_note += "; the checkpoint resumed";
-  stage.note(std::move(storage_note));
+  ctx.stage.note(std::move(storage_note));
+}
 
-  // ---- 5. Fill, then cluster; the matrix methods fill through the Problem, on its device ----
-  // PAM, Lloyd's k-medoids and FastCLARA on a sample of every series fill the whole distance matrix before anything
-  // else, past checks this run made already (k, max-iter, n-init, CLARA's plan), so the fill is a stage of its own;
-  // the idempotent fill leaves their clustering nothing to compute. Every other method refuses what it cannot run
-  // before its own fill (the hierarchical clustering above its size, a MIP without its solver), or fills nothing
-  // whole: its distances are computed inside the cluster stage.
-  // A RAM-limited Parquet or Arrow IPC run is the one whose series the Problem does
-  // not hold: FastCLARA streams them.
-  const bool fills_first = !stream_payload && (method == Method::PAM || method == Method::Kmedoids
-                                               || (method == Method::CLARA && clara_uses_full_sample));
-  stage.begin(fills_first ? "fill" : "cluster");
-  if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
-  if (fills_first) {
-    const std::string fill_note = prob.is_distance_matrix_filled()
-                                    ? "complete on entry"
-                                    : std::to_string(n_series) + " series' matrix on " + device_text(config)
-                                        + (uses_gpu(config.device) && prob.data().is_view() && !gpu_reads_views(config)
-                                             ? ", from an owned copy of their views"
-                                             : "");
-    stage.note(fill_note);
+void run_clustering_stage(RunContext &ctx)
+{
+  const Config &config = ctx.config;
+  Problem &prob = *ctx.problem;
+  ctx.fills_first = !ctx.stream_payload
+                    && (ctx.method == Method::PAM || ctx.method == Method::Kmedoids
+                        || (ctx.method == Method::CLARA && ctx.clara_uses_full_sample));
+  ctx.stage.begin(ctx.fills_first ? "fill" : "cluster");
+  if (config.verbose) std::cout << "Running " << progress_label(ctx.method) << " (k=" << config.k << ") ...\n";
+  if (ctx.fills_first) {
+    const std::string fill_note =
+      prob.is_distance_matrix_filled()
+        ? "complete on entry"
+        : std::to_string(ctx.n_series) + " series' matrix on " + device_text(config)
+            + (uses_gpu(config.device) && prob.data().is_view() && !gpu_reads_views(config)
+                 ? ", from an owned copy of their views"
+                 : "");
+    ctx.stage.note(fill_note);
     prob.fill_distance_matrix();
-    // cpu+gpu's split, which depends on the moment where it is measured: the fill row says it, so forcing its share
-    // repeats the fill.
-    if (prob.fill_split()) stage.note(fill_note + "; " + dtwc::describe(*prob.fill_split()));
-    stage.begin("cluster");
+    if (prob.fill_split()) ctx.stage.note(fill_note + "; " + dtwc::describe(*prob.fill_split()));
+    ctx.stage.begin("cluster");
   }
-  stage.note(std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside"));
-  // In RAM the Problem clusters, but where detail::run was given a solver (a binding that links no HiGHS gives its
-  // own) and the run is MIP on HiGHS, tested as Python's Problem.cluster override tests it: the solver's clustering is
-  // the run's, published on the Problem, which the Result reads.
-  // FastCLARA in RAM runs on the run's own options, as its stream does, so the plan's GPU blocks
-  // (clara.gpu_staging_bytes) reach it. Problem::cluster's checks on that path are made before it: k against the series
-  // (require_clusterable, above), the method on cpu+gpu (apply); fast_clara makes its own (validate_clara_request,
-  // resolve_clara_plan), as Problem::cluster's call of it did.
+  ctx.stage.note(std::string(progress_label(ctx.method))
+                 + (ctx.fills_first ? "" : ", any distances it computes inside"));
+
   const auto cluster_in_ram = [&] {
-    if (prob.method() == Method::CLARA) return algorithms::fast_clara(prob, clara);
-    const bool by_solver = solver && prob.method() == Method::MIP && prob.solver() == Solver::HiGHS;
+    if (prob.method() == Method::CLARA) return algorithms::fast_clara(prob, ctx.clara);
+    const bool by_solver = ctx.solver && prob.method() == Method::MIP && prob.solver() == Solver::HiGHS;
     if (!by_solver) return prob.cluster();
-    core::ClusteringResult solved = solver(problem);
+    core::ClusteringResult solved = ctx.solver(ctx.problem);
     prob.set_result(solved);
     return solved;
   };
-  std::vector<std::string> streamed_names;
-  core::ClusteringResult result;
   try {
-    if (stream_payload && ipc) {
-      // The Problem holds no series: its distance takes their features a time step from an empty Data of them.
-      prob.set_data(Data(std::vector<std::vector<data_t>>{}, std::vector<std::string>{}, ipc->ndim()));
-      const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "fast_clara");
-      result = config.dtype == core::Precision::Float32
-                 ? algorithms::detail::fast_clara_chunked<true>(prob, clara, *ipc, plan)
-                 : algorithms::detail::fast_clara_chunked<false>(prob, clara, *ipc, plan);
-      streamed_names = ipc->series_names(clara.ram_limit_bytes - 2 * n_series * sizeof(index_t)); // beside the labels
+    if (ctx.stream_payload && ctx.ipc) {
+      prob.set_data(Data(std::vector<std::vector<data_t>>{}, std::vector<std::string>{}, ctx.ipc->ndim()));
+      const auto plan = resolve_clara_plan(static_cast<std::int64_t>(ctx.n_series), ctx.clara, "fast_clara");
+      ctx.result = config.dtype == core::Precision::Float32
+                     ? algorithms::detail::fast_clara_chunked<true>(prob, ctx.clara, *ctx.ipc, plan)
+                     : algorithms::detail::fast_clara_chunked<false>(prob, ctx.clara, *ctx.ipc, plan);
+      ctx.streamed_names = ctx.ipc->series_names(ctx.clara.ram_limit_bytes - 2 * ctx.n_series * sizeof(index_t));
     } else {
 #ifdef DTWC_HAS_PARQUET
-      if (stream_payload) {
-        // As for Arrow IPC, the Problem holds no series: FastCLARA reads the file's row groups, then its names.
+      if (ctx.stream_payload) {
         const bool f32 = config.dtype == core::Precision::Float32;
-        const io::ParquetChunkReader reader(input, config.column, config.skip_cols, config.skip_rows);
-        const auto plan = resolve_clara_plan(reader.logical_series_count(), clara, "fast_clara");
+        const io::ParquetChunkReader reader(ctx.input, config.column, config.skip_cols, config.skip_rows);
+        const auto plan = resolve_clara_plan(reader.logical_series_count(), ctx.clara, "fast_clara");
         if (config.verbose)
           std::cout << "FastCLARA: streaming from Parquet (" << reader.logical_series_count() << " rows, "
                     << reader.num_row_groups() << " row groups, ~" << reader.estimated_resident_bytes(f32) / (1ULL << 20)
                     << " MB resident estimate)\n";
-        result = f32 ? algorithms::detail::fast_clara_chunked<true>(prob, clara, reader, plan)
-                     : algorithms::detail::fast_clara_chunked<false>(prob, clara, reader, plan);
-        streamed_names = reader.series_names();
+        ctx.result = f32 ? algorithms::detail::fast_clara_chunked<true>(prob, ctx.clara, reader, plan)
+                         : algorithms::detail::fast_clara_chunked<false>(prob, ctx.clara, reader, plan);
+        ctx.streamed_names = reader.series_names();
       } else {
-        result = cluster_in_ram();
+        ctx.result = cluster_in_ram();
       }
 #else
-      result = cluster_in_ram();
+      ctx.result = cluster_in_ram();
 #endif
     }
   } catch (const InvalidInput &refused) {
-    // A stream's own refusals (its readers', FastCLARA's) check its floor within the data cap, which they name as
-    // --ram-limit: say what that is, after their text.
     const std::string text = refused.what();
-    if (!stream_payload || text.find("--ram-limit") == std::string::npos) throw;
+    if (!ctx.stream_payload || text.find("--ram-limit") == std::string::npos) throw;
     throw InvalidInput(text + (text.ends_with('.') ? " " : ". ")
                        + "The --ram-limit it names is the stream's data cap: --ram-limit = "
-                       + std::to_string(memory->budget) + " less the reserve of " + std::to_string(memory->reserve())
-                       + " bytes for " + std::to_string(memory->threads)
+                       + std::to_string(ctx.memory->budget) + " less the reserve of "
+                       + std::to_string(ctx.memory->reserve()) + " bytes for " + std::to_string(ctx.memory->threads)
                        + " threads (-v prints the memory plan); raise --ram-limit by what the stream lacks, or run "
                          "fewer threads (OMP_NUM_THREADS) to shrink the reserve.");
   }
-  // cpu+gpu's split, which depends on the moment where it is measured: the cluster row says it, so forcing its share
-  // repeats the run.
-  if (result.hybrid)
-    stage.note(std::string(progress_label(method)) + ", any distances it computes inside; "
-               + algorithms::describe(*result.hybrid, result.labels.size()));
-  else if (!fills_first && prob.fill_split()) // the fill inside this stage (hierarchical, mip, lrcore)
-    stage.note(std::string(progress_label(method)) + ", any distances it computes inside; "
-               + dtwc::describe(*prob.fill_split()));
+  if (ctx.result.hybrid)
+    ctx.stage.note(std::string(progress_label(ctx.method)) + ", any distances it computes inside; "
+                   + algorithms::describe(*ctx.result.hybrid, ctx.result.labels.size()));
+  else if (!ctx.fills_first && prob.fill_split())
+    ctx.stage.note(std::string(progress_label(ctx.method)) + ", any distances it computes inside; "
+                   + dtwc::describe(*prob.fill_split()));
   if (config.verbose) {
-    std::cout << progress_label(method);
-    if (method == Method::PAM)
-      std::cout << (result.converged ? " converged" : " did not converge") << " in " << result.iterations
+    std::cout << progress_label(ctx.method);
+    if (ctx.method == Method::PAM)
+      std::cout << (ctx.result.converged ? " converged" : " did not converge") << " in " << ctx.result.iterations
                 << " iterations";
     else
       std::cout << " finished";
-    std::cout << ", cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
+    const auto prev_prec = std::cout.precision();
+    std::cout << ", cost=" << std::setprecision(6) << ctx.result.total_cost << " [" << ctx.clk << "]\n";
+    std::cout.precision(prev_prec);
   }
-  if (stage.report) {
-    detail::RunReport::Clustering clustering{ method, progress_label(method), result.total_cost, result.iterations,
-                                              result.converged, std::vector<std::size_t>(result.medoid_indices.size()),
-                                              result.medoid_indices };
-    for (const index_t label : result.labels)
+  if (ctx.stage.report) {
+    detail::RunReport::Clustering clustering{ ctx.method, progress_label(ctx.method), ctx.result.total_cost,
+                                              ctx.result.iterations, ctx.result.converged,
+                                              std::vector<std::size_t>(ctx.result.medoid_indices.size()),
+                                              ctx.result.medoid_indices };
+    for (const index_t label : ctx.result.labels)
       if (label >= 0 && static_cast<std::size_t>(label) < clustering.sizes.size())
         ++clustering.sizes[static_cast<std::size_t>(label)];
-    stage.report->clustering = std::move(clustering);
+    ctx.stage.report->clustering = std::move(clustering);
   }
+}
 
-  // ---- 6. Checkpoints first, then the outputs ----
-  // The checkpoint goes before the results, so a result write that fails cannot lose the distance matrix. A save that
-  // fails is kept and raised once the results are on disk, so it cannot lose them either: what to do, and its cause.
-  // A method that never allocates the distance matrix (OneBatchPAM, TADPole) has nothing to save: save_checkpoint would
-  // write all N^2 pairs as NaN (about 40 GB for 100,000 series), for a resume that computes every distance again. A
-  // Problem may save before a fill on purpose, so that stays save_checkpoint's contract; the run decides here.
+void save_outputs_and_checkpoint(RunContext &ctx)
+{
+  const Config &config = ctx.config;
+  Problem &prob = *ctx.problem;
   const bool has_checkpoint = !config.checkpoint.empty();
   const bool saves_checkpoint = has_checkpoint && prob.distance_matrix().size() != 0;
-  stage.begin("write");
-  stage.note(std::string(saves_checkpoint ? "the checkpoint, then "
-                         : has_checkpoint ? "no distances were computed: no checkpoint written, then "
-                                          : "")
-             + (config.output.empty() ? std::string("no result files (no -o)") : "the result files"));
+  ctx.stage.begin("write");
+  ctx.stage.note(std::string(saves_checkpoint ? "the checkpoint, then "
+                             : has_checkpoint ? "no distances were computed: no checkpoint written, then "
+                                              : "")
+                 + (config.output.empty() ? std::string("no result files (no -o)") : "the result files"));
   std::optional<std::string> checkpoint_failure;
   if (has_checkpoint && !saves_checkpoint && config.verbose)
     std::cout << "No distances were computed: no checkpoint written.\n";
@@ -1072,7 +1038,7 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
     try {
       save_checkpoint(prob, config.checkpoint);
       if (config.verbose) std::cout << "Checkpoint saved to " << config.checkpoint << "\n";
-    } catch (const std::bad_alloc &) { // the system refused memory: no disk space frees it
+    } catch (const std::bad_alloc &) {
       checkpoint_failure = "out of memory; omit --checkpoint, or give the process more memory";
     } catch (const std::exception &e) {
       checkpoint_failure = "free space or pass another directory to --checkpoint, or omit it. Cause: "
@@ -1083,17 +1049,44 @@ Outcome execute(const Config &config, std::optional<Data> &data, const ExternalS
   if (!config.output.empty()) {
     detail::WriteTimes times;
     times.cpu_clock = &core::cpu_seconds;
-    detail::write_result_files(prob, output, false, config.verbose ? &std::cout : nullptr, streamed_names,
-                               stage.report ? &times : nullptr);
-    if (stage.report)
-      stage.report->silhouettes = detail::RunReport::Silhouettes{ times.silhouette_wall, times.silhouette_cpu,
-                                                                  times.mean_silhouette, times.skipped };
+    detail::write_result_files(prob, ctx.output, false, config.verbose ? &std::cout : nullptr, ctx.streamed_names,
+                               ctx.stage.report ? &times : nullptr);
+    if (ctx.stage.report)
+      ctx.stage.report->silhouettes = detail::RunReport::Silhouettes{
+        times.silhouette_wall, times.silhouette_cpu, times.mean_silhouette, times.skipped
+      };
   }
   if (checkpoint_failure)
     throw IOError("--checkpoint '" + config.checkpoint + "': the distance checkpoint cannot be saved (the results are "
                   "written to '" + config.output + "'); " + *checkpoint_failure);
+}
 
-  return { std::move(problem), std::move(result), method, std::move(streamed_names), {}, {} };
+/// The run itself; `data` holds in-memory series, else config.input is read; `solver`, where given, clusters MIP on
+/// HiGHS in RAM (detail::run). `stage` follows it: the stage it is in, its memory plan once made, and the report's
+/// figures. A GPU request it cannot honour is a GpuRefusal thrown in its check or plan stage, where `data` is still
+/// whole and no series was read: run_with decides what to do with it (`fallback`), and `config.fallback` is cleared.
+Outcome execute(const Config &config, std::optional<Data> &data, const ExternalSolver &solver, RunStage &stage)
+{
+  RunContext ctx{
+    config, data, solver, stage,
+    nullptr, {}, {}, stage.format, {},
+    Clock{}, config.method, false, 0, false, false,
+    core::memory_budget(config.ram_limit), get_max_threads(), stage.plan, std::nullopt,
+    unmapped_matrix_reason(config), false, std::nullopt, {}, false, {}, {}
+  };
+
+  validate_run_config(ctx);
+  stage.begin("plan");
+#ifdef DTWC_HAS_PARQUET
+  plan_parquet_input(ctx);
+#endif
+  plan_arrow_ipc_input(ctx);
+  load_in_ram_series(ctx);
+  setup_distance_storage(ctx);
+  run_clustering_stage(ctx);
+  save_outputs_and_checkpoint(ctx);
+
+  return { std::move(ctx.problem), std::move(ctx.result), ctx.method, std::move(ctx.streamed_names), {}, {} };
 }
 
 /// The name a failed run's report gives its error: its type in base/error.hpp.

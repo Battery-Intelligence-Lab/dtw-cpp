@@ -2,7 +2,9 @@
  * @file arrow_ipc.hpp
  * @brief dtwc::io::read_arrow_ipc: the Arrow IPC reader of every build, on the vendored nanoarrow IPC extension (no
  *        Arrow C++): a file is read in place, each series a view of its bytes, or of its batch decoded.
+ *
  * @author Volkan Kumtepeli
+ * @date 21 Oct 2026
  */
 
 #pragma once

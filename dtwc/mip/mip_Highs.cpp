@@ -37,16 +37,44 @@ bool highs_solver_available() noexcept
 #endif
 }
 
-mip::PMedianModel mip::build_p_median_model(Problem &prob)
+bool mip::detail::try_solve_trivial_pmedian(Problem &prob)
+{
+  const auto n = static_cast<std::size_t>(prob.size());
+  const auto k = prob.n_clusters();
+  if (k == 1 && n >= 1) {
+    prob.set_result(fast_pam_solve(prob, 1, 0, prob.random_seed()));
+    return true;
+  }
+  if (k == static_cast<index_t>(n) && n >= 1) {
+    core::ClusteringResult result;
+    result.medoid_indices.resize(n);
+    result.labels.resize(n);
+    std::iota(result.medoid_indices.begin(), result.medoid_indices.end(), index_t{ 0 });
+    std::iota(result.labels.begin(), result.labels.end(), index_t{ 0 });
+    result.converged = true;
+    prob.set_result(result);
+    return true;
+  }
+  return false;
+}
+
+mip::PMedianModel mip::detail::build_p_median_model_impl(Problem &prob, bool build_csc)
 {
   const auto n = static_cast<std::size_t>(prob.size());
   const auto k = prob.n_clusters();
 
-  // The model indexes with `int`, as HiGHS and Gurobi read it; the ~3N² nonzeros are
-  // the largest count (N ≈ 26,750), and a cast past INT_MAX builds a wrong model.
+  // The model indexes with `int`, as HiGHS and Gurobi read it; check before filling the distance matrix.
+  // HiGHS uses CSC (~3N^2 nonzeros, N ~= 26,750), while Gurobi builds rows dynamically and is bounded by N^2 columns.
   const std::size_t nnz = (n == 0) ? 0 : (n + n * n + 2 * n * (n - 1));
-  if (nnz > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw SolverError("MIP: the compact p-median model for N = " + std::to_string(n) + " has more than INT_MAX nonzeros; use Method::LRCore.");
+  if (build_csc) {
+    if (nnz > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+      throw SolverError("MIP: the compact p-median model for N = " + std::to_string(n)
+                        + " has more than INT_MAX nonzeros; use Method::LRCore.");
+  } else {
+    if (n > static_cast<std::size_t>(std::numeric_limits<int>::max()) / std::max<std::size_t>(n, 1))
+      throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(n)
+                        + " has more than INT_MAX variables; use Method::LRCore.");
+  }
 
   prob.fill_distance_matrix(); // We need full distance matrix before MIP clustering.
   const double max_distance = prob.max_distance();
@@ -83,29 +111,31 @@ mip::PMedianModel mip::build_p_median_model(Problem &prob)
     std::fill_n(model.row_upper.begin() + 1, n, 1.0);
   }
 
-  // Direct CSC (column-wise) matrix construction: rows sorted ascending per column.
-  model.a_start.reserve(n * n + 1);
-  model.a_index.reserve(nnz);
-  model.a_value.reserve(nnz);
-  model.a_start.push_back(0);
-  const auto add = [&model](std::size_t row, double value) {
-    model.a_index.push_back(static_cast<int>(row));
-    model.a_value.push_back(value);
-  };
-  const auto end_col = [&model] { model.a_start.push_back(static_cast<int>(model.a_index.size())); };
-  for (std::size_t f = 0; f < n; ++f) {
-    const std::size_t link_base = 1 + n + f * (n - 1);
-    for (std::size_t p = 0; p < n; ++p) {
-      if (p == f) {
-        add(0, 1.0);
-        add(1 + f, 1.0);
-        for (std::size_t r = 0; r < n - 1; ++r)
-          add(link_base + r, -1.0);
-      } else {
-        add(1 + p, 1.0);
-        add(link_base + (p < f ? p : p - 1), 1.0);
+  if (build_csc) {
+    // Direct CSC (column-wise) matrix construction: rows sorted ascending per column.
+    model.a_start.reserve(n * n + 1);
+    model.a_index.reserve(nnz);
+    model.a_value.reserve(nnz);
+    model.a_start.push_back(0);
+    const auto add = [&model](std::size_t row, double value) {
+      model.a_index.push_back(static_cast<int>(row));
+      model.a_value.push_back(value);
+    };
+    const auto end_col = [&model] { model.a_start.push_back(static_cast<int>(model.a_index.size())); };
+    for (std::size_t f = 0; f < n; ++f) {
+      const std::size_t link_base = 1 + n + f * (n - 1);
+      for (std::size_t p = 0; p < n; ++p) {
+        if (p == f) {
+          add(0, 1.0);
+          add(1 + f, 1.0);
+          for (std::size_t r = 0; r < n - 1; ++r)
+            add(link_base + r, -1.0);
+        } else {
+          add(1 + p, 1.0);
+          add(link_base + (p < f ? p : p - 1), 1.0);
+        }
+        end_col();
       }
-      end_col();
     }
   }
 
@@ -117,6 +147,24 @@ mip::PMedianModel mip::build_p_median_model(Problem &prob)
       model.start[static_cast<std::size_t>(pam->medoid_indices[static_cast<std::size_t>(pam->labels[p])]) * n + p] = 1.0;
   }
   return model;
+}
+
+mip::PMedianModel mip::build_p_median_model(Problem &prob)
+{
+  return detail::build_p_median_model_impl(prob, true);
+}
+
+bool mip::detail::try_accept_zero_cost_start(Problem &prob, const PMedianModel &model, std::string_view backend)
+{
+  if (model.start.empty()) return false;
+  double start_obj = 0.0;
+  for (std::size_t i = 0; i < model.start.size(); ++i)
+    start_obj += model.col_cost[i] * model.start[i];
+  if (start_obj != 0.0) return false;
+  const auto n = static_cast<std::size_t>(prob.size());
+  const auto k = prob.n_clusters();
+  prob.set_result(mip::decode_assignment_nearest(model.start, prob.distance_matrix(), n, k, backend));
+  return true;
 }
 
 #ifdef DTWC_ENABLE_HIGHS
@@ -147,31 +195,10 @@ void MIP_clustering_byHiGHS(Problem &prob)
 #ifdef DTWC_ENABLE_HIGHS
   const auto n = static_cast<std::size_t>(prob.size());
   const auto k = prob.n_clusters();
-  if (k == 1 && n >= 1) {
-    prob.set_result(fast_pam_solve(prob, 1, 0, prob.random_seed()));
-    return;
-  }
-  if (k == static_cast<index_t>(n) && n >= 1) {
-    core::ClusteringResult result;
-    result.medoid_indices.resize(n);
-    result.labels.resize(n);
-    std::iota(result.medoid_indices.begin(), result.medoid_indices.end(), index_t{ 0 });
-    std::iota(result.labels.begin(), result.labels.end(), index_t{ 0 });
-    result.converged = true;
-    prob.set_result(result);
-    return;
-  }
+  if (mip::detail::try_solve_trivial_pmedian(prob)) return;
 
-  auto model = mip::build_p_median_model(prob);
-  if (!model.start.empty()) {
-    double start_obj = 0.0;
-    for (std::size_t i = 0; i < model.start.size(); ++i)
-      start_obj += model.col_cost[i] * model.start[i];
-    if (start_obj == 0.0) {
-      prob.set_result(mip::decode_assignment_nearest(model.start, prob.distance_matrix(), n, k, "HiGHS"));
-      return;
-    }
-  }
+  auto model = mip::detail::build_p_median_model_impl(prob, true);
+  if (mip::detail::try_accept_zero_cost_start(prob, model, "HiGHS")) return;
 
   Highs highs;
 

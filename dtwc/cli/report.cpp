@@ -9,10 +9,13 @@
 #include "report.hpp"
 
 #include "../core/distance_matrix.hpp" // peak_memory
-#include "config.hpp"                  // to_config_text, shortest_text
+#include "config.hpp"                  // cli::bind, to_config_text, shortest_text
+
+#include <CLI/CLI.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <iterator>
 #include <string_view>
@@ -146,7 +149,7 @@ std::string libraries(const core::MachineFacts &machine)
   list += list.empty() ? "Arrow" : ", Arrow";
 #endif
 #ifdef DTWC_HAS_PARQUET
-  list += ", Parquet";
+  list += list.empty() ? "Parquet" : ", Parquet";
 #endif
 #ifdef DTWC_HAS_YAML
   list += list.empty() ? "YAML" : ", YAML";
@@ -401,12 +404,22 @@ std::string command_of(const Config &config, Method method)
     }
     return out;
   };
+  Config bound = resolved;
+  CLI::App app;
+  cli::bind(app, bound);
+  std::vector<std::string> flag_names;
+  for (const CLI::Option *option : app.get_options()) {
+    if (option->get_configurable() && !option->get_group().empty() && option->get_expected_min() == 0)
+      flag_names.push_back(option->get_single_name());
+  }
+
   const auto given = lines(to_config_text(resolved)), defaults = lines(to_config_text(Config{}));
   std::string command = "dtwc_cl";
   for (std::size_t i = 0; i < given.size() && i < defaults.size(); ++i) {
     if (given[i] == defaults[i]) continue;
     const std::size_t equals = given[i].find(" = ");
     if (equals == std::string::npos) continue;
+    const std::string key = given[i].substr(0, equals);
     std::string value = given[i].substr(equals + 3);
     // CLI11 writes a one-character string as 'c' and one of over 100 characters with a backslash (a long Windows path)
     // as '''...''': TOML literals, whose single quotes cmd.exe hands on to dtwc_cl as part of the value. Double-quoted,
@@ -415,8 +428,9 @@ std::string command_of(const Config &config, Method method)
       const std::size_t quotes = value.size() >= 6 && value.compare(0, 3, "'''") == 0 ? 3 : 1;
       value = '"' + value.substr(quotes, value.size() - 2 * quotes) + '"';
     }
-    command += " --" + given[i].substr(0, equals);
-    if (value != "true") command += " " + value;
+    command += " --" + key;
+    const bool is_flag = std::find(flag_names.begin(), flag_names.end(), key) != flag_names.end();
+    if (!is_flag || value != "true") command += " " + value;
   }
   if (config.input.empty()) command += " (the series passed in memory)";
   return command;

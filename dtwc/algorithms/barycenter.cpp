@@ -1,7 +1,9 @@
 /**
  * @file barycenter.cpp
  * @brief SSG/DBA/soft-DTW barycenters and a sequence-centroid k-means driver.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #include "barycenter.hpp"
@@ -85,6 +87,24 @@ std::vector<double>& scratch_soft_adjoint() noexcept
   return buffer;
 }
 
+std::vector<double>& scratch_assign_dists() noexcept
+{
+  thread_local std::vector<double> buffer;
+  return buffer;
+}
+
+core::PackedLanesPanel<data_t>& scratch_assign_panel() noexcept
+{
+  thread_local core::PackedLanesPanel<data_t> panel;
+  return panel;
+}
+
+std::vector<double>& scratch_assign_table() noexcept
+{
+  thread_local std::vector<double> buffer;
+  return buffer;
+}
+
 std::size_t max_series_length(std::span<const SeriesView> series) noexcept
 {
   std::size_t max_len = 0;
@@ -159,7 +179,7 @@ void validate_problem_configuration(const Problem& prob, const char* entry_point
       ": banded DTW is not supported; set the Problem band to -1.");
   if (prob.data().ndim != 1)
     throw InvalidInput(
-      "dtw_barycenter: multivariate barycenters are not implemented; ndim must be 1.");
+      std::string(entry_point) + ": multivariate barycenters are not implemented; ndim must be 1.");
 }
 
 /// Series `indices` of `prob` as double views: Float64 storage is read in place,
@@ -219,10 +239,7 @@ Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
   const std::size_t ny = y.size();
   constexpr double inf = std::numeric_limits<double>::infinity();
   auto& row_buffer = scratch_row();
-  if (row_buffer.size() < ny) {
-    row_buffer.reserve(ny);
-    row_buffer.resize(ny);
-  }
+  if (row_buffer.size() < ny) row_buffer.resize(ny);
   double *const row = row_buffer.data();
 
   if (!need_path) {
@@ -244,10 +261,7 @@ Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
 
   auto& dir_buffer = scratch_dir();
   auto& path = scratch_path();
-  if (dir_buffer.size() < nx * ny) {
-    dir_buffer.reserve(nx * ny);
-    dir_buffer.resize(nx * ny);
-  }
+  if (dir_buffer.size() < nx * ny) dir_buffer.resize(nx * ny);
   path.clear();
   path.reserve(nx + ny - 1);
   std::uint8_t *const dir = dir_buffer.data();
@@ -497,10 +511,7 @@ double soft_dtw_squared_value(std::span<const data_t> x, std::span<const data_t>
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
   auto& row_buf = scratch_row();
-  if (row_buf.size() < ny) {
-    row_buf.reserve(ny);
-    row_buf.resize(ny);
-  }
+  if (row_buf.size() < ny) row_buf.resize(ny);
   double *const row = row_buf.data();
   for (std::size_t i = 0; i < nx; ++i) {
     double left = 0.0;
@@ -533,14 +544,8 @@ SoftDtwValueGradient soft_dtw_squared_value_gradient(
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
   const std::size_t cells = nx * ny;
-  if (accumulated_buf.size() < cells) {
-    accumulated_buf.reserve(cells);
-    accumulated_buf.resize(cells);
-  }
-  if (adjoint_buf.size() < cells) {
-    adjoint_buf.reserve(cells);
-    adjoint_buf.resize(cells);
-  }
+  if (accumulated_buf.size() < cells) accumulated_buf.resize(cells);
+  if (adjoint_buf.size() < cells) adjoint_buf.resize(cells);
   double *const accumulated = accumulated_buf.data();
   auto cell = [accumulated, ny](std::size_t i, std::size_t j) -> double& {
     return accumulated[i * ny + j];
@@ -753,17 +758,11 @@ double assign(std::span<const SeriesView> data, const std::vector<Series>& cente
   if (packed_block) {
     constexpr std::size_t W = core::dtw_lanes<data_t>;
     if (k >= W) {
-      const std::size_t n_panels = (k + W - 1) / W;
-      std::vector<core::PackedLanesPanel<data_t>> center_panels(n_panels);
-      for (std::size_t b = 0; b < n_panels; ++b) {
-        const std::size_t c0 = b * W, count = std::min(W, k - c0);
-        std::array<SeriesView, W> ys;
-        for (std::size_t w = 0; w < W; ++w)
-          ys[w] = SeriesView(centers[c0 + std::min(w, count - 1)]);
-        core::pack_dtw_panel<data_t>(sq_cfg, ys.data(), center_panels[b]);
-      }
+      const auto center_panels =
+        core::pack_series_panels<data_t>(sq_cfg, k, [&](std::size_t c) { return SeriesView(centers[c]); });
+      const std::size_t n_panels = center_panels.size();
       auto nearest_center = [&](std::size_t i) {
-        thread_local std::vector<double> dists;
+        auto& dists = scratch_assign_dists();
         if (dists.size() < n_panels * W) dists.resize(n_panels * W);
         const auto x_prep = core::prepare_dtw_query<data_t>(sq_cfg, data[i]);
         for (std::size_t b = 0; b < n_panels; ++b)
@@ -785,10 +784,10 @@ double assign(std::span<const SeriesView> data, const std::vector<Series>& cente
         std::array<SeriesView, W> ys;
         for (std::size_t w = 0; w < W; ++w)
           ys[w] = data[i0 + std::min(w, count - 1)];
-        thread_local core::PackedLanesPanel<data_t> panel;
+        auto& panel = scratch_assign_panel();
         core::pack_dtw_panel<data_t>(sq_cfg, ys.data(), panel);
         const auto panel_view = panel.view();
-        thread_local std::vector<double> table;
+        auto& table = scratch_assign_table();
         if (table.size() < k * W) table.resize(k * W);
         for (std::size_t c = 0; c < k; ++c)
           packed_block(SeriesView(centers[c]), panel_view, std::span<double>(table.data() + c * W, W));
@@ -969,7 +968,10 @@ std::size_t barycenter_scratch(bool release) noexcept
                     dtwc::algorithms::scratch_dir(),
                     dtwc::algorithms::scratch_path(),
                     dtwc::algorithms::scratch_soft_accum(),
-                    dtwc::algorithms::scratch_soft_adjoint());
+                    dtwc::algorithms::scratch_soft_adjoint(),
+                    dtwc::algorithms::scratch_assign_dists(),
+                    dtwc::algorithms::scratch_assign_panel().rows,
+                    dtwc::algorithms::scratch_assign_table());
 }
 
 } // namespace dtwc::core::detail

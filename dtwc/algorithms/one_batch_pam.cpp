@@ -1,7 +1,9 @@
 /**
  * @file one_batch_pam.cpp
  * @brief Fixed-batch eager PAM with O(Nm) distance storage.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #include "one_batch_pam.hpp"
@@ -11,6 +13,7 @@
 #include "../core/dtw_kernel.hpp"
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
+#include "../core/thread_scratch.hpp"
 #include "../base/env.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
@@ -28,6 +31,25 @@
 
 namespace dtwc::algorithms {
 namespace {
+
+  std::vector<double> &oob_dists_buf() noexcept
+  {
+    thread_local std::vector<double> buffer;
+    return buffer;
+  }
+
+  template <typename T>
+  core::PackedLanesPanel<T> &oob_panel_buf() noexcept
+  {
+    thread_local core::PackedLanesPanel<T> panel;
+    return panel;
+  }
+
+  std::vector<double> &oob_table_buf() noexcept
+  {
+    thread_local std::vector<double> buffer;
+    return buffer;
+  }
 
   std::size_t automatic_batch_size(std::size_t n)
   {
@@ -129,25 +151,13 @@ namespace {
       std::vector<core::PackedLanesPanel<data_t>> panels_f64;
       if (prepack) {
         if (problem.data().is_f32() && packed_f32) {
-          constexpr std::size_t W = core::dtw_lanes<float>;
-          panels_f32.resize((m + W - 1) / W);
-          for (std::size_t b = 0; b < panels_f32.size(); ++b) {
-            const std::size_t j0 = b * W, count = std::min(W, m - j0);
-            std::array<std::span<const float>, W> ys;
-            for (std::size_t w = 0; w < W; ++w)
-              ys[w] = problem.data().series_f32(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-            core::pack_dtw_panel<float>(dist_cfg, ys.data(), panels_f32[b]);
-          }
+          panels_f32 = core::pack_series_panels<float>(dist_cfg, m, [&](std::size_t j) {
+            return problem.data().series_f32(static_cast<std::size_t>(sample[j]));
+          });
         } else if (!problem.data().is_f32() && packed_f64) {
-          constexpr std::size_t W = core::dtw_lanes<data_t>;
-          panels_f64.resize((m + W - 1) / W);
-          for (std::size_t b = 0; b < panels_f64.size(); ++b) {
-            const std::size_t j0 = b * W, count = std::min(W, m - j0);
-            std::array<std::span<const data_t>, W> ys;
-            for (std::size_t w = 0; w < W; ++w)
-              ys[w] = problem.series(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-            core::pack_dtw_panel<data_t>(dist_cfg, ys.data(), panels_f64[b]);
-          }
+          panels_f64 = core::pack_series_panels<data_t>(dist_cfg, m, [&](std::size_t j) {
+            return problem.series(static_cast<std::size_t>(sample[j]));
+          });
         }
       }
 
@@ -486,67 +496,51 @@ core::ClusteringResult one_batch_pam(Problem &prob,
       const std::size_t n_oob = oob_slots.size();
       const index_t *const col_of_slot = oob_idx_of_slot.data();
 
-      if (n_oob >= W) {
-        const std::size_t n_panels = (n_oob + W - 1) / W;
-        std::vector<core::PackedLanesPanel<T>> oob_panels(n_panels);
-        for (std::size_t b = 0; b < n_panels; ++b) {
-          const std::size_t u0 = b * W, count = std::min(W, n_oob - u0);
-          std::array<std::span<const T>, W> ys;
-          for (std::size_t w = 0; w < W; ++w)
-            ys[w] = series_of(static_cast<std::size_t>(medoids[oob_slots[u0 + std::min(w, count - 1)]]));
-          core::pack_dtw_panel<T>(dist_cfg, ys.data(), oob_panels[b]);
+      auto assign_from_oob = [&](std::size_t point, auto oob_dist) {
+        double best = std::numeric_limits<double>::infinity();
+        index_t label = 0;
+        std::uint64_t calls = 0;
+        for (index_t slot = 0; slot < k; ++slot) {
+          const index_t med = medoids[slot];
+          double raw_d = 0.0;
+          const index_t col = distances.sample_position[static_cast<std::size_t>(med)];
+          if (col >= 0) {
+            raw_d = distances.raw[point * m + static_cast<std::size_t>(col)];
+          } else if (point != static_cast<std::size_t>(med)) {
+            raw_d = oob_dist(static_cast<std::size_t>(col_of_slot[slot]));
+            ++calls;
+          }
+          const double d = core::detail::require_finite_medoid_distance(
+            raw_d, "one_batch_pam", point, slot, med);
+          if (d < best) {
+            best = d;
+            label = slot;
+          }
         }
+        result.labels[point] = label;
+        point_cost[point] = best;
+        point_evaluations[point] = calls;
+      };
+
+      if (n_oob >= W) {
+        const auto oob_panels = core::pack_series_panels<T>(dist_cfg, n_oob, [&](std::size_t u) {
+          return series_of(static_cast<std::size_t>(medoids[oob_slots[u]]));
+        });
+        const std::size_t n_panels = oob_panels.size();
         auto assign_point = [&](std::size_t point) {
-          thread_local std::vector<double> oob_dists;
+          std::vector<double> &oob_dists = oob_dists_buf();
           if (oob_dists.size() < n_panels * W) oob_dists.resize(n_panels * W);
           const auto x_prep = core::prepare_dtw_query<T>(dist_cfg, series_of(point));
           for (std::size_t b = 0; b < n_panels; ++b)
             packed_block(x_prep, oob_panels[b].view(), std::span<double>(oob_dists.data() + b * W, W));
-
-          double best = std::numeric_limits<double>::infinity();
-          index_t label = 0;
-          std::uint64_t calls = 0;
-          for (index_t slot = 0; slot < k; ++slot) {
-            const index_t med = medoids[slot];
-            double raw_d = 0.0;
-            const index_t col = distances.sample_position[static_cast<std::size_t>(med)];
-            if (col >= 0) {
-              raw_d = distances.raw[point * m + static_cast<std::size_t>(col)];
-            } else if (point != static_cast<std::size_t>(med)) {
-              raw_d = oob_dists[static_cast<std::size_t>(col_of_slot[slot])];
-              ++calls;
-            }
-            const double d = core::detail::require_finite_medoid_distance(
-              raw_d, "one_batch_pam", point, slot, med);
-            if (d < best) {
-              best = d;
-              label = slot;
-            }
-          }
-          result.labels[point] = label;
-          point_cost[point] = best;
-          point_evaluations[point] = calls;
+          assign_from_oob(point, [&oob_dists](std::size_t oob_idx) { return oob_dists[oob_idx]; });
         };
         run_openmp(assign_point, n, n > 64);
       } else {
-        std::vector<T> prep_storage;
-        std::vector<std::span<const T>> prep_oob(n_oob);
-        const bool identity_prep =
-          dist_cfg.missing == core::MissingStrategy::Error && dist_cfg.variant.variant == core::DTWVariant::Standard;
-        if (identity_prep) {
-          for (std::size_t u = 0; u < n_oob; ++u)
-            prep_oob[u] = series_of(static_cast<std::size_t>(medoids[oob_slots[u]]));
-        } else {
-          std::vector<std::size_t> offsets(n_oob + 1, 0);
-          for (std::size_t u = 0; u < n_oob; ++u) {
-            const auto xp = core::prepare_dtw_query<T>(
-              dist_cfg, series_of(static_cast<std::size_t>(medoids[oob_slots[u]])));
-            prep_storage.insert(prep_storage.end(), xp.begin(), xp.end());
-            offsets[u + 1] = prep_storage.size();
-          }
-          for (std::size_t u = 0; u < n_oob; ++u)
-            prep_oob[u] = std::span<const T>(prep_storage.data() + offsets[u], offsets[u + 1] - offsets[u]);
-        }
+        core::PreparedQueries<T> prep_oob;
+        prep_oob.build(dist_cfg, n_oob, [&](std::size_t u) {
+          return series_of(static_cast<std::size_t>(medoids[oob_slots[u]]));
+        });
 
         const std::size_t n_blocks = (n + W - 1) / W;
         auto assign_block = [&](std::size_t b) {
@@ -554,40 +548,16 @@ core::ClusteringResult one_batch_pam(Problem &prob,
           std::array<std::span<const T>, W> ys;
           for (std::size_t w = 0; w < W; ++w)
             ys[w] = series_of(i0 + std::min(w, count - 1));
-          thread_local core::PackedLanesPanel<T> panel;
+          core::PackedLanesPanel<T> &panel = oob_panel_buf<T>();
           core::pack_dtw_panel<T>(dist_cfg, ys.data(), panel);
           const auto panel_view = panel.view();
-          thread_local std::vector<double> oob_table;
+          std::vector<double> &oob_table = oob_table_buf();
           if (oob_table.size() < n_oob * W) oob_table.resize(n_oob * W);
           for (std::size_t u = 0; u < n_oob; ++u)
-            packed_block(prep_oob[u], panel_view, std::span<double>(oob_table.data() + u * W, W));
+            packed_block(prep_oob.views[u], panel_view, std::span<double>(oob_table.data() + u * W, W));
 
-          for (std::size_t w = 0; w < count; ++w) {
-            const std::size_t point = i0 + w;
-            double best = std::numeric_limits<double>::infinity();
-            index_t label = 0;
-            std::uint64_t calls = 0;
-            for (index_t slot = 0; slot < k; ++slot) {
-              const index_t med = medoids[slot];
-              double raw_d = 0.0;
-              const index_t col = distances.sample_position[static_cast<std::size_t>(med)];
-              if (col >= 0) {
-                raw_d = distances.raw[point * m + static_cast<std::size_t>(col)];
-              } else if (point != static_cast<std::size_t>(med)) {
-                raw_d = oob_table[static_cast<std::size_t>(col_of_slot[slot]) * W + w];
-                ++calls;
-              }
-              const double d = core::detail::require_finite_medoid_distance(
-                raw_d, "one_batch_pam", point, slot, med);
-              if (d < best) {
-                best = d;
-                label = slot;
-              }
-            }
-            result.labels[point] = label;
-            point_cost[point] = best;
-            point_evaluations[point] = calls;
-          }
+          for (std::size_t w = 0; w < count; ++w)
+            assign_from_oob(i0 + w, [&oob_table, w, W](std::size_t oob_idx) { return oob_table[oob_idx * W + w]; });
         };
         run_openmp(assign_block, n_blocks, n > 64);
       }
@@ -628,3 +598,16 @@ core::ClusteringResult one_batch_pam(Problem &prob,
 }
 
 } // namespace dtwc::algorithms
+
+namespace dtwc::core::detail {
+
+std::size_t one_batch_pam_scratch(bool release) noexcept
+{
+  return held_bytes(release,
+                    dtwc::algorithms::oob_dists_buf(),
+                    dtwc::algorithms::oob_panel_buf<float>().rows,
+                    dtwc::algorithms::oob_panel_buf<data_t>().rows,
+                    dtwc::algorithms::oob_table_buf());
+}
+
+} // namespace dtwc::core::detail

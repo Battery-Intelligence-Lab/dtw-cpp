@@ -271,11 +271,9 @@ namespace detail {
     const std::size_t item = std::clamp<std::size_t>((cpu_points + 4 * team - 1) / (4 * team), 256, clara_block_points);
     const std::size_t items = (cpu_points + item - 1) / item;
     std::vector<double> nearest(samples * cpu_points); // item b's at samples * b * item, [s * count + i]
-    struct Slot {
-      std::exception_ptr failure;
-      std::size_t failed_at; // the first point of what failed; n: nothing did
-    };
-    std::vector<Slot> slots(team, Slot{ nullptr, n });
+    using FailureSlots = dtwc::detail::FailureSlots<std::size_t>;
+    using Slot = FailureSlots::Slot;
+    FailureSlots failures(team, n);
     const auto gpu_share = [&](Slot &slot) {
       std::size_t first = calibrate ? lead : 0;
       try {
@@ -283,7 +281,7 @@ namespace detail {
         first = lead;
         if (n_gpu > lead) on_gpu(lead, n_gpu);
       } catch (...) {
-        slot = { std::current_exception(), first };
+        FailureSlots::record(slot, first, std::current_exception());
       }
     };
     const auto cpu_item = [&](Slot &slot, std::size_t b) {
@@ -293,25 +291,22 @@ namespace detail {
         on_cpu(static_cast<index_t>(first), count, std::span<double>(nearest).subspan(samples * b * item, samples * count),
                false);
       } catch (...) {
-        slot = { std::current_exception(), first };
+        FailureSlots::record(slot, first, std::current_exception());
       }
     };
 #ifdef _OPENMP
 #pragma omp parallel num_threads(threads)
     {
-      Slot &slot = slots[static_cast<std::size_t>(omp_get_thread_num())];
+      Slot &slot = failures[static_cast<std::size_t>(omp_get_thread_num())];
       if (omp_get_thread_num() == 0) gpu_share(slot);
 #pragma omp for schedule(dynamic) nowait
       for (index_t b = 0; b < static_cast<index_t>(items); ++b) cpu_item(slot, static_cast<std::size_t>(b));
     }
 #else
-    gpu_share(slots[0]);
-    for (std::size_t b = 0; b < items; ++b) cpu_item(slots[0], b);
+    gpu_share(failures[0]);
+    for (std::size_t b = 0; b < items; ++b) cpu_item(failures[0], b);
 #endif
-    const Slot *lowest = &slots[0];
-    for (const Slot &slot : slots)
-      if (slot.failed_at < lowest->failed_at) lowest = &slot;
-    if (lowest->failed_at < n) std::rethrow_exception(lowest->failure);
+    failures.rethrow_lowest();
     for (std::size_t b = 0; b < items; ++b) {
       const std::size_t count = std::min(item, cpu_points - b * item);
       for (std::size_t s = 0; s < samples; ++s)

@@ -840,10 +840,8 @@ Problem::SeriesCheck::SeriesCheck(const Problem &problem, std::string_view where
   // isfinite() guard, so clustering would silently sum 1.8e308. The widest gap is
   // shortest vs longest. Soft-DTW, MSM and TWE ignore the band. Lengths are
   // timesteps, as the multivariate kernels count them.
-  const auto variant = problem.distance_.variant.variant;
   const int band = problem.distance_.band;
-  if (band >= 0 && data.size() > 1 && variant != core::DTWVariant::SoftDTW
-      && variant != core::DTWVariant::MSM && variant != core::DTWVariant::TWE) {
+  if (band >= 0 && data.size() > 1 && core::variant_uses_band(problem.distance_.variant.variant)) {
     std::size_t shortest = 0, longest = 0, low = data.series_length(0), high = low; // the first of each, as found
     for (std::size_t i = 1; i < static_cast<std::size_t>(data.size()); ++i) {
       const std::size_t length = data.series_length(i);
@@ -882,30 +880,10 @@ void Problem::SeriesCheck::refuse(std::size_t i) const
   const Data &data = problem_->data_;
   const std::string name = "series '" + std::string(data.name(i)) + "' (index " + std::to_string(i) + ")";
   const bool nan_is_missing = problem_->distance_.missing != core::MissingStrategy::Error;
-  if (data.is_f32()) detail::refuse_unusable(data.series_f32(i), name, where_, nan_is_missing);
-  detail::refuse_unusable(data.series(i), name, where_, nan_is_missing);
+  detail::refuse_series_unusable(data, i, name, where_, nan_is_missing);
 }
 
 namespace {
-
-/// A series' verdict in Problem::SeriesCheck: a byte a series, written by the thread that checks it.
-enum Verdict : unsigned char { usable, entirely_nan, refused };
-
-// The kernels take NaN and ±inf as numbers. ±inf gives inf, or inf − inf = NaN,
-// under any strategy; NaN is a missing value only to a missing-data strategy,
-// and otherwise poisons the recurrence (NaN also marks an uncomputed matrix
-// entry). The raw entry points' boundary test with no branch per value
-// (detail::all_usable), and under Interpolate whether a series has no observed
-// value: interpolate_linear_into() has nothing to interpolate it from. Always
-// inlined: GCC's inline-unit-growth cap in this file left it a call a series.
-DTWC_ALWAYS_INLINE Verdict verdict_of(const Data &data, std::size_t i, core::MissingStrategy missing)
-{
-  const auto of = [missing](const auto values) {
-    if (!detail::all_usable(values, missing != core::MissingStrategy::Error)) return refused;
-    return missing == core::MissingStrategy::Interpolate && all_missing(values) ? entirely_nan : usable;
-  };
-  return data.is_f32() ? of(data.series_f32(i)) : of(data.series(i));
-}
 
 /// Ask for the pages of series [first, first + count) of `data` when they lie in a mapped file: a view whose bytes an
 /// owner keeps (the Arrow IPC reader's), the series ascending within twice their values' bytes, as a file's rows lie.
@@ -947,15 +925,15 @@ void Problem::SeriesCheck::sweep(std::size_t first, std::size_t count, std::size
       ++b1;
     // Each series' verdict in its own byte; after the join, the first refused series in the block, the lowest of all
     // as the blocks go in order, throws.
-    std::vector<Verdict> verdicts(b1 - b0);
+    std::vector<detail::SeriesVerdict> verdicts(b1 - b0);
     auto task = [&](std::size_t i) {
       if (i == 0 && b0 == first) prefetch_series(data, end, ahead);
-      verdicts[i] = verdict_of(data, b0 + i, missing);
+      verdicts[i] = detail::series_verdict(data, b0 + i, missing);
     };
     run_openmp(task, verdicts.size(), verdicts.size() > 64, 16);
     for (std::size_t i = 0; i < verdicts.size(); ++i) {
-      if (verdicts[i] == refused) refuse(b0 + i);
-      if (verdicts[i] == entirely_nan) mark_ = std::min(mark_, b0 + i);
+      if (verdicts[i] == detail::SeriesVerdict::Refused) refuse(b0 + i);
+      if (verdicts[i] == detail::SeriesVerdict::EntirelyNaN) mark_ = std::min(mark_, b0 + i);
     }
     b0 = b1;
   }
@@ -965,16 +943,16 @@ void Problem::SeriesCheck::check_rows(std::span<const index_t> rows)
 {
   const Data &data = problem_->data_;
   const auto missing = problem_->distance_.missing;
-  std::vector<Verdict> verdicts(rows.size());
-  auto task = [&](std::size_t i) { verdicts[i] = verdict_of(data, static_cast<std::size_t>(rows[i]), missing); };
+  std::vector<detail::SeriesVerdict> verdicts(rows.size());
+  auto task = [&](std::size_t i) { verdicts[i] = detail::series_verdict(data, static_cast<std::size_t>(rows[i]), missing); };
   run_openmp(task, rows.size(), rows.size() > 64, 16);
   for (std::size_t i = 0; i < rows.size(); ++i) {
     const auto row = static_cast<std::size_t>(rows[i]);
-    if (verdicts[i] == refused) {
+    if (verdicts[i] == detail::SeriesVerdict::Refused) {
       sweep(0, row, 0); // a lower series refused comes first; nothing past row is read
       refuse(row);
     }
-    if (verdicts[i] == entirely_nan) mark_ = std::min(mark_, row);
+    if (verdicts[i] == detail::SeriesVerdict::EntirelyNaN) mark_ = std::min(mark_, row);
   }
 }
 
@@ -1004,6 +982,399 @@ void Problem::SeriesCheck::finish() const
  * @details Every pair through the bound lane functions or pair_distance (all DTW
  *          variants), block by block (see the body).
  */
+namespace {
+
+struct FillLayout
+{
+  std::size_t n = 0;
+  bool f32 = false;
+  std::size_t width = 0;
+  std::size_t h = 0;
+  std::size_t slab_bytes = 0;
+  std::size_t entry_bytes = 0;
+  std::size_t save_rows = 0;
+  std::vector<std::size_t> bounds;
+  std::size_t K = 0;
+  std::vector<std::size_t> first_column;
+  bool ragged = false;
+  bool lanes = false;
+  std::vector<std::size_t> order;
+  bool reordered = false;
+  std::size_t written = 0;
+  bool fresh = false;
+  bool use_slab_panels = false;
+  std::vector<std::size_t> slabs;
+};
+
+FillLayout build_fill_layout(const Data &data, const core::DistanceMatrix &distMat, std::size_t ram_limit,
+                             bool checkpoint_enabled, int checkpoint_save_interval, bool sized, bool has_block_fn)
+{
+  FillLayout layout;
+  layout.n = data.size();
+  layout.f32 = data.is_f32();
+  const std::size_t N = layout.n;
+  const std::size_t W = layout.f32 ? core::dtw_lanes<float> : core::dtw_lanes<data_t>;
+  layout.width = W;
+
+  std::size_t values = 0;
+  for (std::size_t i = 0; i < N; ++i) values += data.series_flat_size(i);
+  const std::size_t series_bytes = values * (layout.f32 ? sizeof(float) : sizeof(data_t));
+  layout.entry_bytes = core::value_bytes(distMat.width());
+  constexpr std::uint64_t tile_series_bytes = std::uint64_t{ 512 } << 10;
+  const auto raw_h = static_cast<std::size_t>(
+    std::min<std::uint64_t>(static_cast<std::uint64_t>(N) + W,
+                            (tile_series_bytes * static_cast<std::uint64_t>(N)) / std::max<std::uint64_t>(1, series_bytes)));
+  std::size_t h = std::max(16 * W, raw_h / W * W);
+  layout.slab_bytes = std::numeric_limits<std::size_t>::max();
+  if (distMat.is_mapped()) {
+    const std::size_t budget = ram_limit != 0 ? ram_limit : core::available_memory(); // 0: unknown, no limit
+    // What the series hold of the budget: a mapped view's values are the page cache's, its spans and names its own;
+    // any other's values (owned, decoded, read into a buffer) are this process's.
+    const std::size_t held = data.is_mapped() ? N * detail::view_series_bytes : series_bytes;
+    layout.slab_bytes =
+      budget == 0 ? std::size_t{ 1 } << 30 : std::min(budget > held ? (budget - held) / 8 : 0, std::size_t{ 1 } << 30);
+    h = std::min(h, std::max(W, layout.slab_bytes / (N * layout.entry_bytes) / W * W)); // the last tile-row fits a slab
+  }
+  layout.save_rows = checkpoint_enabled ? (static_cast<std::size_t>(checkpoint_save_interval) + W - 1) / W * W : N;
+  layout.h = std::min(std::min(h, layout.save_rows), N);
+
+  layout.bounds = { 0 }; // tile-row k: rows [bounds[k], bounds[k + 1])
+  for (std::size_t r = N % layout.h; r < N; r += layout.h)
+    if (r > 0) layout.bounds.push_back(r);
+  layout.bounds.push_back(N);
+  layout.K = layout.bounds.size() - 1;
+  layout.first_column.assign(layout.K + 1, 0); // tile-row k's columns: the tasks from first_column[k]
+  for (std::size_t k = 0; k < layout.K; ++k) layout.first_column[k + 1] = layout.first_column[k] + layout.bounds[k + 1];
+
+  layout.ragged = core::dtw_lanes_packed;
+  layout.lanes = has_block_fn;
+  layout.order.resize(N);
+  std::iota(layout.order.begin(), layout.order.end(), std::size_t{ 0 });
+  if (layout.ragged && layout.lanes)
+    for (std::size_t k = 0; k < layout.K; ++k)
+      std::stable_sort(layout.order.begin() + static_cast<std::ptrdiff_t>(layout.bounds[k]),
+                       layout.order.begin() + static_cast<std::ptrdiff_t>(layout.bounds[k + 1]),
+                       [&](std::size_t a, std::size_t b) { return data.series_flat_size(a) > data.series_flat_size(b); });
+  layout.reordered = !std::is_sorted(layout.order.begin(), layout.order.end());
+
+  layout.written = distMat.rows_written();
+  layout.fresh = !sized || (distMat.is_mapped() && layout.written == 0);
+  layout.use_slab_panels = layout.fresh && layout.ragged && layout.lanes && ram_limit == 0 && !data.is_mapped();
+
+  layout.slabs = { 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
+  while (layout.slabs.back() < layout.K) {
+    const std::size_t k0 = layout.slabs.back();
+    std::size_t end = k0 + 1;
+    while (end < layout.K && layout.bounds[end + 1] - layout.bounds[k0] <= layout.save_rows
+           && (core::packed_size(layout.bounds[end + 1]) - core::packed_size(layout.bounds[k0])) * layout.entry_bytes
+                <= layout.slab_bytes)
+      ++end;
+    layout.slabs.push_back(end);
+  }
+  return layout;
+}
+
+template <typename T, typename Column>
+void pack_slab_panels_for(std::size_t s, const FillLayout &layout, const core::DistanceConfig &distance,
+                          const std::vector<std::size_t> &tile_panel_offset, std::size_t total_panels,
+                          std::vector<core::PackedLanesPanel<T>> &panels, const Column &column)
+{
+  constexpr std::size_t Wt = core::dtw_lanes<T>;
+  panels.resize(total_panels);
+  auto pack_one = [&](std::size_t idx) {
+    std::size_t k = layout.slabs[s];
+    while (k + 1 < layout.slabs[s + 1] && idx >= tile_panel_offset[k + 1]) ++k;
+    const std::size_t p = idx - tile_panel_offset[k];
+    const std::size_t R0 = layout.bounds[k], R1 = layout.bounds[k + 1];
+    const std::size_t b0 = R0 + p * Wt;
+    const std::size_t cnt = std::min(Wt, R1 - b0);
+    std::array<std::span<const T>, Wt> ys;
+    for (std::size_t w = 0; w < Wt; ++w) ys[w] = column(layout.order[b0 + std::min(w, cnt - 1)]);
+    core::pack_dtw_panel<T>(distance, ys.data(), panels[idx]);
+  };
+  run_openmp(pack_one, total_panels, total_panels > 8);
+}
+
+bool build_slab_panels(std::size_t s, const FillLayout &layout, const Data &data, const core::DistanceConfig &distance,
+                       std::vector<std::size_t> &tile_panel_offset, std::vector<core::PackedLanesPanel<data_t>> &panels_f64,
+                       std::vector<core::PackedLanesPanel<float>> &panels_f32)
+{
+  if (!layout.use_slab_panels) return false;
+  constexpr std::size_t kMaxSlabPanelBytes = std::size_t{ 64 } << 20;
+  const std::size_t W = layout.width;
+  const std::size_t val_bytes = layout.f32 ? sizeof(float) : sizeof(data_t);
+  std::size_t total_panels = 0;
+  std::size_t slab_panel_bytes = 0;
+  bool fits = true;
+  for (std::size_t k = layout.slabs[s]; k < layout.slabs[s + 1]; ++k) {
+    tile_panel_offset[k] = total_panels;
+    const std::size_t R0 = layout.bounds[k], R1 = layout.bounds[k + 1];
+    const std::size_t k_panels = (R1 - R0 + W - 1) / W;
+    total_panels += k_panels;
+    for (std::size_t p = 0; p < k_panels && fits; ++p) {
+      const std::size_t p_max_len = data.series_flat_size(layout.order[R0 + p * W]); // sorted longest-first
+      const std::size_t row_bytes = W * val_bytes;
+      if (p_max_len > (kMaxSlabPanelBytes - slab_panel_bytes) / row_bytes)
+        fits = false;
+      else
+        slab_panel_bytes += p_max_len * row_bytes;
+    }
+  }
+  if (!fits) {
+    panels_f32.clear();
+    panels_f64.clear();
+    return false;
+  }
+  if (layout.f32)
+    pack_slab_panels_for(s, layout, distance, tile_panel_offset, total_panels, panels_f32,
+                         [&](std::size_t i) { return data.series_f32(i); });
+  else
+    pack_slab_panels_for(s, layout, distance, tile_panel_offset, total_panels, panels_f64,
+                         [&](std::size_t i) { return data.series(i); });
+  return true;
+}
+
+template <typename MatrixT, typename Column, typename BlockFn, typename PackedFn, typename PanelT, typename PairFn>
+void fill_tile_column(MatrixT *matrix, std::size_t k, std::size_t R0, std::size_t R1, std::size_t c,
+                      const FillLayout &layout, const core::DistanceConfig &distance,
+                      const std::vector<std::size_t> &tile_panel_offset, const Column &column,
+                      const BlockFn &block, const PackedFn &packed_block,
+                      const core::PackedLanesPanel<PanelT> *slab_panels, const PairFn &pair_dist)
+{
+  using T = typename decltype(column(c))::value_type;
+  constexpr std::size_t Wt = core::dtw_lanes<T>;
+  const auto computed = [matrix](std::size_t i, std::size_t j) { return !std::isnan(matrix[core::tri_index(i, j)]); };
+  const auto store = [matrix](std::size_t i, std::size_t j, double v) { matrix[core::tri_index(i, j)] = static_cast<MatrixT>(v); };
+  const auto x = column(c);
+
+  // Fast path for a fresh matrix with pre-packed tile-row panels: skips per-column Y transpose,
+  // skips per-column DDTW/Interpolate preprocessing of y, and avoids reading uncomputed NaN slots.
+  if (slab_panels && packed_block && (!layout.reordered || c < R0)) {
+    if (c >= R0) store(c, c, 0.0);
+    std::array<double, Wt> d;
+    std::size_t start = (c < R0) ? R0 : (c + 1);
+    const std::size_t rem = (start - R0) % Wt;
+    if (rem != 0 && start < R1) {
+      const std::size_t head_end = std::min(R1, start + (Wt - rem));
+      const std::size_t head_cnt = head_end - start;
+      std::array<std::span<const T>, Wt> ys;
+      for (std::size_t w = 0; w < Wt; ++w) ys[w] = column(start + std::min(w, head_cnt - 1));
+      block(x, ys, d);
+      for (std::size_t w = 0; w < head_cnt; ++w) store(c, start + w, d[w]);
+      start = head_end;
+    }
+    if (start < R1) {
+      const auto x_prep = core::prepare_dtw_query<T>(distance, x);
+      const auto *tile_panels = slab_panels + tile_panel_offset[k];
+      for (std::size_t b0 = start; b0 < R1; b0 += Wt) {
+        const std::size_t p = (b0 - R0) / Wt;
+        const std::size_t cnt = std::min(Wt, R1 - b0);
+        packed_block(x_prep, tile_panels[p].view(), d);
+        for (std::size_t w = 0; w < cnt; ++w) store(c, layout.order[b0 + w], d[w]);
+      }
+    }
+    return;
+  }
+
+  if (c >= R0 && (layout.fresh || !computed(c, c))) store(c, c, 0.0);
+  if (block) {
+    std::array<std::size_t, Wt> rows;
+    std::array<std::span<const T>, Wt> ys;
+    std::array<double, Wt> d;
+    // In index order the rows paired with c start after it.
+    for (std::size_t b = layout.reordered ? R0 : std::max(R0, c + 1); b < R1;) {
+      std::size_t count = 0;
+      for (; count < Wt && b < R1; ++b)
+        if (layout.order[b] > c && (layout.fresh || !computed(c, layout.order[b]))) rows[count++] = layout.order[b];
+      if (count == 0) break;
+      bool equal = true;
+      for (std::size_t w = 0; w < Wt; ++w) {
+        ys[w] = column(rows[std::min(w, count - 1)]);
+        equal = equal && ys[w].size() == x.size();
+      }
+      if (!(layout.ragged || equal)) continue;
+      block(x, ys, d);
+      for (std::size_t w = 0; w < count; ++w) store(c, rows[w], d[w]);
+    }
+  }
+  if (!(layout.fresh && block && layout.ragged)) {
+    for (std::size_t r = std::max(R0, c + 1); r < R1; ++r)
+      if (!computed(c, r)) store(c, r, pair_dist(c, r));
+  }
+}
+
+#ifdef DTWC_HAS_CUDA
+struct HybridFillState
+{
+  std::size_t clean = 0;
+  std::size_t calibrating = 0;
+  double share = -1.0;
+  double recorded = 0.0;
+  core::FillSplit hybrid{};
+};
+
+struct SlabUnits
+{
+  std::size_t kw = 0;
+  std::size_t ka = 0;
+  std::size_t columns = 0;
+  bool holds = false; // the slab's tile-rows hold both calibration units
+};
+
+inline std::size_t hybrid_entries(const FillLayout &layout, std::size_t ka, std::size_t kb)
+{
+  return core::packed_size(layout.bounds[kb]) - core::packed_size(layout.bounds[ka]);
+}
+
+inline SlabUnits slab_units(const FillLayout &layout, std::size_t clean, std::size_t k0, std::size_t k1)
+{
+  SlabUnits u{ k0, k0, 0, false };
+  while (u.kw < k1 && core::packed_size(layout.bounds[u.kw]) < clean) ++u.kw;
+  if (u.kw == k1) return u;
+  u.ka = u.kw;
+  while (u.ka + 1 < k1 && hybrid_entries(layout, u.kw, u.ka) < fill_calibration_pairs) ++u.ka;
+  const std::size_t last_rows = layout.bounds[k1] - layout.bounds[k1 - 1];
+  u.columns = (fill_calibration_pairs + last_rows - 1) / last_rows; // each holds last_rows pairs
+  u.holds = hybrid_entries(layout, u.kw, u.ka) >= fill_calibration_pairs && u.columns <= layout.bounds[k1 - 1];
+  return u;
+}
+
+template <typename MatrixT>
+HybridFillState init_hybrid_fill_state(const FillLayout &layout, bool sized, bool is_mapped, bool has_gpu,
+                                       bool gpu_fp32, double initial_share, double recorded_fp32, double recorded_fp64,
+                                       const MatrixT *matrix)
+{
+  HybridFillState state;
+  state.hybrid.entries = core::packed_size(layout.n);
+  state.hybrid.gpu_fp32 = gpu_fp32;
+  state.share = initial_share;
+  state.hybrid.split.gpu_share = initial_share;
+  state.recorded = gpu_fp32 ? recorded_fp32 : recorded_fp64;
+
+  // The GPU writes whole rows, so it takes only tile-rows with no entry computed.
+  if (has_gpu && sized) {
+    if (is_mapped) {
+      state.clean = core::packed_size(layout.written);
+    } else {
+      for (state.clean = core::packed_size(layout.n); state.clean > 0 && std::isnan(matrix[state.clean - 1]);)
+        --state.clean;
+    }
+  }
+  while (has_gpu && state.calibrating + 1 < layout.slabs.size()
+         && !slab_units(layout, state.clean, layout.slabs[state.calibrating], layout.slabs[state.calibrating + 1]).holds)
+    ++state.calibrating;
+  if (has_gpu && state.calibrating + 1 == layout.slabs.size() && state.share < 0) {
+    state.share = state.recorded;
+    state.hybrid.split.gpu_share = state.share;
+    state.hybrid.split.source = "recorded";
+  }
+  return state;
+}
+
+template <typename TaskFn>
+void fill_slab_hybrid(std::size_t slab, cuda::DistanceFill &gpu, core::DistanceMatrix &distMat, const FillLayout &layout,
+                      HybridFillState &state, const TaskFn &run_task)
+{
+  const std::size_t k0 = layout.slabs[slab], k1 = layout.slabs[slab + 1];
+  const SlabUnits u = slab_units(layout, state.clean, k0, k1);
+  const std::size_t kw = u.kw;
+  std::size_t from = kw, kg = kw; // the GPU's tile-rows [kw, kg), of which the region fills [from, kg)
+  bool calibrated_here = false;
+  if (kw < k1) {
+    if (slab == state.calibrating && state.share < 0) {
+      using clock = std::chrono::steady_clock;
+      const auto start = clock::now();
+      gpu.rows(layout.bounds[kw], layout.bounds[u.ka], distMat);
+      const auto gpu_done = clock::now();
+      const std::size_t g0 = layout.first_column[k1 - 1];
+      auto unit = [&](std::size_t i) { run_task(g0 + i); };
+      run_openmp(unit, u.columns, true, 8);
+      const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
+      const int threads = std::max(1, get_max_threads());
+      state.hybrid.split.gpu_rate =
+        gpu_time.count() > 0.0
+          ? static_cast<double>(hybrid_entries(layout, kw, u.ka) - (layout.bounds[u.ka] - layout.bounds[kw]))
+              / gpu_time.count()
+          : 0.0;
+      if (threads <= 1) {
+        state.hybrid.split.cpu_rate = 0.0;
+        state.share = 1.0;
+      } else {
+        state.hybrid.split.cpu_rate =
+          team_time.count() > 0.0
+            ? static_cast<double>(u.columns * (layout.bounds[k1] - layout.bounds[k1 - 1])) / team_time.count()
+                * (threads - 1) / threads
+            : 0.0;
+        const double denom = state.hybrid.split.gpu_rate + state.hybrid.split.cpu_rate;
+        state.share = denom > 0.0 ? (state.hybrid.split.gpu_rate / denom) : state.recorded;
+      }
+      state.hybrid.split.source = "calibrated";
+      state.hybrid.split.gpu_share = state.share;
+      from = u.ka;
+      calibrated_here = true;
+    }
+    const bool early = state.calibrating + 1 < layout.slabs.size() && slab < state.calibrating;
+    const double s_here = early ? state.recorded : state.share;
+    if (early) state.hybrid.early_share = state.recorded;
+    const auto cost = [&](std::size_t k) {
+      const auto on_gpu = static_cast<double>(hybrid_entries(layout, kw, k));
+      const auto on_cpu = static_cast<double>(hybrid_entries(layout, k, k1));
+      return std::max(on_gpu == 0 ? 0.0 : on_gpu / s_here, on_cpu == 0 ? 0.0 : on_cpu / (1.0 - s_here));
+    };
+    kg = slab == state.calibrating && s_here > 0 ? u.ka : kw;
+    for (std::size_t k = kg + 1; k <= k1; ++k)
+      if (cost(k) < cost(kg)) kg = k;
+    state.hybrid.gpu_entries += hybrid_entries(layout, kw, kg);
+  }
+
+  const std::size_t a0 = layout.first_column[k0], a1 = layout.first_column[kw];
+  const std::size_t b0 = layout.first_column[kg], b1 = layout.first_column[k1];
+  const bool skip_cal_cols = calibrated_here && kg < k1 && u.columns > 0;
+  const std::size_t cal_b = skip_cal_cols ? layout.first_column[k1 - 1] : b1;
+  const std::size_t cal_e = skip_cal_cols ? (layout.first_column[k1 - 1] + u.columns) : b1;
+  const std::size_t a_len = a1 - a0, b_len = cal_b - b0, c_len = b1 - cal_e;
+  const std::size_t cpu_tasks = a_len + b_len + c_len;
+  const std::size_t none = layout.first_column[layout.K];
+  using FailureSlots = detail::FailureSlots<std::size_t>;
+  FailureSlots failures(static_cast<std::size_t>(std::max(1, get_max_threads())), none);
+  const auto gpu_rows = [&](FailureSlots::Slot &slot) {
+    if (kg <= from) return;
+    try {
+      gpu.rows(layout.bounds[from], layout.bounds[kg], distMat);
+    } catch (...) {
+      FailureSlots::record(slot, layout.first_column[from], std::current_exception());
+    }
+  };
+  const auto cpu_task = [&](FailureSlots::Slot &slot, std::size_t i) {
+    const std::size_t g = i < a_len ? a0 + i : (i < a_len + b_len ? b0 + (i - a_len) : cal_e + (i - a_len - b_len));
+    if (g > slot.failed_at) return;
+    try {
+      run_task(g);
+    } catch (...) {
+      FailureSlots::record(slot, g, std::current_exception());
+    }
+  };
+#  ifdef _OPENMP
+  const auto end = static_cast<index_t>(cpu_tasks);
+  const int threads = static_cast<int>(failures.size());
+  const index_t chunk = omp_chunk_size_for(end, 8, threads);
+#    pragma omp parallel num_threads(threads)
+  {
+    auto &slot = failures[static_cast<std::size_t>(omp_get_thread_num())];
+    if (omp_get_thread_num() == 0) gpu_rows(slot);
+#    pragma omp for schedule(dynamic, chunk) nowait
+    for (index_t i = 0; i < end; ++i) cpu_task(slot, static_cast<std::size_t>(i));
+  }
+#  else
+  gpu_rows(failures[0]);
+  for (std::size_t i = 0; i < cpu_tasks; ++i) cpu_task(failures[0], i);
+#  endif
+  failures.rethrow_lowest();
+}
+#endif
+
+} // namespace
+
 void Problem::fillDistanceMatrix_BruteForce()
 {
   const size_t N = data_.size();
@@ -1032,394 +1403,75 @@ void Problem::fillDistanceMatrix_BruteForce()
   if (distMat.size() != N) distMat.resize(N);
   if (N == 0) return;
 
-  // Cache-blocked lower-triangle fill: tile-rows [R0, R1) of height h (~512 KiB of
-  // series so R stays L2-resident across consecutive column tasks c) grouped into
-  // slabs for parallel execution, checkpointing, and bounded mapped-matrix flushes.
-  // Within each tile-row, series are ordered longest-first when packed SIMD lanes
-  // are active so W-lane ragged/banded blocks minimize wasted tail steps.
-  const size_t W = f32 ? core::dtw_lanes<float> : core::dtw_lanes<data_t>;
-  size_t values = 0;
-  for (size_t i = 0; i < N; ++i) values += data_.series_flat_size(i);
-  const size_t series_bytes = values * (f32 ? sizeof(float) : sizeof(data_t));
-  const size_t entry_bytes = core::value_bytes(distMat.width());
-  constexpr std::uint64_t tile_series_bytes = std::uint64_t{ 512 } << 10;
-  const auto raw_h = static_cast<size_t>(
-    std::min<std::uint64_t>(static_cast<std::uint64_t>(N) + W,
-                            (tile_series_bytes * static_cast<std::uint64_t>(N)) / std::max<std::uint64_t>(1, series_bytes)));
-  size_t h = std::max(16 * W, raw_h / W * W);
-  size_t slab_bytes = std::numeric_limits<size_t>::max();
-  if (distMat.is_mapped()) {
-    const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
-    // What the series hold of the budget: a mapped view's values are the page cache's, its spans and names its own;
-    // any other's values (owned, decoded, read into a buffer) are this process's.
-    const size_t held = data_.is_mapped() ? N * detail::view_series_bytes : series_bytes;
-    slab_bytes = budget == 0 ? size_t{ 1 } << 30 : std::min(budget > held ? (budget - held) / 8 : 0, size_t{ 1 } << 30);
-    h = std::min(h, std::max(W, slab_bytes / (N * entry_bytes) / W * W)); // the last tile-row fits a slab
-  }
-  const size_t save_rows =
-    checkpoint.enabled ? (static_cast<size_t>(checkpoint.save_interval) + W - 1) / W * W : N;
-  h = std::min(std::min(h, save_rows), N);
-
-  std::vector<size_t> bounds{ 0 }; // tile-row k: rows [bounds[k], bounds[k + 1])
-  for (size_t r = N % h; r < N; r += h)
-    if (r > 0) bounds.push_back(r);
-  bounds.push_back(N);
-  const size_t K = bounds.size() - 1;
-  std::vector<size_t> first_column(K + 1, 0); // tile-row k's columns: the tasks from first_column[k]
-  for (size_t k = 0; k < K; ++k) first_column[k + 1] = first_column[k] + bounds[k + 1];
-
-  const bool ragged = core::dtw_lanes_packed;
-  const bool lanes = f32 ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
-  std::vector<size_t> order(N);
-  std::iota(order.begin(), order.end(), size_t{ 0 });
-  if (ragged && lanes)
-    for (size_t k = 0; k < K; ++k)
-      std::stable_sort(order.begin() + static_cast<std::ptrdiff_t>(bounds[k]),
-                       order.begin() + static_cast<std::ptrdiff_t>(bounds[k + 1]),
-                       [&](size_t a, size_t b) { return data_.series_flat_size(a) > data_.series_flat_size(b); });
-  const bool reordered = !std::is_sorted(order.begin(), order.end());
-
+  const bool has_block_fn = f32 ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
+  const FillLayout layout =
+    build_fill_layout(data_, distMat, ram_limit_, checkpoint.enabled, checkpoint.save_interval, sized, has_block_fn);
   const auto packed_fn_f64 = core::resolve_dtw_packed_block_fn<data_t>(distance_);
   const auto packed_fn_f32 = f32 ? core::resolve_dtw_packed_block_fn<float>(distance_)
                                  : decltype(core::resolve_dtw_packed_block_fn<float>(distance_)){};
-  const size_t written = distMat.rows_written();
-  const bool fresh = !sized || (distMat.is_mapped() && written == 0);
-  const bool use_slab_panels = fresh && ragged && lanes && ram_limit_ == 0 && !data_.is_mapped();
-  constexpr size_t kMaxSlabPanelBytes = size_t{ 64 } << 20;
   bool slab_panels_ready = false;
-  std::vector<size_t> tile_panel_offset(K + 1, 0);
+  std::vector<size_t> tile_panel_offset(layout.K + 1, 0);
   std::vector<core::PackedLanesPanel<data_t>> panels_f64;
   std::vector<core::PackedLanesPanel<float>> panels_f32;
 
-  // `matrix` holds the values at the matrix's width: a pair is NaN until computed, then its distance rounded to it.
-  auto fill_column = [&](auto *matrix, size_t k, size_t R0, size_t R1, size_t c, auto column, const auto &block,
-                         const auto &packed_block, const auto *slab_panels) {
-    using T = typename decltype(column(c))::value_type;
-    using V = std::remove_pointer_t<decltype(matrix)>;
-    constexpr size_t Wt = core::dtw_lanes<T>;
-    const auto computed = [matrix](size_t i, size_t j) { return !std::isnan(matrix[core::tri_index(i, j)]); };
-    const auto store = [matrix](size_t i, size_t j, double v) { matrix[core::tri_index(i, j)] = static_cast<V>(v); };
-    const auto x = column(c);
-
-    // Fast path for a fresh matrix with pre-packed tile-row panels: skips per-column Y transpose,
-    // skips per-column DDTW/Interpolate preprocessing of y, and avoids reading uncomputed NaN slots.
-    if (slab_panels && packed_block && (!reordered || c < R0)) {
-      if (c >= R0) store(c, c, 0.0);
-      std::array<double, Wt> d;
-      size_t start = (c < R0) ? R0 : (c + 1);
-      const size_t rem = (start - R0) % Wt;
-      if (rem != 0 && start < R1) {
-        const size_t head_end = std::min(R1, start + (Wt - rem));
-        const size_t head_cnt = head_end - start;
-        std::array<std::span<const T>, Wt> ys;
-        for (size_t w = 0; w < Wt; ++w) ys[w] = column(start + std::min(w, head_cnt - 1));
-        block(x, ys, d);
-        for (size_t w = 0; w < head_cnt; ++w) store(c, start + w, d[w]);
-        start = head_end;
-      }
-      if (start < R1) {
-        const auto x_prep = core::prepare_dtw_query<T>(distance_, x);
-        const auto *tile_panels = slab_panels + tile_panel_offset[k];
-        for (size_t b0 = start; b0 < R1; b0 += Wt) {
-          const size_t p = (b0 - R0) / Wt;
-          const size_t cnt = std::min(Wt, R1 - b0);
-          packed_block(x_prep, tile_panels[p].view(), d);
-          for (size_t w = 0; w < cnt; ++w) store(c, order[b0 + w], d[w]);
-        }
-      }
-      return;
-    }
-
-    if (c >= R0 && (fresh || !computed(c, c))) store(c, c, 0.0);
-    if (block) {
-      std::array<size_t, Wt> rows;
-      std::array<std::span<const T>, Wt> ys;
-      std::array<double, Wt> d;
-      // In index order the rows paired with c start after it.
-      for (size_t b = reordered ? R0 : std::max(R0, c + 1); b < R1;) {
-        size_t count = 0;
-        for (; count < Wt && b < R1; ++b)
-          if (order[b] > c && (fresh || !computed(c, order[b]))) rows[count++] = order[b];
-        if (count == 0) break;
-        bool equal = true;
-        for (size_t w = 0; w < Wt; ++w) {
-          ys[w] = column(rows[std::min(w, count - 1)]);
-          equal = equal && ys[w].size() == x.size();
-        }
-        if (!(ragged || equal)) continue;
-        block(x, ys, d);
-        for (size_t w = 0; w < count; ++w) store(c, rows[w], d[w]);
-      }
-    }
-    if (!(fresh && block && ragged)) {
-      for (size_t r = std::max(R0, c + 1); r < R1; ++r)
-        if (!computed(c, r)) store(c, r, pair_distance(c, r));
-    }
-  };
-  auto task = [&](auto *matrix, size_t g) {
-    const size_t k = static_cast<size_t>(std::upper_bound(first_column.begin(), first_column.end(), g)
-                                         - first_column.begin()) - 1;
-    const size_t c = g - first_column[k];
+  const auto pair_dist = [this](std::size_t ci, std::size_t ri) { return pair_distance(ci, ri); };
+  auto task = [&](auto *matrix, std::size_t g) {
+    const std::size_t k = static_cast<std::size_t>(std::upper_bound(layout.first_column.begin(),
+                                                                    layout.first_column.end(), g)
+                                                   - layout.first_column.begin())
+                          - 1;
+    const std::size_t c = g - layout.first_column[k];
     if (f32)
-      fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
-                  dtw_block_fn_f32_, packed_fn_f32, slab_panels_ready ? panels_f32.data() : nullptr);
+      fill_tile_column(matrix, k, layout.bounds[k], layout.bounds[k + 1], c, layout, distance_, tile_panel_offset,
+                       [&](std::size_t i) { return data_.series_f32(i); }, dtw_block_fn_f32_, packed_fn_f32,
+                       slab_panels_ready ? panels_f32.data() : nullptr, pair_dist);
     else // Data's accessor, as above: GCC's inline-unit-growth cap leaves the Problem::series wrapper out of line here
-      fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series(i); }, dtw_block_fn_,
-                  packed_fn_f64, slab_panels_ready ? panels_f64.data() : nullptr);
+      fill_tile_column(matrix, k, layout.bounds[k], layout.bounds[k + 1], c, layout, distance_, tile_panel_offset,
+                       [&](std::size_t i) { return data_.series(i); }, dtw_block_fn_, packed_fn_f64,
+                       slab_panels_ready ? panels_f64.data() : nullptr, pair_dist);
   };
 
-  std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
-  while (slabs.back() < K) {
-    const size_t k0 = slabs.back();
-    size_t end = k0 + 1;
-    while (end < K && bounds[end + 1] - bounds[k0] <= save_rows
-           && (core::packed_size(bounds[end + 1]) - core::packed_size(bounds[k0])) * entry_bytes <= slab_bytes)
-      ++end;
-    slabs.push_back(end);
-  }
   // Hashed once: every save of this fill writes the same identity.
   const auto identity = checkpoint.enabled ? distance_checkpoint_identity() : core::DistanceMatrix::fingerprint_type{};
   const path_t file = checkpoint.enabled ? checkpoint_path(*this, checkpoint.directory) : path_t{};
-  // A mapped file's rows from `written` on were never written (no NaN prefill): each slab makes them NaN just
-  // before it computes them, and a wait that leaves rows on the device records them written (flush_rows).
-  size_t waiting = 0; // the first row of the slabs whose write-back no wait has covered
+  std::size_t waiting = 0; // the first row of the slabs whose write-back no wait has covered
 #ifdef DTWC_HAS_CUDA
-  // cpu+gpu: the entries of tile-rows [ka, kb), the diagonal's included (the GPU writes whole rows).
-  const auto entries = [&](size_t ka, size_t kb) {
-    return core::packed_size(bounds[kb]) - core::packed_size(bounds[ka]);
-  };
-  core::FillSplit hybrid;
-  hybrid.entries = core::packed_size(N);
-  hybrid.gpu_fp32 = gpu && gpu->fp32();
-  double share = gpu_share_; // s: forced, else -1 until the calibrating slab measures it (or none can: recorded)
-  hybrid.split.gpu_share = share;
-  const double recorded = gpu && gpu->fp32() ? recorded_fill_gpu_share_fp32 : recorded_fill_gpu_share;
+  HybridFillState hybrid_state;
 #endif
   distMat.visit([&](auto *matrix) {
 #ifdef DTWC_HAS_CUDA
-    // The GPU writes whole rows, so it takes only tile-rows with no entry computed: those from a mapped file's first
-    // row never written, or from a heap matrix's last computed entry on (none in one this fill sized). `clean` is the
-    // first packed slot from which nothing is computed.
-    size_t clean = 0;
-    if (gpu && sized) {
-      if (distMat.is_mapped())
-        clean = core::packed_size(written);
-      else
-        for (clean = core::packed_size(N); clean > 0 && std::isnan(matrix[clean - 1]);) --clean;
-    }
-    // Hybrid cpu+gpu slab partitioning over tile-rows [k0, k1):
-    //   - Tile-rows are assigned whole: GPU fills [kw, kg), CPU fills the rest.
-    //   - kw skips any already-computed prefix so resumed fills never recompute entries.
-    //   - If gpu_share_ < 0, the first slab holding both calibration units measures
-    //     sequential GPU and CPU pair rates before launching the concurrent OpenMP
-    //     region (thread 0 drives CUDA; all threads drain remaining CPU column tasks).
-    struct SlabUnits {
-      size_t kw, ka, columns;
-      bool holds; // the slab's tile-rows hold both calibration units
-    };
-    const auto units = [&](size_t k0, size_t k1) {
-      SlabUnits u{ k0, k0, 0, false };
-      while (u.kw < k1 && core::packed_size(bounds[u.kw]) < clean) ++u.kw;
-      if (u.kw == k1) return u;
-      u.ka = u.kw;
-      while (u.ka + 1 < k1 && entries(u.kw, u.ka) < fill_calibration_pairs) ++u.ka;
-      const size_t last_rows = bounds[k1] - bounds[k1 - 1];
-      u.columns = (fill_calibration_pairs + last_rows - 1) / last_rows; // each holds last_rows pairs
-      u.holds = entries(u.kw, u.ka) >= fill_calibration_pairs && u.columns <= bounds[k1 - 1];
-      return u;
-    };
-    size_t calibrating = 0; // the calibrating slab; slabs.size() - 1 where none holds both units
-    while (gpu && calibrating + 1 < slabs.size() && !units(slabs[calibrating], slabs[calibrating + 1]).holds)
-      ++calibrating;
-    if (gpu && calibrating + 1 == slabs.size() && share < 0) {
-      share = recorded;
-      hybrid.split.gpu_share = share;
-      hybrid.split.source = "recorded";
-    }
-    const auto on_both = [&](size_t slab) {
-      const size_t k0 = slabs[slab], k1 = slabs[slab + 1];
-      const SlabUnits u = units(k0, k1);
-      const size_t kw = u.kw;
-      size_t from = kw, kg = kw; // the GPU's tile-rows [kw, kg), of which the region fills [from, kg)
-      bool calibrated_here = false;
-      if (kw < k1) {
-        if (slab == calibrating && share < 0) {
-          using clock = std::chrono::steady_clock;
-          const auto start = clock::now();
-          gpu->rows(bounds[kw], bounds[u.ka], distMat);
-          const auto gpu_done = clock::now();
-          const size_t g0 = first_column[k1 - 1];
-          auto unit = [&](size_t i) { task(matrix, g0 + i); };
-          run_openmp(unit, u.columns, true, 8);
-          const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
-          const int threads = std::max(1, get_max_threads());
-          hybrid.split.gpu_rate =
-            gpu_time.count() > 0.0
-              ? static_cast<double>(entries(kw, u.ka) - (bounds[u.ka] - bounds[kw])) / gpu_time.count()
-              : 0.0;
-          if (threads <= 1) {
-            hybrid.split.cpu_rate = 0.0;
-            share = 1.0;
-          } else {
-            hybrid.split.cpu_rate =
-              team_time.count() > 0.0
-                ? static_cast<double>(u.columns * (bounds[k1] - bounds[k1 - 1])) / team_time.count() * (threads - 1)
-                    / threads
-                : 0.0;
-            const double denom = hybrid.split.gpu_rate + hybrid.split.cpu_rate;
-            share = denom > 0.0 ? (hybrid.split.gpu_rate / denom) : recorded;
-          }
-          hybrid.split.source = "calibrated";
-          hybrid.split.gpu_share = share;
-          from = u.ka;
-          calibrated_here = true;
-        }
-        // Before the calibrating slab, the recorded ratio; with none, s everywhere (forced, or the recorded ratio).
-        const bool early = calibrating + 1 < slabs.size() && slab < calibrating;
-        const double s_here = early ? recorded : share;
-        if (early) hybrid.early_share = recorded; // said in the fill's line: the share printed did not split this slab
-        const auto cost = [&](size_t k) { // the slab's predicted time, its entries over each device's share
-          const auto on_gpu = static_cast<double>(entries(kw, k)), on_cpu = static_cast<double>(entries(k, k1));
-          return std::max(on_gpu == 0 ? 0.0 : on_gpu / s_here, on_cpu == 0 ? 0.0 : on_cpu / (1.0 - s_here));
-        };
-        kg = slab == calibrating && s_here > 0 ? u.ka : kw;
-        for (size_t k = kg + 1; k <= k1; ++k)
-          if (cost(k) < cost(kg)) kg = k;
-        hybrid.gpu_entries += entries(kw, kg);
-      }
-
-      const size_t a0 = first_column[k0], a1 = first_column[kw], b0 = first_column[kg], b1 = first_column[k1];
-      const bool skip_cal_cols = calibrated_here && kg < k1 && u.columns > 0;
-      const size_t cal_b = skip_cal_cols ? first_column[k1 - 1] : b1;
-      const size_t cal_e = skip_cal_cols ? (first_column[k1 - 1] + u.columns) : b1;
-      const size_t a_len = a1 - a0, b_len = cal_b - b0, c_len = b1 - cal_e;
-      const size_t cpu_tasks = a_len + b_len + c_len;
-      const size_t none = first_column[K]; // a slot's failed_at where nothing failed
-      struct Slot {
-        std::exception_ptr failure;
-        size_t failed_at; // the column task of what failed (the GPU's: its first tile-row's first)
-      };
-      std::vector<Slot> slots(static_cast<size_t>(std::max(1, get_max_threads())), Slot{ nullptr, none });
-      const auto gpu_rows = [&](Slot &slot) {
-        if (kg <= from) return;
-        try {
-          gpu->rows(bounds[from], bounds[kg], distMat);
-        } catch (...) {
-          slot = { std::current_exception(), first_column[from] };
-        }
-      };
-      const auto cpu_task = [&](Slot &slot, size_t i) {
-        const size_t g = i < a_len ? a0 + i : (i < a_len + b_len ? b0 + (i - a_len) : cal_e + (i - a_len - b_len));
-        if (g > slot.failed_at) return;
-        try {
-          task(matrix, g);
-        } catch (...) {
-          slot = { std::current_exception(), g };
-        }
-      };
-#  ifdef _OPENMP
-      const auto end = static_cast<index_t>(cpu_tasks);
-      const int threads = static_cast<int>(slots.size());
-      const index_t chunk = omp_chunk_size_for(end, 8, threads);
-#    pragma omp parallel num_threads(threads)
-      {
-        Slot &slot = slots[static_cast<size_t>(omp_get_thread_num())];
-        if (omp_get_thread_num() == 0) gpu_rows(slot);
-#    pragma omp for schedule(dynamic, chunk) nowait
-        for (index_t i = 0; i < end; ++i) cpu_task(slot, static_cast<size_t>(i));
-      }
-#  else
-      gpu_rows(slots[0]);
-      for (size_t i = 0; i < cpu_tasks; ++i) cpu_task(slots[0], i);
-#  endif
-      const Slot *lowest = &slots[0];
-      for (const Slot &slot : slots)
-        if (slot.failed_at < lowest->failed_at) lowest = &slot;
-      if (lowest->failed_at < none) std::rethrow_exception(lowest->failure);
-    };
+    hybrid_state = init_hybrid_fill_state(layout, sized, distMat.is_mapped(), static_cast<bool>(gpu), gpu && gpu->fp32(),
+                                          gpu_share_, recorded_fill_gpu_share_fp32, recorded_fill_gpu_share, matrix);
 #endif
-    distMat.prefetch_rows(0, bounds[slabs[1]]);
-    for (size_t s = 0; s + 1 < slabs.size(); ++s) {
-      const size_t r0 = bounds[slabs[s]], r1 = bounds[slabs[s + 1]];
-      if (s + 2 < slabs.size()) distMat.prefetch_rows(r1, bounds[slabs[s + 2]]);
-      distMat.clear_rows(std::max(r0, written), r1);
-      slab_panels_ready = false;
-      if (use_slab_panels) {
-        const size_t val_bytes = f32 ? sizeof(float) : sizeof(data_t);
-        size_t total_panels = 0;
-        size_t slab_panel_bytes = 0;
-        bool fits = true;
-        for (size_t k = slabs[s]; k < slabs[s + 1]; ++k) {
-          tile_panel_offset[k] = total_panels;
-          const size_t R0 = bounds[k], R1 = bounds[k + 1];
-          const size_t k_panels = (R1 - R0 + W - 1) / W;
-          total_panels += k_panels;
-          for (size_t p = 0; p < k_panels && fits; ++p) {
-            const size_t p_max_len = data_.series_flat_size(order[R0 + p * W]); // sorted longest-first
-            const size_t row_bytes = W * val_bytes;
-            if (p_max_len > (kMaxSlabPanelBytes - slab_panel_bytes) / row_bytes)
-              fits = false;
-            else
-              slab_panel_bytes += p_max_len * row_bytes;
-          }
-        }
-        if (fits) {
-          auto build_slab_panels = [&](auto &panels, auto column) {
-            using T = typename decltype(column(0))::value_type;
-            constexpr size_t Wt = core::dtw_lanes<T>;
-            panels.resize(total_panels);
-            auto pack_one = [&](size_t idx) {
-              size_t k = slabs[s];
-              while (k + 1 < slabs[s + 1]
-                     && idx >= tile_panel_offset[k + 1]) {
-                ++k;
-              }
-              const size_t p = idx - tile_panel_offset[k];
-              const size_t R0 = bounds[k], R1 = bounds[k + 1];
-              const size_t b0 = R0 + p * Wt;
-              const size_t cnt = std::min(Wt, R1 - b0);
-              std::array<std::span<const T>, Wt> ys;
-              for (size_t w = 0; w < Wt; ++w) ys[w] = column(order[b0 + std::min(w, cnt - 1)]);
-              core::pack_dtw_panel<T>(distance_, ys.data(), panels[idx]);
-            };
-            run_openmp(pack_one, total_panels, total_panels > 8);
-          };
-          if (f32)
-            build_slab_panels(panels_f32, [&](size_t i) { return data_.series_f32(i); });
-          else
-            build_slab_panels(panels_f64, [&](size_t i) { return data_.series(i); });
-          slab_panels_ready = true;
-        } else {
-          panels_f32.clear();
-          panels_f64.clear();
-        }
-      }
-      // run_openmp catches inside the parallel region and rethrows the lowest
-      // column's failure after the join; a failed pair stays uncomputed.
-      const size_t first = first_column[slabs[s]];
-      auto slab_task = [&](size_t i) { task(matrix, first + i); };
+    distMat.prefetch_rows(0, layout.bounds[layout.slabs[1]]);
+    for (std::size_t s = 0; s + 1 < layout.slabs.size(); ++s) {
+      const std::size_t r0 = layout.bounds[layout.slabs[s]], r1 = layout.bounds[layout.slabs[s + 1]];
+      if (s + 2 < layout.slabs.size()) distMat.prefetch_rows(r1, layout.bounds[layout.slabs[s + 2]]);
+      distMat.clear_rows(std::max(r0, layout.written), r1);
+      slab_panels_ready = build_slab_panels(s, layout, data_, distance_, tile_panel_offset, panels_f64, panels_f32);
+
+      const std::size_t first = layout.first_column[layout.slabs[s]];
+      auto slab_task = [&](std::size_t i) { task(matrix, first + i); };
 #ifdef DTWC_HAS_CUDA
       if (gpu)
-        on_both(s);
+        fill_slab_hybrid(s, *gpu, distMat, layout, hybrid_state, [&](std::size_t g) { task(matrix, g); });
       else
 #endif
-        run_openmp(slab_task, first_column[slabs[s + 1]] - first, true, 8);
+        run_openmp(slab_task, layout.first_column[layout.slabs[s + 1]] - first, true, 8);
       refuse_float32_overflow(r0, r1);
-      // On this thread after the join, so a save never sees a slab half written;
-      // tagged with metric(), the metric this fill computed (both autosave sites).
       if (checkpoint.enabled)
         distMat.write(file, identity, r0, r1);
       else {
-        distMat.flush_rows(r0, r1, false);                       // this slab's write-back starts
-        if (written < N) distMat.flush_rows(waiting, r0, true); // the slabs before it are on the device
+        distMat.flush_rows(r0, r1, false);
+        if (layout.written < N) distMat.flush_rows(waiting, r0, true);
       }
       waiting = r0;
     }
   });
-  if (written < N) // every row on the device: the file records them all written
+  if (layout.written < N) // every row on the device: the file records them all written
     distMat.flush_rows(distMat.rows_written(), N, true);
 #ifdef DTWC_HAS_CUDA
-  if (gpu) fill_split_ = hybrid;
+  if (gpu) fill_split_ = hybrid_state.hybrid;
 #endif
 }
 
@@ -1490,11 +1542,9 @@ void Problem::fill_distance_matrix()
     // L2 is L1 on the univariate series the GPU routes take.
     opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     opts.verbose = verbose_;
-#  if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
     const auto parallel = [](std::size_t count, const std::function<void(std::size_t)> &task) {
       run_openmp(task, count, count > 64);
     };
-#  endif
 #  if defined(DTWC_HAS_CUDA)
     // CUDA reads the Float64 series (checked above) where they lie, a view's (a mapped Arrow IPC file's, a decoded
     // record batch's) or owned: this thread's team pads them into its staging, each its own rows; no copy is made.
@@ -1519,12 +1569,6 @@ void Problem::fill_distance_matrix()
   if (verbose_)
     std::cout << "Distance matrix has been filled!" << '\n';
 }
-/**
- * @brief Clusters the series by method().
- * @details PAM, OneBatchPAM, CLARA and the hierarchical cut return their own result.
- * Lloyd, MIP, LR-core and TADPole leave their clustering in the Problem; its cost
- * is then find_total_cost().
- */
 core::ClusteringResult Problem::cluster()
 {
   require_clusterable(Nc, size());
@@ -1716,8 +1760,10 @@ void Problem::cluster_by_kmedoids_lloyd()
 
       assign_clusters();
       if (verbose_) {
+        const auto prev_prec = std::cout.precision();
         std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
                   << find_total_cost() << ".\n";
+        std::cout.precision(prev_prec);
         print_clusters();
       }
       calculate_medoids(); // Changes centroids_ind

@@ -2,7 +2,9 @@
  * @file read_data.hpp
  * @brief dtwc::read_data: the one way from a CSV/TSV or Arrow IPC path to Data, for dtwc_cl, dtwc::load and Python's
  *        and MATLAB's load(). Parquet is dtwc::io::read_arrow's (io/read_arrow.hpp, dtwc_io).
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Oct 2026
  */
 
 #pragma once

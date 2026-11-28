@@ -1,7 +1,9 @@
 /**
  * @file api.hpp
  * @brief Tier-1 DTWC++ 2.0 API: device -> load -> cluster -> Result.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #pragma once
@@ -50,11 +52,17 @@ class Dataset
 public:
   using series_type = std::vector<std::vector<data_t>>;
 
+  /// True if this dataset refers to a filesystem path rather than in-memory series.
   bool is_path() const noexcept;
+  /// Return the filesystem path; throws InvalidInput if this dataset is in memory.
   const std::filesystem::path &path() const;
+  /// Dataset name used as the default run/output identifier.
   const std::string &name() const noexcept { return name_; }
+  /// Number of leading columns to skip when materializing series.
   index_t skip_cols() const noexcept { return skip_cols_; }
+  /// Number of leading rows (or in-memory series) to skip.
   index_t skip_rows() const noexcept { return skip_rows_; }
+  /// Field delimiter character ('\\0' means infer from file extension).
   char delimiter() const noexcept { return delimiter_; }
   /// The precision cluster() stores the series in, as `--dtype` does.
   core::Precision dtype() const noexcept { return dtype_; }
@@ -116,7 +124,9 @@ Dataset load(Dataset::series_type, index_t, std::same_as<char> auto,
 class Result
 {
 public:
+  /// Cluster label in [0, k) assigned to each input series.
   const std::vector<index_t> &labels() const noexcept;
+  /// Zero-based indices of the k selected medoid series.
   const std::vector<index_t> &medoids() const noexcept;
   /** @throws InvalidInput for a streamed run (its series over --ram-limit, which FastCLARA read a record batch at a
    *  time): its Problem holds no series, so no distances to score. */
@@ -134,14 +144,16 @@ public:
   /** The run report: the run's machine, memory plan, stages, algorithm and result, in plain text, as run() writes it
    *  to `<name>_report.txt`; empty where the run was told `report = false` (dtwc_cl --no-report). */
   const std::string &report() const noexcept { return report_; }
+  /// Total clustering objective cost (sum of distances to assigned medoids).
   double cost() const noexcept { return cost_; }
   /** Where the run computed, as `--device` names it: `cpu`, `gpu`, `gpu:N`, `cpu+gpu` or `cpu+gpu:N`; `cpu` where
    *  a GPU request fell back to it (Config::fallback). */
   const std::string &device() const noexcept { return device_; }
   /** The method that ran, `auto` resolved (name_of(method_names, m) spells it). */
   Method method() const noexcept { return method_; }
-  /** The method's iteration count, and whether it converged within max_iter. */
+  /** The method's iteration count. */
   int iterations() const noexcept { return iterations_; }
+  /** True if the method converged within max_iter (always true for exact/non-iterative methods). */
   bool converged() const noexcept { return converged_; }
 
 private:
@@ -175,6 +187,7 @@ private:
  */
 Result cluster(const Dataset &data, index_t k, std::string_view method = "auto",
                int band = -1, std::string_view device = "", int max_iter = 100);
+/// @overload
 Result cluster(Dataset &&data, index_t k, std::string_view method = "auto",
                int band = -1, std::string_view device = "", int max_iter = 100);
 
@@ -191,11 +204,13 @@ Result cluster(Dataset &&data, index_t k, std::string_view method = "auto",
  * Dataset passed as an rvalue hands its series to the run; an lvalue one is copied.
  */
 Result cluster(const Dataset &data, const Config &cfg);
+/// @overload
 Result cluster(Dataset &&data, const Config &cfg);
 
 /** Cross-collection DTW distance matrix over two `Dataset` handles (path or memory), each read with the
  *  reader options it was made with; `cfg`'s are checked against them as cluster(data, cfg) checks them. */
 std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg);
+/// @overload
 std::vector<double> cdist(const Dataset &X, const Dataset &Y);
 
 } // namespace dtwc

@@ -3,7 +3,9 @@
  * @brief FastCLARA over series read piece by piece from a file, on any reader of its pieces: Parquet's row groups
  *        (io::ParquetChunkReader, dtwc_io's) and Arrow IPC's record batches (io::IpcFile, the core's), each
  *        instantiation's assignment the same code.
+ *
  * @author Volkan Kumtepeli
+ * @date 01 Nov 2026
  */
 
 #pragma once
@@ -70,17 +72,12 @@ public:
       const auto name = [&] {
         return "series '" + std::string(data.name(i)) + "' (index " + std::to_string(row) + ")";
       };
-      const auto check = [&](const auto values) {
-        if (!dtwc::detail::all_usable(values, nan_is_missing))
-          dtwc::detail::refuse_unusable(values, name(), "fast_clara", nan_is_missing);
-        if (distance_.missing == core::MissingStrategy::Interpolate && all_missing(values))
-          throw InvalidInput("fast_clara: " + name() + " is entirely NaN, so MissingStrategy::Interpolate has "
-                             "nothing to interpolate from. Use ZeroCost or AROW, or drop the series.");
-      };
-      if (data.is_f32())
-        check(data.series_f32(i));
-      else
-        check(data.series(i));
+      const auto verdict = dtwc::detail::series_verdict(data, i, distance_.missing);
+      if (verdict == dtwc::detail::SeriesVerdict::Refused)
+        dtwc::detail::refuse_series_unusable(data, i, name(), "fast_clara", nan_is_missing);
+      if (verdict == dtwc::detail::SeriesVerdict::EntirelyNaN)
+        throw InvalidInput("fast_clara: " + name() + " is entirely NaN, so MissingStrategy::Interpolate has "
+                           "nothing to interpolate from. Use ZeroCost or AROW, or drop the series.");
       if (length < shortest_.length) shortest_ = { length, row, std::string(data.name(i)) };
       if (length > longest_.length) longest_ = { length, row, std::string(data.name(i)) };
     }
@@ -95,9 +92,8 @@ public:
 
   void band() const
   {
-    const auto variant = distance_.variant.variant;
-    if (distance_.band < 0 || longest_.length <= shortest_.length || variant == core::DTWVariant::SoftDTW
-        || variant == core::DTWVariant::MSM || variant == core::DTWVariant::TWE)
+    if (distance_.band < 0 || longest_.length <= shortest_.length
+        || !core::variant_uses_band(distance_.variant.variant))
       return;
     const std::size_t gap = longest_.length - shortest_.length;
     if (gap <= static_cast<std::size_t>(distance_.band)) return;
@@ -185,6 +181,15 @@ core::ClusteringResult fast_clara_chunked_pass(
         next = std::async(policy, decode, rg + layout.per_batch,
                           std::min(layout.per_batch, total_rg - rg - layout.per_batch), first + batch.size());
       // The batch is loaded: the assignment reads it, never the reader.
+      const auto assign_cpu = [&] {
+        assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
+                         [&](index_t block_first, std::size_t n, std::span<double> best) {
+                           assign_points_cpu<T>(
+                             block_first, n, best, medoids, labels, prob.distance(), pair,
+                             [&](index_t p) { return stream_series_at<F32>(batch, p - first); },
+                             [&](index_t j) { return stream_series_at<F32>(medoid_data, j); });
+                         });
+      };
 #ifdef DTWC_HAS_CUDA
       if constexpr (std::is_same_v<LabelT, index_t>) {
         if (layout.on_gpu) {
@@ -193,23 +198,14 @@ core::ClusteringResult fast_clara_chunked_pass(
           for (std::size_t j = 0; j < medoids.size(); ++j) medoid_series.push_back(medoid_data.series(j));
           assign_on_gpu(prob, batch, first, medoid_series, medoids, labels, costs, layout.share);
         } else {
-          assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
-                           [&](index_t block_first, std::size_t n, std::span<double> best) {
-                             assign_points_cpu<T>(
-                               block_first, n, best, medoids, labels, prob.distance(), pair,
-                               [&](index_t p) { return stream_series_at<F32>(batch, p - first); },
-                               [&](index_t j) { return stream_series_at<F32>(medoid_data, j); });
-                           });
+          assign_cpu();
         }
-      } else
+      } else {
+        assign_cpu();
+      }
+#else
+      assign_cpu();
 #endif
-        assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
-                         [&](index_t block_first, std::size_t n, std::span<double> best) {
-                           assign_points_cpu<T>(
-                             block_first, n, best, medoids, labels, prob.distance(), pair,
-                             [&](index_t p) { return stream_series_at<F32>(batch, p - first); },
-                             [&](index_t j) { return stream_series_at<F32>(medoid_data, j); });
-                         });
       first += batch.size();
     }
     // A team's threads freed the batch's pieces (into their own arenas on glibc; Windows' heap keeps them committed):

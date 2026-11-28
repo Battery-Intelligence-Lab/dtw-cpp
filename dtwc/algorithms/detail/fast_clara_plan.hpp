@@ -1,7 +1,9 @@
 /**
  * @file fast_clara_plan.hpp
  * @brief Checked, allocation-free FastCLARA dimension planning.
+ *
  * @author Volkan Kumtepeli
+ * @date 12 Jul 2026
  */
 
 #pragma once

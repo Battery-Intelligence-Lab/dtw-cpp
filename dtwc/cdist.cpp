@@ -1,7 +1,9 @@
 /**
  * @file cdist.cpp
  * @brief Cross-collection DTW distance matrix implementation across CPU SIMD lanes and GPU.
+ *
  * @author Volkan Kumtepeli
+ * @date 13 Nov 2026
  */
 
 #include "cdist.hpp"
@@ -79,8 +81,6 @@ void validate_cdist_device(const core::DistanceConfig &cfg, bool f32,
 #endif
 }
 
-enum SeriesVerdict : unsigned char { kUsable, kEntirelyNaN, kRefused };
-
 void check_collection_series(const Data &data, std::string_view side, core::MissingStrategy missing)
 {
   const auto n = static_cast<std::size_t>(data.size());
@@ -92,25 +92,18 @@ void check_collection_series(const Data &data, std::string_view side, core::Miss
   }
   if (n == 0) return;
 
-  const bool nan_is_missing = (missing != core::MissingStrategy::Error);
-  std::vector<SeriesVerdict> verdicts(n, kUsable);
-  auto check_one = [&](std::size_t i) {
-    auto eval = [&](const auto values) {
-      if (!detail::all_usable(values, nan_is_missing)) return kRefused;
-      return (missing == core::MissingStrategy::Interpolate && all_missing(values)) ? kEntirelyNaN : kUsable;
-    };
-    verdicts[i] = data.is_f32() ? eval(data.series_f32(i)) : eval(data.series(i));
-  };
+  std::vector<detail::SeriesVerdict> verdicts(n, detail::SeriesVerdict::Usable);
+  auto check_one = [&](std::size_t i) { verdicts[i] = detail::series_verdict(data, i, missing); };
   run_openmp(check_one, n, n > 64, 16);
 
+  const bool nan_is_missing = (missing != core::MissingStrategy::Error);
   for (std::size_t i = 0; i < n; ++i) {
-    if (verdicts[i] == kRefused) {
+    if (verdicts[i] == detail::SeriesVerdict::Refused) {
       const std::string label = std::string(side) + " series '" + std::string(data.name(i))
                               + "' (index " + std::to_string(i) + ")";
-      if (data.is_f32()) detail::refuse_unusable(data.series_f32(i), label, "cdist", nan_is_missing);
-      detail::refuse_unusable(data.series(i), label, "cdist", nan_is_missing);
+      detail::refuse_series_unusable(data, i, label, "cdist", nan_is_missing);
     }
-    if (verdicts[i] == kEntirelyNaN) {
+    if (verdicts[i] == detail::SeriesVerdict::EntirelyNaN) {
       throw InvalidInput("cdist: " + std::string(side) + " series '" + std::string(data.name(i))
                          + "' (index " + std::to_string(i)
                          + ") is all NaN, so Interpolate has no value to interpolate from.");
@@ -122,12 +115,7 @@ void check_cross_band(const Data &X, const Data &Y, const core::DistanceConfig &
 {
   const auto n_x = static_cast<std::size_t>(X.size());
   const auto n_y = static_cast<std::size_t>(Y.size());
-  if (n_x == 0 || n_y == 0 || cfg.band < 0) return;
-  const auto variant = cfg.variant.variant;
-  if (variant == core::DTWVariant::SoftDTW || variant == core::DTWVariant::MSM
-      || variant == core::DTWVariant::TWE) {
-    return;
-  }
+  if (n_x == 0 || n_y == 0 || cfg.band < 0 || !core::variant_uses_band(cfg.variant.variant)) return;
 
   std::size_t min_x_idx = 0, max_x_idx = 0;
   std::size_t min_x_len = X.series_length(0), max_x_len = min_x_len;
@@ -168,7 +156,16 @@ void check_cross_band(const Data &X, const Data &Y, const core::DistanceConfig &
 constexpr std::size_t kMaxPrepackBytes = std::size_t{ 64 } << 20;
 
 template <typename T>
-bool can_prepack_panels(const Data &Y, const auto &y_at) noexcept
+inline std::span<const T> series_at(const Data &data, std::size_t i) noexcept
+{
+  if constexpr (std::is_same_v<T, float>)
+    return data.series_f32(i);
+  else
+    return data.series(i);
+}
+
+template <typename T>
+bool can_prepack_panels(const Data &Y) noexcept
 {
   if (Y.is_mapped()) return false;
   const auto n_y = static_cast<std::size_t>(Y.size());
@@ -180,7 +177,7 @@ bool can_prepack_panels(const Data &Y, const auto &y_at) noexcept
     const std::size_t cnt = std::min(W, n_y - b0);
     std::size_t max_len = 0;
     for (std::size_t w = 0; w < cnt; ++w)
-      max_len = std::max(max_len, y_at(b0 + w).size());
+      max_len = std::max(max_len, series_at<T>(Y, b0 + w).size());
     const std::size_t row_bytes = W * sizeof(T);
     if (max_len > (kMaxPrepackBytes - total_bytes) / row_bytes) return false;
     total_bytes += max_len * row_bytes;
@@ -201,150 +198,146 @@ inline void store_cdist_value(OutT *dst, std::size_t row, std::size_t col, doubl
   }
 }
 
-template <typename T, typename OutT>
-void compute_cdist_cpu_rows(const Data &X, const Data &Y,
-                            std::size_t x_begin, std::size_t x_end,
-                            const core::DistanceConfig &cfg,
-                            const auto &x_at, const auto &y_at,
-                            OutT *out)
+template <typename CpuT>
+class CpuCdistPlan
 {
-  const std::size_t n_rows = x_end - x_begin;
-  const auto n_y = static_cast<std::size_t>(Y.size());
-  if (n_rows == 0 || n_y == 0) return;
+public:
+  CpuCdistPlan(const Data &X, const Data &Y, const core::DistanceConfig &cfg)
+    : X_(X), Y_(Y), cfg_(cfg), n_y_(static_cast<std::size_t>(Y.size())),
+      n_panels_((n_y_ + W - 1) / W),
+      packed_fn_(core::resolve_dtw_packed_block_fn<CpuT>(cfg)),
+      block_fn_(core::resolve_dtw_block_fn<CpuT>(cfg)),
+      use_panels_(packed_fn_ && can_prepack_panels<CpuT>(Y))
+  {
+    if (use_panels_) {
+      panels_ = core::pack_series_panels<CpuT>(
+        cfg_, n_y_, [&Y](std::size_t j) { return series_at<CpuT>(Y, j); }, true);
+    } else if (!block_fn_) {
+      pair_fn_ = core::resolve_dtw_fn<CpuT>(cfg_, X_, &Y_);
+    }
+  }
 
-  const auto packed_fn = core::resolve_dtw_packed_block_fn<T>(cfg);
-  if (packed_fn && can_prepack_panels<T>(Y, y_at)) {
-    constexpr std::size_t W = core::dtw_lanes<T>;
-    const std::size_t n_panels = (n_y + W - 1) / W;
-    std::vector<core::PackedLanesPanel<T>> panels(n_panels);
-    auto pack_one = [&](std::size_t p) {
-      const std::size_t b0 = p * W;
-      const std::size_t cnt = std::min(W, n_y - b0);
-      std::array<std::span<const T>, W> ys;
-      for (std::size_t w = 0; w < W; ++w) ys[w] = y_at(b0 + std::min(w, cnt - 1));
-      core::pack_dtw_panel<T>(cfg, ys.data(), panels[p]);
-    };
-    run_openmp(pack_one, n_panels, n_panels > 8);
-
-    const auto threads = static_cast<std::size_t>(std::max(1, get_max_threads()));
-    if (n_rows >= 4 * threads || n_panels <= 1) {
-      auto row_task = [&](std::size_t r) {
-        const std::size_t i = x_begin + r;
-        const auto x_prep = core::prepare_dtw_query<T>(cfg, x_at(i));
-        OutT *row_out = out + i * n_y;
-        std::array<double, W> d;
-        for (std::size_t p = 0; p < n_panels; ++p) {
-          const std::size_t b0 = p * W;
-          const std::size_t cnt = std::min(W, n_y - b0);
-          packed_fn(x_prep, panels[p].view(), d);
-          for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
-        }
-      };
-      run_openmp(row_task, n_rows, (n_rows * n_panels) > 4);
-    } else {
-      const std::size_t total_tiles = n_rows * n_panels;
-      auto tile_task = [&](std::size_t idx) {
-        const std::size_t i = x_begin + (idx / n_panels);
-        const std::size_t p = idx % n_panels;
+  template <typename OutT>
+  void compute_row(std::size_t i, OutT *out) const
+  {
+    OutT *const row_out = out + i * n_y_;
+    if (use_panels_) {
+      const auto x_prep = core::prepare_dtw_query<CpuT>(cfg_, series_at<CpuT>(X_, i));
+      std::array<double, W> d;
+      for (std::size_t p = 0; p < n_panels_; ++p) {
         const std::size_t b0 = p * W;
-        const std::size_t cnt = std::min(W, n_y - b0);
-        const auto x_prep = core::prepare_dtw_query<T>(cfg, x_at(i));
+        const std::size_t cnt = std::min(W, n_y_ - b0);
+        packed_fn_(x_prep, panels_[p].view(), d);
+        for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
+      }
+    } else if (block_fn_) {
+      std::array<std::span<const CpuT>, W> ys;
+      std::array<double, W> d;
+      for (std::size_t p = 0; p < n_panels_; ++p) {
+        const std::size_t b0 = p * W;
+        const std::size_t cnt = std::min(W, n_y_ - b0);
+        for (std::size_t w = 0; w < W; ++w) ys[w] = series_at<CpuT>(Y_, b0 + std::min(w, cnt - 1));
+        block_fn_(series_at<CpuT>(X_, i), ys, d);
+        for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
+      }
+    } else {
+      for (std::size_t j = 0; j < n_y_; ++j)
+        store_cdist_value(row_out + j, i, j, pair_fn_(series_at<CpuT>(X_, i), series_at<CpuT>(Y_, j)));
+    }
+  }
+
+  template <typename OutT>
+  void compute_rows(std::size_t x_begin, std::size_t x_end, OutT *out) const
+  {
+    const std::size_t n_rows = x_end - x_begin;
+    if (n_rows == 0 || n_y_ == 0) return;
+
+    if (use_panels_) {
+      const auto threads = static_cast<std::size_t>(std::max(1, get_max_threads()));
+      if (n_rows >= 4 * threads || n_panels_ <= 1) {
+        auto row_task = [&](std::size_t r) { compute_row(x_begin + r, out); };
+        run_openmp(row_task, n_rows, (n_rows * n_panels_) > 4);
+      } else {
+        const std::size_t total_tiles = n_rows * n_panels_;
+        auto tile_task = [&](std::size_t idx) {
+          const std::size_t i = x_begin + (idx / n_panels_);
+          const std::size_t p = idx % n_panels_;
+          const std::size_t b0 = p * W;
+          const std::size_t cnt = std::min(W, n_y_ - b0);
+          const auto x_prep = core::prepare_dtw_query<CpuT>(cfg_, series_at<CpuT>(X_, i));
+          std::array<double, W> d;
+          packed_fn_(x_prep, panels_[p].view(), d);
+          OutT *const row_out = out + i * n_y_ + b0;
+          for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + w, i, b0 + w, d[w]);
+        };
+        run_openmp(tile_task, total_tiles, total_tiles > 4);
+      }
+      return;
+    }
+
+    if (block_fn_) {
+      const std::size_t total_tiles = n_rows * n_panels_;
+      auto stream_tile = [&](std::size_t idx) {
+        const std::size_t i = x_begin + (idx / n_panels_);
+        const std::size_t p = idx % n_panels_;
+        const std::size_t b0 = p * W;
+        const std::size_t cnt = std::min(W, n_y_ - b0);
+        std::array<std::span<const CpuT>, W> ys;
+        for (std::size_t w = 0; w < W; ++w) ys[w] = series_at<CpuT>(Y_, b0 + std::min(w, cnt - 1));
         std::array<double, W> d;
-        packed_fn(x_prep, panels[p].view(), d);
-        OutT *row_out = out + i * n_y + b0;
+        block_fn_(series_at<CpuT>(X_, i), ys, d);
+        OutT *const row_out = out + i * n_y_ + b0;
         for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + w, i, b0 + w, d[w]);
       };
-      run_openmp(tile_task, total_tiles, total_tiles > 4);
+      run_openmp(stream_tile, total_tiles, total_tiles > 4);
+      return;
     }
-    return;
-  }
 
-  const auto block_fn = core::resolve_dtw_block_fn<T>(cfg);
-  if (block_fn) {
-    constexpr std::size_t W = core::dtw_lanes<T>;
-    const std::size_t n_panels = (n_y + W - 1) / W;
-    const std::size_t total_tiles = n_rows * n_panels;
-    auto stream_tile = [&](std::size_t idx) {
-      const std::size_t i = x_begin + (idx / n_panels);
-      const std::size_t p = idx % n_panels;
-      const std::size_t b0 = p * W;
-      const std::size_t cnt = std::min(W, n_y - b0);
-      std::array<std::span<const T>, W> ys;
-      for (std::size_t w = 0; w < W; ++w) ys[w] = y_at(b0 + std::min(w, cnt - 1));
-      std::array<double, W> d;
-      block_fn(x_at(i), ys, d);
-      OutT *row_out = out + i * n_y + b0;
-      for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + w, i, b0 + w, d[w]);
+    const std::size_t total_pairs = n_rows * n_y_;
+    auto pair_task = [&](std::size_t idx) {
+      const std::size_t i = x_begin + (idx / n_y_);
+      const std::size_t j = idx % n_y_;
+      store_cdist_value(out + i * n_y_ + j, i, j, pair_fn_(series_at<CpuT>(X_, i), series_at<CpuT>(Y_, j)));
     };
-    run_openmp(stream_tile, total_tiles, total_tiles > 4);
-    return;
+    run_openmp(pair_task, total_pairs, total_pairs > 8);
   }
 
-  const auto pair_fn = core::resolve_dtw_fn<T>(cfg, X, &Y);
-  const std::size_t total_pairs = n_rows * n_y;
-  auto pair_task = [&](std::size_t idx) {
-    const std::size_t i = x_begin + (idx / n_y);
-    const std::size_t j = idx % n_y;
-    store_cdist_value(out + i * n_y + j, i, j, pair_fn(x_at(i), y_at(j)));
-  };
-  run_openmp(pair_task, total_pairs, total_pairs > 8);
-}
+private:
+  static constexpr std::size_t W = core::dtw_lanes<CpuT>;
+  const Data &X_;
+  const Data &Y_;
+  const core::DistanceConfig &cfg_;
+  std::size_t n_y_;
+  std::size_t n_panels_;
+  std::function<void(std::span<const CpuT>, const core::PackedLanesView<CpuT> &, std::span<double>)> packed_fn_;
+  std::function<void(std::span<const CpuT>, std::span<const std::span<const CpuT>>, std::span<double>)> block_fn_;
+  std::function<double(std::span<const CpuT>, std::span<const CpuT>)> pair_fn_;
+  bool use_panels_;
+  std::vector<core::PackedLanesPanel<CpuT>> panels_;
+};
 
 #ifdef DTWC_HAS_CUDA
+template <typename OutT>
+void copy_cuda_block(OutT *out, std::size_t row_offset, std::size_t count, std::size_t n_y,
+                     std::span<const double> block)
+{
+  for (std::size_t r = 0; r < count; ++r) {
+    const std::size_t row = row_offset + r;
+    const double *src = block.data() + r * n_y;
+    OutT *dst = out + row * n_y;
+    for (std::size_t j = 0; j < n_y; ++j) store_cdist_value(dst + j, row, j, src[j]);
+  }
+}
+
 template <typename CpuT, typename OutT>
 void run_hybrid_cdist_split(
   const Data &X_gpu, const std::vector<std::span<const double>> &y_gpu_spans,
   const Data &X_cpu, const Data &Y_cpu,
   double gpu_share, std::size_t n_x, std::size_t n_y,
   const core::DistanceConfig &cfg, const cuda::CUDADistMatOptions &opts,
-  int threads, const auto &x_cpu_at, const auto &y_cpu_at, OutT *out)
+  int threads, OutT *out)
 {
-  constexpr std::size_t W = core::dtw_lanes<CpuT>;
-  const std::size_t n_panels = (n_y + W - 1) / W;
-  const auto packed_fn = core::resolve_dtw_packed_block_fn<CpuT>(cfg);
-  const auto block_fn = core::resolve_dtw_block_fn<CpuT>(cfg);
-  std::vector<core::PackedLanesPanel<CpuT>> panels;
-  std::function<double(std::span<const CpuT>, std::span<const CpuT>)> pair_fn;
-  const bool use_panels = packed_fn && can_prepack_panels<CpuT>(Y_cpu, y_cpu_at);
-  if (use_panels) {
-    panels.resize(n_panels);
-    auto pack_one = [&](std::size_t p) {
-      const std::size_t b0 = p * W;
-      const std::size_t cnt = std::min(W, n_y - b0);
-      std::array<std::span<const CpuT>, W> ys;
-      for (std::size_t w = 0; w < W; ++w) ys[w] = y_cpu_at(b0 + std::min(w, cnt - 1));
-      core::pack_dtw_panel<CpuT>(cfg, ys.data(), panels[p]);
-    };
-    run_openmp(pack_one, n_panels, n_panels > 8);
-  } else if (!block_fn) {
-    pair_fn = core::resolve_dtw_fn<CpuT>(cfg, X_cpu, &Y_cpu);
-  }
-
-  auto run_cpu_row = [&](std::size_t i) {
-    OutT *row_out = out + i * n_y;
-    if (use_panels) {
-      const auto x_prep = core::prepare_dtw_query<CpuT>(cfg, x_cpu_at(i));
-      std::array<double, W> d;
-      for (std::size_t p = 0; p < n_panels; ++p) {
-        const std::size_t b0 = p * W;
-        const std::size_t cnt = std::min(W, n_y - b0);
-        packed_fn(x_prep, panels[p].view(), d);
-        for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
-      }
-    } else if (block_fn) {
-      std::array<std::span<const CpuT>, W> ys;
-      std::array<double, W> d;
-      for (std::size_t p = 0; p < n_panels; ++p) {
-        const std::size_t b0 = p * W;
-        const std::size_t cnt = std::min(W, n_y - b0);
-        for (std::size_t w = 0; w < W; ++w) ys[w] = y_cpu_at(b0 + std::min(w, cnt - 1));
-        block_fn(x_cpu_at(i), ys, d);
-        for (std::size_t w = 0; w < cnt; ++w) store_cdist_value(row_out + b0 + w, i, b0 + w, d[w]);
-      }
-    } else {
-      for (std::size_t j = 0; j < n_y; ++j) store_cdist_value(row_out + j, i, j, pair_fn(x_cpu_at(i), y_cpu_at(j)));
-    }
-  };
+  const CpuCdistPlan<CpuT> cpu_plan(X_cpu, Y_cpu, cfg);
 
   auto run_gpu_range = [&](std::size_t begin, std::size_t count) {
     const auto serial_pad = [](std::size_t rows, const std::function<void(std::size_t)> &task) {
@@ -353,17 +346,11 @@ void run_hybrid_cdist_split(
     (void)cuda::compute_medoid_distances_cuda(
       count, [&](std::size_t i) { return X_gpu.series(begin + i); }, y_gpu_spans, opts, serial_pad,
       [&](std::size_t first, std::size_t blk_count, std::span<const double> block) {
-        for (std::size_t r = 0; r < blk_count; ++r) {
-          const std::size_t row = begin + first + r;
-          const double *src = block.data() + r * n_y;
-          OutT *dst = out + row * n_y;
-          for (std::size_t j = 0; j < n_y; ++j) store_cdist_value(dst + j, row, j, src[j]);
-        }
+        copy_cuda_block(out, begin + first, blk_count, n_y, block);
       });
   };
 
-  std::exception_ptr gpu_exc;
-  std::exception_ptr cpu_exc;
+  detail::FailureSlots<std::size_t> failures(static_cast<std::size_t>(threads), n_x);
 
   if (gpu_share >= 0.0) {
     const auto gpu_rows = std::clamp<std::size_t>(
@@ -371,31 +358,31 @@ void run_hybrid_cdist_split(
 #  ifdef _OPENMP
 #  pragma omp parallel num_threads(threads)
     {
+      auto &slot = failures.current();
       const int tid = omp_get_thread_num();
       if (tid == 0) {
         try {
           run_gpu_range(0, gpu_rows);
         } catch (...) {
-          gpu_exc = std::current_exception();
+          detail::FailureSlots<std::size_t>::record(slot, 0, std::current_exception());
         }
       }
 #  pragma omp for schedule(dynamic, 1) nowait
       for (std::ptrdiff_t r = static_cast<std::ptrdiff_t>(gpu_rows);
            r < static_cast<std::ptrdiff_t>(n_x); ++r) {
+        const auto row = static_cast<std::size_t>(r);
+        if (row > slot.failed_at) continue;
         try {
-          run_cpu_row(static_cast<std::size_t>(r));
+          cpu_plan.compute_row(row, out);
         } catch (...) {
-#  pragma omp critical(dtwc_cdist_cpu_exc)
-          {
-            if (!cpu_exc) cpu_exc = std::current_exception();
-          }
+          detail::FailureSlots<std::size_t>::record(slot, row, std::current_exception());
         }
       }
     }
 #  else
     (void)threads;
     run_gpu_range(0, gpu_rows);
-    compute_cdist_cpu_rows<CpuT, OutT>(X_cpu, Y_cpu, gpu_rows, n_x, cfg, x_cpu_at, y_cpu_at, out);
+    cpu_plan.compute_rows(gpu_rows, n_x, out);
 #  endif
   } else {
     // Dynamic 2-ended work queue: GPU claims coarse batches from head, CPU threads claim fine batches from tail.
@@ -423,25 +410,24 @@ void run_hybrid_cdist_split(
 #  ifdef _OPENMP
 #  pragma omp parallel num_threads(threads)
     {
+      auto &slot = failures.current();
       const int tid = omp_get_thread_num();
       if (tid == 0) {
+        std::size_t b = 0, e = 0;
         try {
-          std::size_t b = 0, e = 0;
           while (claim_head(b, e)) run_gpu_range(b, e - b);
         } catch (...) {
-          gpu_exc = std::current_exception();
+          detail::FailureSlots<std::size_t>::record(slot, b, std::current_exception());
         }
       }
+      std::size_t b = 0, e = 0;
+      std::size_t r = n_x;
       try {
-        std::size_t b = 0, e = 0;
         while (claim_tail(b, e)) {
-          for (std::size_t r = b; r < e; ++r) run_cpu_row(r);
+          for (r = b; r < e; ++r) cpu_plan.compute_row(r, out);
         }
       } catch (...) {
-#  pragma omp critical(dtwc_cdist_cpu_exc)
-        {
-          if (!cpu_exc) cpu_exc = std::current_exception();
-        }
+        detail::FailureSlots<std::size_t>::record(slot, r, std::current_exception());
       }
     }
 #  else
@@ -453,8 +439,7 @@ void run_hybrid_cdist_split(
 #  endif
   }
 
-  if (gpu_exc) std::rethrow_exception(gpu_exc);
-  if (cpu_exc) std::rethrow_exception(cpu_exc);
+  failures.rethrow_lowest();
 }
 #endif
 
@@ -531,17 +516,9 @@ std::vector<OutT> cdist_impl(const Data &X_in, const Data &Y_in,
       if (eff_gpu_precision == GpuPrecision::FP32) {
         const Data X32 = detail::owned_copy(X, core::Precision::Float32);
         const Data Y32 = detail::owned_copy(Y, core::Precision::Float32);
-        compute_cdist_cpu_rows<float, OutT>(
-          X32, Y32, 0, n_x, cfg,
-          [&](std::size_t i) { return X32.series_f32(i); },
-          [&](std::size_t j) { return Y32.series_f32(j); },
-          out.data());
+        CpuCdistPlan<float>(X32, Y32, cfg).compute_rows(0, n_x, out.data());
       } else {
-        compute_cdist_cpu_rows<data_t, OutT>(
-          X, Y, 0, n_x, cfg,
-          [&](std::size_t i) { return X.series(i); },
-          [&](std::size_t j) { return Y.series(j); },
-          out.data());
+        CpuCdistPlan<data_t>(X, Y, cfg).compute_rows(0, n_x, out.data());
       }
       return out;
     }
@@ -565,12 +542,7 @@ std::vector<OutT> cdist_impl(const Data &X_in, const Data &Y_in,
       (void)cuda::compute_medoid_distances_cuda(
         n_x, [&](std::size_t i) { return X.series(i); }, y_spans, opts, parallel,
         [&](std::size_t first, std::size_t count, std::span<const double> block) {
-          for (std::size_t r = 0; r < count; ++r) {
-            const std::size_t row = first + r;
-            const double *src = block.data() + r * n_y;
-            OutT *dst = out.data() + row * n_y;
-            for (std::size_t j = 0; j < n_y; ++j) store_cdist_value(dst + j, row, j, src[j]);
-          }
+          copy_cuda_block(out.data(), first, count, n_y, block);
         });
       return out;
     }
@@ -580,34 +552,19 @@ std::vector<OutT> cdist_impl(const Data &X_in, const Data &Y_in,
       const Data X32 = detail::owned_copy(X, core::Precision::Float32);
       const Data Y32 = detail::owned_copy(Y, core::Precision::Float32);
       run_hybrid_cdist_split<float, OutT>(
-        X, y_spans, X32, Y32, gpu_share, n_x, n_y, cfg, opts, threads,
-        [&](std::size_t i) { return X32.series_f32(i); },
-        [&](std::size_t j) { return Y32.series_f32(j); },
-        out.data());
+        X, y_spans, X32, Y32, gpu_share, n_x, n_y, cfg, opts, threads, out.data());
     } else {
       run_hybrid_cdist_split<data_t, OutT>(
-        X, y_spans, X, Y, gpu_share, n_x, n_y, cfg, opts, threads,
-        [&](std::size_t i) { return X.series(i); },
-        [&](std::size_t j) { return Y.series(j); },
-        out.data());
+        X, y_spans, X, Y, gpu_share, n_x, n_y, cfg, opts, threads, out.data());
     }
     return out;
   }
 #endif
 
-  if (both_f32) {
-    compute_cdist_cpu_rows<float, OutT>(
-      X, Y, 0, n_x, cfg,
-      [&](std::size_t i) { return X.series_f32(i); },
-      [&](std::size_t j) { return Y.series_f32(j); },
-      out.data());
-  } else {
-    compute_cdist_cpu_rows<data_t, OutT>(
-      X, Y, 0, n_x, cfg,
-      [&](std::size_t i) { return X.series(i); },
-      [&](std::size_t j) { return Y.series(j); },
-      out.data());
-  }
+  if (both_f32)
+    CpuCdistPlan<float>(X, Y, cfg).compute_rows(0, n_x, out.data());
+  else
+    CpuCdistPlan<data_t>(X, Y, cfg).compute_rows(0, n_x, out.data());
   return out;
 }
 

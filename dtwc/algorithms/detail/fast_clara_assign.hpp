@@ -2,7 +2,9 @@
  * @file fast_clara_assign.hpp
  * @brief FastCLARA's nearest-medoid assignment, shared by fast_clara.cpp (series in RAM)
  *        and fast_clara_stream.hpp (series streamed from a file).
+ *
  * @author Volkan Kumtepeli
+ * @date 06 Oct 2026
  */
 
 #pragma once
@@ -214,16 +216,10 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
   // When there are at least W unique medoids, pre-pack the unique medoids once into
   // L1-resident panels instead of packing all N series block by block.
   if (core::dtw_lanes_packed && packed_block && n_unique >= W && all_medoids_nonempty) {
-    const std::size_t n_panels = (n_unique + W - 1) / W;
-    std::vector<core::PackedLanesPanel<T>> medoid_panels(n_panels);
-    for (std::size_t b = 0; b < n_panels; ++b) {
-      const std::size_t u0 = b * W;
-      const std::size_t count = std::min(W, n_unique - u0);
-      std::array<std::span<const T>, W> ys;
-      for (std::size_t w = 0; w < W; ++w)
-        ys[w] = medoid(static_cast<index_t>(unique_slots[u0 + std::min(w, count - 1)]));
-      core::pack_dtw_panel<T>(distance, ys.data(), medoid_panels[b]);
-    }
+    const auto medoid_panels = core::pack_series_panels<T>(distance, n_unique, [&](std::size_t u) {
+      return medoid(static_cast<index_t>(unique_slots[u]));
+    });
+    const std::size_t n_panels = medoid_panels.size();
     const std::size_t table_stride = n_panels * W;
     auto assign_one = [&](std::size_t i) {
       const index_t p = first + static_cast<index_t>(i);
@@ -250,26 +246,13 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
   }
 
   // Hoist prepare_dtw_query for unique medoids outside the block loop.
-  const bool identity_prep =
-    distance.missing == core::MissingStrategy::Error && distance.variant.variant == core::DTWVariant::Standard;
-  std::vector<T> prep_storage;
-  std::vector<std::span<const T>> prep_medoids(n_unique);
+  core::PreparedQueries<T> prep_medoids_buf;
   if (core::dtw_lanes_packed && packed_block) {
-    if (identity_prep) {
-      for (std::size_t u = 0; u < n_unique; ++u)
-        prep_medoids[u] = medoid(static_cast<index_t>(unique_slots[u]));
-    } else {
-      std::vector<std::size_t> offsets(n_unique + 1, 0);
-      for (std::size_t u = 0; u < n_unique; ++u) {
-        const auto x = medoid(static_cast<index_t>(unique_slots[u]));
-        const auto xp = core::prepare_dtw_query<T>(distance, x);
-        prep_storage.insert(prep_storage.end(), xp.begin(), xp.end());
-        offsets[u + 1] = prep_storage.size();
-      }
-      for (std::size_t u = 0; u < n_unique; ++u)
-        prep_medoids[u] = std::span<const T>(prep_storage.data() + offsets[u], offsets[u + 1] - offsets[u]);
-    }
+    prep_medoids_buf.build(distance, n_unique, [&](std::size_t u) {
+      return medoid(static_cast<index_t>(unique_slots[u]));
+    });
   }
+  const auto &prep_medoids = prep_medoids_buf.views;
 
   auto assign_block = [&](std::size_t b) {
     const std::size_t i0 = b * W, count = std::min(W, n - i0);

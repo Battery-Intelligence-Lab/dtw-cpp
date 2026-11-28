@@ -10,6 +10,7 @@
  * series, names and errors.
  *
  * @author Volkan Kumtepeli
+ * @date 21 Oct 2026
  */
 
 #include <base/error.hpp>
@@ -624,4 +625,35 @@ TEST_CASE("Arrow IPC: a file read a record batch at a time is walked with the sa
                        MessageMatches(EndsWith("Arrow IPC record batch 0 declares other buffers than when the file was "
                                                "walked: the file changed while it was read")));
 #endif
+}
+
+TEST_CASE("Arrow IPC: zero-batch IPC stream and out-of-bounds read_rows", "[io][arrow][edge]")
+{
+  auto zero_batches = bytes_of("ipc_stream.arrow");
+  REQUIRE(zero_batches.size() >= 8);
+  std::int32_t meta_len = 0;
+  std::memcpy(&meta_len, zero_batches.data() + 4, sizeof(meta_len));
+  REQUIRE(meta_len > 0);
+  const std::size_t schema_end = 8 + static_cast<std::size_t>(meta_len);
+  REQUIRE(zero_batches.size() > schema_end);
+  zero_batches.resize(schema_end);
+  const std::byte eos[] = { std::byte{ 0xFF }, std::byte{ 0xFF }, std::byte{ 0xFF }, std::byte{ 0xFF },
+                            std::byte{ 0x00 }, std::byte{ 0x00 }, std::byte{ 0x00 }, std::byte{ 0x00 } };
+  zero_batches.insert(zero_batches.end(), std::begin(eos), std::end(eos));
+
+  const auto zero_path = written("zero_batches.arrow", zero_batches);
+  const dtwc::io::IpcFile empty_file(zero_path);
+  REQUIRE(empty_file.num_row_groups() == 0);
+  REQUIRE(empty_file.num_rows() == 0);
+  CHECK(empty_file.row_groups_per_batch(std::size_t{ 1 } << 20, false) == 0);
+  CHECK(empty_file.row_groups_per_batch(0, false) == 0);
+  CHECK(empty_file.row_groups_per_batch(std::size_t{ 1 } << 20, true) == 0);
+  CHECK_THROWS_AS(empty_file.read_rows<double>({ 0 }, std::size_t{ 1 } << 20), dtwc::InvalidInput);
+
+  const dtwc::io::IpcFile nonempty(fixture("ipc_batches.arrow"));
+  const dtwc::index_t n = nonempty.num_rows();
+  REQUIRE(n > 0);
+  CHECK_THROWS_AS(nonempty.read_rows<double>({ -1 }, std::size_t{ 1 } << 20), dtwc::InvalidInput);
+  CHECK_THROWS_AS(nonempty.read_rows<double>({ n }, std::size_t{ 1 } << 20), dtwc::InvalidInput);
+  CHECK_THROWS_AS(nonempty.read_rows<float>({ 0, n + 3 }, std::size_t{ 1 } << 20), dtwc::InvalidInput);
 }

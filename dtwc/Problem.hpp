@@ -123,12 +123,15 @@ namespace detail {
  * no matrix or silhouettes to write. A Problem that holds no clustering gets label and medoid files of no rows:
  * cluster it first (Problem::cluster, Problem::set_result).
  *
- * @param complete  true (Result::save of a run held in RAM, the Python save): fill the matrix first, so all
- *                  four files are written, and throw InvalidInput after the labels and medoids when the
- *                  Problem holds no series, so there is no matrix to fill. false (the CLI, and Result::save
- *                  of a streamed run): write the matrix and silhouettes only if the matrix is already filled,
- *                  so a matrix-free run does not fill O(N^2) for them.
- * @param progress  when set, one line per file written.
+ * @param prob           Clustered Problem whose labels, medoids, and optional matrix/silhouettes are written.
+ * @param directory      Destination directory (created if missing).
+ * @param complete       true (Result::save of a run held in RAM, the Python save): fill the matrix first, so all
+ *                       four files are written, and throw InvalidInput after the labels and medoids when the
+ *                       Problem holds no series, so there is no matrix to fill. false (the CLI, and Result::save
+ *                       of a streamed run): write the matrix and silhouettes only if the matrix is already filled,
+ *                       so a matrix-free run does not fill O(N^2) for them.
+ * @param progress       When set, one line per file written.
+ * @param streamed_names Series names for a streamed run whose Problem holds no series (falls back to `series_<i>` if empty).
  * @throws IOError for a file that cannot be written in full.
  */
 void write_result_files(Problem &prob, const std::filesystem::path &directory, bool complete,
@@ -301,6 +304,7 @@ public:
   /// hold) may throw, and a noexcept promise would turn that into std::terminate.
   Problem &operator=(Problem &&);
 
+  /// Number of series in this Problem.
   auto size() const { return data_.size(); }
   /// Number of clusters.
   auto n_clusters() const { return Nc; }
@@ -377,19 +381,32 @@ public:
   // Canonical configuration reads for the encapsulated fields.
   // last_iterations() and data() are read-only; mutable configuration uses
   // the corresponding setters below.
+  /// Active clustering method.
   Method method() const { return method_; }
+  /// Selected MIP solver backend (Gurobi or HiGHS).
   Solver solver() const { return mipSolver; }
+  /// RNG seed used by stochastic initializers and algorithms.
   std::uint64_t random_seed() const { return random_seed_; }
+  /// Iteration count recorded by the last iterative clustering run.
   int last_iterations() const { return last_iterations_; }
+  /// Cutoff distance dc for TADPole (-1 = automatic percentile selection).
   double tadpole_dc() const { return tadpole_dc_; }
+  /// Subsample size for FastCLARA (-1 = automatic policy).
   index_t sample_size() const { return sample_size_; }
+  /// Number of subsamples evaluated by FastCLARA.
   int n_samples() const { return n_samples_; }
+  /// Batch size for OneBatchPAM (-1 = automatic policy).
   index_t batch_size() const { return batch_size_; }
+  /// Linkage criterion for hierarchical clustering.
   algorithms::Linkage linkage() const { return linkage_; }
+  /// True when verbose diagnostic output is enabled.
   bool verbose() const { return verbose_; }
+  /// Problem name used in output filenames and diagnostics.
   const std::string &name() const { return name_; }
+  /// Read-only access to the underlying Data container.
   const Data &data() const { return data_; }
 
+  /// Set the clustering method (Method::Auto, PAM, CLARA, etc.).
   void set_method(Method m)
   {
     method_ = m;
@@ -424,6 +441,7 @@ public:
   void set_n_samples(int n) { n_samples_ = n; }
   void set_batch_size(index_t n) { batch_size_ = n; }
   void set_linkage(algorithms::Linkage linkage) { linkage_ = linkage; }
+  /// Set how NaN values are treated (Error, ZeroCost, AROW, or Interpolate); drops the distance matrix and clustering if changed.
   void set_missing_strategy(core::MissingStrategy strategy);
   /// Pointwise cost of every distance this Problem computes: the CPU fill and
   /// lazy lookups, the GPU routes, the mmap cache and checkpoint identities.
@@ -507,6 +525,7 @@ public:
     name_ = std::move(problem_name);
   }
 
+  /// Move an owning Data object into this Problem, validating ndim, non-empty series, and distance settings; drops any existing matrix and clustering.
   void set_data(dtwc::Data candidate)
   {
     adopt_data(std::move(candidate), "Problem::set_data");
@@ -521,8 +540,10 @@ public:
 
   /// Set DTW variant and rebind the distance function.
   void set_variant(core::DTWVariant v);
+  /// Set DTW variant with explicit variant parameters and rebind the distance function.
   void set_variant(core::DTWVariantParams params);
 
+  /// Largest computed distance in the matrix (0 if none is computed).
   data_t max_distance() const { return distMat.max(); }
 
   /// The distance between series i and j, read from the matrix: O(1), no check
@@ -595,8 +616,10 @@ public:
 
   void fill_distance_matrix();
 
+  /// Print the distance matrix to std::cout.
   void print_distance_matrix() const;
 
+  /// Print cluster medoids and member series names to std::cout (throws InvalidInput if unclustered).
   void print_clusters() const;
 
   // Initialisation of clusters:
@@ -610,13 +633,17 @@ public:
   /// set_result(); they are returned with the cost, the iterations and whether the
   /// method converged within max_iter().
   core::ClusteringResult cluster();
+  /// Cluster the series exactly via the configured MIP solver (Gurobi or HiGHS).
   void cluster_by_mip();
   void cluster_by_kmedoids_lloyd();
 
   // Auxiliary
+  /// Compute the total k-medoids objective cost (sum of distances from each series to its assigned medoid).
   double find_total_cost();
+  /// Fill the distance matrix if needed and assign each series to its nearest medoid in centroids_ind.
   void assign_clusters();
 
+  /// Update each cluster's medoid in centroids_ind to the member minimizing intra-cluster distance sum.
   void calculate_medoids();
 };
 

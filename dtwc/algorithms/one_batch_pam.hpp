@@ -4,7 +4,9 @@
  *
  * Implements de Mathelin et al., "OneBatchPAM: A Fast and Frugal
  * K-Medoids Algorithm" (AAAI 2025, doi:10.1609/aaai.v39i15.33776).
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #pragma once
@@ -21,11 +23,12 @@ class Problem;
 
 namespace algorithms {
 
+/// Options controlling the OneBatchPAM approximate k-medoids algorithm.
 struct OneBatchPAMOptions {
-  index_t n_clusters = 3;
+  index_t n_clusters = 3;    ///< Number of clusters (k).
   index_t batch_size = -1;   ///< -1: max(k, min(N, max(64, 20*ceil(log2(N+1))))); an explicit value must be >= k.
   int max_iter = 100;        ///< Maximum eager-swap sweeps.
-  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
+  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED; ///< RNG seed for batch sampling and medoid initialization.
   double relative_tolerance = 1e-9; ///< Accept gain > tolerance * current estimate.
 };
 

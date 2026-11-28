@@ -2,7 +2,9 @@
  * @file read_arrow.cpp
  * @brief dtwc::io::read_arrow and arrow_format (see read_arrow.hpp): Parquet, read with Arrow C++, in dtwc_io; Arrow
  *        IPC goes to the core's reader.
+ *
  * @author Volkan Kumtepeli
+ * @date 06 Oct 2026
  */
 
 #include "read_arrow.hpp"

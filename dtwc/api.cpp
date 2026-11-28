@@ -1,7 +1,9 @@
 /**
  * @file api.cpp
  * @brief Implementation of the DTWC++ 2.0 Tier-1 API.
+ *
  * @author Volkan Kumtepeli
+ * @date 10 Jul 2026
  */
 
 #include "api.hpp"
@@ -223,20 +225,17 @@ Result cluster(Dataset &&dataset, const Config &cfg)
   Config config = cfg;
   if (config.name.empty()) config.name = dataset.name();
   config.dtype = dataset.dtype();
-  if (!dataset.is_path()) { // materialize_local drops the Dataset's skips; run() refuses reader options here
+  if (!dataset.is_path() || dataset.ndim() > 1) { // materialize_local / read_dataset_path already holds series; clear file/reader options
+    std::optional<Data> loaded;
+    if (!dataset.is_path())
+      loaded.emplace(std::move(dataset).materialize_local());
+    else
+      loaded.emplace(read_dataset_path(dataset, cfg.column));
     config.input.clear();
     config.skip_cols = 0;
     config.skip_rows = 0;
     config.delimiter = '\0';
-    return run(config, std::move(dataset).materialize_local());
-  }
-  if (dataset.ndim() > 1) {
-    Data loaded = read_dataset_path(dataset, cfg.column);
-    config.input.clear();
-    config.skip_cols = 0;
-    config.skip_rows = 0;
-    config.delimiter = '\0';
-    return run(config, std::move(loaded));
+    return run(config, std::move(*loaded));
   }
   config.input = path_to_utf8(dataset.path());
   config.skip_cols = dataset.skip_cols();

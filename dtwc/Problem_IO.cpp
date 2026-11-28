@@ -203,7 +203,11 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
                                           : std::accumulate(silhouettes.begin(), silhouettes.end(), 0.0)
                                               / static_cast<double>(silhouettes.size());
   if (times) times->mean_silhouette = mean;
-  if (progress) *progress << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
+  if (progress) {
+    const auto prev_prec = progress->precision();
+    *progress << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
+    progress->precision(prev_prec);
+  }
 }
 
 } // namespace dtwc
