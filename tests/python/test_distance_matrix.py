@@ -320,7 +320,7 @@ class TestCheckpointMetricFingerprint:
         np.savetxt(csv, self.SERIES, delimiter=",")
         cli_directory = str(tmp_path / "ckpt_cli")
         run = subprocess.run(
-            [dtwc_cl, "-i", str(csv), "-k", "2", "-m", "pam", "--name", "ckpt",
+            [dtwc_cl, "-i", str(csv), "-k", "2", "-m", "pam", "--name", "ckpt", "-o", str(tmp_path / "ckpt_out"),
              "--metric", "squared_euclidean", "--checkpoint", cli_directory],
             capture_output=True, text=True)
         assert run.returncode == 0, run.stderr
