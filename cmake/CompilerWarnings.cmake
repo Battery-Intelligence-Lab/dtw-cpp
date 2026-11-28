@@ -101,6 +101,6 @@ function(dtwc_set_project_warnings project_name WARNINGS_AS_ERRORS)
 
   target_compile_options(
     ${project_name}
-    INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:${PROJECT_WARNINGS_CXX}>
+    INTERFACE $<$<COMPILE_LANGUAGE:C,CXX,OBJCXX>:${PROJECT_WARNINGS_CXX}>
               $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_WARNINGS}>)
 endfunction()

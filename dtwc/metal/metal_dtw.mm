@@ -679,8 +679,8 @@ std::string metal_device_info()
     std::snprintf(buf, sizeof(buf),
         "%s (registryID=0x%llx, max_working_set=%.2f GB)",
         name ? [name UTF8String] : "unknown-gpu",
-        (unsigned long long)reg,
-        (double)mem / (1024.0 * 1024.0 * 1024.0));
+        static_cast<unsigned long long>(reg),
+        static_cast<double>(mem) / (1024.0 * 1024.0 * 1024.0));
     return std::string(buf);
   }
 }
@@ -829,7 +829,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     //                      barriers than wavefront on the same work.
     //   threadgroup kernel: 3 * max_L * 4 <= device cap (32KB on M1/M2/M3 -> max_L <= 2730)
     //   global kernel:     uses device memory for the 3 anti-diagonal buffers
-    const NSUInteger tg_mem_len = 3 * (NSUInteger)max_L * sizeof(float);
+    const NSUInteger tg_mem_len = 3 * static_cast<NSUInteger>(max_L) * sizeof(float);
     const NSUInteger tg_mem_cap = ctx.device.maxThreadgroupMemoryLength;
     // Row-major one-thread-per-pair wins only when the band is tight enough
     // that wavefront barrier overhead dominates. Empirically (M2 Max), a
@@ -886,8 +886,8 @@ MetalDistMatResult compute_distance_matrix_metal(
     // per pair, so cells-per-pair accounting uses band*L, not L*L.
     const size_t cells_budget = 5e9; // ~5 billion DTW cells per command buffer
     const size_t cells_per_pair = use_banded_row
-        ? (size_t)(2 * band + 1) * (size_t)max_L
-        : (size_t)max_L * (size_t)max_L;
+        ? static_cast<size_t>(2 * band + 1) * static_cast<size_t>(max_L)
+        : static_cast<size_t>(max_L) * static_cast<size_t>(max_L);
     size_t chunk = std::max<size_t>(1, cells_budget / cells_per_pair);
     if (chunk > num_pairs) chunk = num_pairs;
 
@@ -896,7 +896,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     // Allocate scratch sized for one chunk (double-buffered when multiple chunks exist).
     size_t scratch_bytes = 0;
     if (use_global) {
-      scratch_bytes = chunk * 3ULL * (size_t)max_L * sizeof(float);
+      scratch_bytes = chunk * 3ULL * static_cast<size_t>(max_L) * sizeof(float);
     } else if (use_banded_row) {
       // Coalesced layout: 2 rolling row-strips of (2*band+1) floats; each
       // row stripe has `stride` floats (stride == total threads dispatched).
@@ -937,16 +937,16 @@ MetalDistMatResult compute_distance_matrix_metal(
     } else if (use_regtile) {
       const NSUInteger max_pairs_threads = std::max<NSUInteger>(1, max_threads / simd);
       const NSUInteger max_pairs_smem =
-          std::max<NSUInteger>(1, tg_mem_cap / (2 * (NSUInteger)max_L * sizeof(float)));
+          std::max<NSUInteger>(1, tg_mem_cap / (2 * static_cast<NSUInteger>(max_L) * sizeof(float)));
       pairs_per_tg = std::min<NSUInteger>(8, std::min(max_pairs_threads, max_pairs_smem));
       tg_size = simd * pairs_per_tg;
     } else {
-      tg_size = std::min((NSUInteger)max_L, max_threads);
+      tg_size = std::min(static_cast<NSUInteger>(max_L), max_threads);
       if (tg_size == 0) tg_size = 1;
       if (tg_size > simd) tg_size = (tg_size / simd) * simd;
     }
     const NSUInteger regtile_smem_len =
-        use_regtile ? (pairs_per_tg * 2 * (NSUInteger)max_L * sizeof(float)) : 0;
+        use_regtile ? (pairs_per_tg * 2 * static_cast<NSUInteger>(max_L) * sizeof(float)) : 0;
 
     // Banded-row: allocate coalesced scratch sized by total thread count.
     // Grid is 1D of (ceil(chunk/tg_size) * tg_size) threads.
@@ -955,7 +955,7 @@ MetalDistMatResult compute_distance_matrix_metal(
       const size_t ntgs = (chunk + tg_size - 1) / tg_size;
       banded_stride = static_cast<int>(ntgs * tg_size);
       scratch_bytes =
-          2ULL * (size_t)(2 * band + 1) * (size_t)banded_stride * sizeof(float);
+          2ULL * static_cast<size_t>(2 * band + 1) * static_cast<size_t>(banded_stride) * sizeof(float);
       owned.scratch[0] = [ctx.device newBufferWithLength:scratch_bytes
                                                  options:MTLResourceStorageModePrivate];
       if (!owned.scratch[0]) {
