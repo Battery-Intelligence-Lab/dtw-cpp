@@ -103,6 +103,15 @@ class TestCdist:
         X = rng.normal(size=(6, 20))
         Y = rng.normal(loc=1.5, size=(15, 20))
         D_cpu = dtwcpp.cdist(X, Y, band=4, device="cpu")
+        if dtwcpp.gpu_info().startswith("Metal:"):
+            # Metal has no cross-collection kernel and computes in FP32: it refuses both requests, and fallback runs
+            # the first on the CPU.
+            with pytest.raises(dtwcpp.DeviceError, match="rectangular cdist is not implemented on Metal"):
+                dtwcpp.cdist(X, Y, band=4, device="gpu")
+            with pytest.raises(dtwcpp.DeviceError, match="FP64 is not implemented"):
+                dtwcpp.cdist(X, Y, band=4, device="gpu", gpu_precision="fp64")
+            np.testing.assert_array_equal(dtwcpp.cdist(X, Y, band=4, device="gpu", fallback=True), D_cpu)
+            return
         D_gpu = dtwcpp.cdist(X, Y, band=4, device="gpu", gpu_precision="fp64")
         np.testing.assert_allclose(D_gpu, D_cpu, rtol=1e-12)
         if dtwcpp.test.gpu()["hybrid"]:
