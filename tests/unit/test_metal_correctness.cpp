@@ -565,4 +565,41 @@ TEST_CASE("Metal fills a float32 matrix with the float64 fill's distances, narro
   }
 }
 
+TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band, in either order",
+          "[metal][banded]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  // Without the kernels' early return, the pair's order decides the fault. Shorter series first: the wavefront kept
+  // the last in-band cost of its final row and stored it, a stale finite value, whenever
+  // (longer - shorter - band) % 3 == 0, as for both wavefront routes here. Longer series first: banded_row stored
+  // before its scratch buffer and still gave the no-path value, so these values cannot show it; Metal's shader
+  // validation does (MTL_SHADER_VALIDATION=1 MTL_SHADER_VALIDATION_REPORT_TO_STDERR=1).
+  // banded_row takes a band of at most 512 with band * 20 < max_L; otherwise the threadgroup wavefront, unless its
+  // 3 * max_L floats exceed the 32 KB of threadgroup memory, where wavefront_global takes the batch.
+  struct Route {
+    std::size_t longer;
+    int band;
+    const char *kernel_name;
+  };
+  const std::vector<double> shorter{ 0, 1, 0, 2, 0 };
+  for (const auto &route : { Route{ 12, 1, "wavefront" }, Route{ 64, 1, "banded_row" },
+                             Route{ 8192, 600, "wavefront_global" } }) {
+    for (const bool longer_first : { true, false }) {
+      std::vector<std::vector<double>> series{ fixed_band::filler(route.longer), shorter };
+      if (!longer_first) std::swap(series[0], series[1]);
+      dtwc::metal::MetalDistMatOptions opts;
+      opts.band = route.band;
+      const auto gpu = gpu_fill(series, opts);
+      const double cpu = dtwc::dtwBanded(series[0], series[1], route.band);
+      INFO("kernel=" << gpu.kernel_used << " longer=" << route.longer << " band=" << route.band
+                     << " longer_first=" << longer_first);
+      REQUIRE(gpu.kernel_used == route.kernel_name);
+      REQUIRE(cpu == fixed_band::public_no_path_sentinel);
+      CHECK(gpu.matrix[1] == cpu); // CHECK: every route and order reports, not the first to fail
+      CHECK(gpu.matrix[2] == cpu);
+    }
+  }
+}
+
 #endif // DTWC_HAS_METAL
